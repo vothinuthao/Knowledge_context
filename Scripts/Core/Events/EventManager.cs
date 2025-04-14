@@ -10,13 +10,13 @@ namespace Core
     /// </summary>
     public class EventManager : MonoBehaviourSingleton<EventManager>
     {
-        private Dictionary<EventType, EventObservable<EventArgs>> _eventObservables = new Dictionary<EventType, EventObservable<System.EventArgs>>();
-        private Dictionary<EventType, EventHandler> _eventHandlers = new Dictionary<EventType, System.EventHandler>();
+        private Dictionary<EventTypeInGame, EventObservable<EventArgs>> _eventObservables = new Dictionary<EventTypeInGame, EventObservable<System.EventArgs>>();
+        private Dictionary<EventTypeInGame, EventHandler> _eventHandlers = new Dictionary<EventTypeInGame, System.EventHandler>();
         private Observable<EventData> _globalObservable = new Observable<EventData>();
         
         protected override void OnSingletonCreated()
         {
-            foreach (EventType eventType in Enum.GetValues(typeof(EventType)))
+            foreach (EventTypeInGame eventType in Enum.GetValues(typeof(EventTypeInGame)))
             {
                 _eventObservables[eventType] = new EventObservable<System.EventArgs>();
             }
@@ -25,29 +25,29 @@ namespace Core
         /// <summary>
         /// Add a listener for a specific event type (traditional approach)
         /// </summary>
-        public void AddListener(EventType eventType, System.EventHandler handler)
+        public void AddListener(EventTypeInGame eventTypeInGame, System.EventHandler handler)
         {
-            _eventHandlers.TryAdd(eventType, null);
-            _eventHandlers[eventType] += handler;
+            _eventHandlers.TryAdd(eventTypeInGame, null);
+            _eventHandlers[eventTypeInGame] += handler;
         }
         
         /// <summary>
         /// Remove a listener for a specific event type (traditional approach)
         /// </summary>
-        public void RemoveListener(EventType eventType, System.EventHandler handler)
+        public void RemoveListener(EventTypeInGame eventTypeInGame, System.EventHandler handler)
         {
-            if (_eventHandlers.ContainsKey(eventType))
+            if (_eventHandlers.ContainsKey(eventTypeInGame))
             {
-                _eventHandlers[eventType] -= handler;
+                _eventHandlers[eventTypeInGame] -= handler;
             }
         }
         
         /// <summary>
         /// Subscribe to events using Observable pattern
         /// </summary>
-        public void Subscribe<T>(EventType eventType, EventObservable<System.EventArgs>.EventHandler handler) where T : System.EventArgs
+        public void Subscribe<T>(EventTypeInGame eventTypeInGame, EventObservable<System.EventArgs>.EventHandler handler) where T : System.EventArgs
         {
-            if (_eventObservables.TryGetValue(eventType, out var observable))
+            if (_eventObservables.TryGetValue(eventTypeInGame, out var observable))
             {
                 observable.OnEvent += handler;
             }
@@ -56,9 +56,9 @@ namespace Core
         /// <summary>
         /// Unsubscribe from events using Observable pattern
         /// </summary>
-        public void Unsubscribe<T>(EventType eventType, EventObservable<System.EventArgs>.EventHandler handler) where T : System.EventArgs
+        public void Unsubscribe<T>(EventTypeInGame eventTypeInGame, EventObservable<System.EventArgs>.EventHandler handler) where T : System.EventArgs
         {
-            if (_eventObservables.TryGetValue(eventType, out var observable))
+            if (_eventObservables.TryGetValue(eventTypeInGame, out var observable))
             {
                 observable.OnEvent -= handler;
             }
@@ -83,34 +83,34 @@ namespace Core
         /// <summary>
         /// Trigger an event with no data
         /// </summary>
-        public void TriggerEvent(EventType eventType)
+        public void TriggerEvent(EventTypeInGame eventTypeInGame)
         {
-            TriggerEvent(eventType, EventArgs.Empty);
+            TriggerEvent(eventTypeInGame, EventArgs.Empty);
         }
         
         /// <summary>
         /// Trigger an event with data
         /// </summary>
-        public void TriggerEvent<T>(EventType eventType, T data)
+        public void TriggerEvent<T>(EventTypeInGame eventTypeInGame, T data)
         {
-            TriggerEvent(eventType, new EventArgs<T>(data));
+            TriggerEvent(eventTypeInGame, new EventArgs<T>(data));
         }
         
         /// <summary>
         /// Trigger an event with custom event args
         /// </summary>
-        public void TriggerEvent(EventType eventType, EventArgs args)
+        public void TriggerEvent(EventTypeInGame eventTypeInGame, EventArgs args)
         {
-            if (_eventHandlers.ContainsKey(eventType))
+            if (_eventHandlers.ContainsKey(eventTypeInGame))
             {
-                EventHandler handler = _eventHandlers[eventType];
+                EventHandler handler = _eventHandlers[eventTypeInGame];
                 handler?.Invoke(this, args);
             }
-            if (_eventObservables.TryGetValue(eventType, out var observable))
+            if (_eventObservables.TryGetValue(eventTypeInGame, out var observable))
             {
                 observable.RaiseEvent(this, args);
             }
-            EventData eventData = new EventData(eventType, args);
+            EventData eventData = new EventData(eventTypeInGame, args);
             _globalObservable.NotifyObservers(eventData);
         }
     }

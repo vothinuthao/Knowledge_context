@@ -14,12 +14,12 @@ namespace Troops.Base
             base.Enter(troop);
             troop.PlayAnimation("Death");
             troop.DisableCollisions();
-            EventManager.Instance.TriggerEvent(EventType.TroopDeath, troop);
+            EventManager.Instance.TriggerEvent(EventTypeInGame.TroopDeath, troop);
         }
         
         public override void Update(TroopBase troop)
         {
-            // No updates in dead state
+            
         }
     }
 }

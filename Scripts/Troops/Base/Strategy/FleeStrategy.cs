@@ -22,7 +22,7 @@ namespace Troops.Base
             var flee = new FleeBehavior();
             troop.SteeringManager.AddBehavior(flee);
             troop.SteeringManager.SetTarget(troop.NearestEnemyTransform);
-            EventManager.Instance.TriggerEvent(EventType.TroopFleeing, troop);
+            EventManager.Instance.TriggerEvent(EventTypeInGame.TroopFleeing, troop);
         }
     }
 }

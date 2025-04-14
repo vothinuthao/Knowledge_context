@@ -37,29 +37,18 @@ namespace Troops.Base
             
             if (troop.CurrentHealthPercentage < 0.3f && Random.value < 0.1f)
             {
-                // Small chance to flee when health is low
                 troop.ChangeState(new FleeingState());
                 return;
             }
-            
-            // Update attack cooldown
             _attackCooldown -= Time.deltaTime;
-            
-            // Attack if cooldown expired and in range
             if (_attackCooldown <= 0f && troop.IsInAttackRange)
             {
-                // Perform attack
                 troop.Attack();
-                
-                // Reset cooldown
                 _attackCooldown = 1f / _attackRate;
-                
-                // Play attack animation
                 troop.PlayAnimation("Attack");
             }
             else
             {
-                // Move closer to target if needed
                 troop.MoveToAttackTarget();
             }
         }

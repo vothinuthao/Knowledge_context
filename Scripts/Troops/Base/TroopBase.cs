@@ -178,8 +178,7 @@ namespace Troops.Base
         {
             currentHealth -= Mathf.RoundToInt(damage);
 
-            EventManager.Instance.TriggerEvent(EventType.TroopDamaged,
-                new TroopDamagedEventArgs(this, damage));
+            EventManager.Instance.TriggerEvent(EventTypeInGame.TroopDamaged, damage);
             if (currentHealth <= 0)
             {
                 currentHealth = 0;
@@ -201,18 +200,12 @@ namespace Troops.Base
         public virtual void Attack()
         {
             if (attackTarget == null) return;
-
-            // Get target troop
             TroopBase targetTroop = attackTarget.GetComponent<TroopBase>();
 
             if (targetTroop != null)
             {
-                // Apply damage
                 targetTroop.TakeDamage(config.attackDamage);
-
-                // Trigger event
-                EventManager.Instance.TriggerEvent(EventType.TroopAttack,
-                    new TroopAttackEventArgs(this, targetTroop));
+                EventManager.Instance.TriggerEvent(EventTypeInGame.TroopAttack,targetTroop);
             }
         }
 

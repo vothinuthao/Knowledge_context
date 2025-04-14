@@ -12,11 +12,7 @@
         public override void Enter(TroopBase troop)
         {
             base.Enter(troop);
-
-            // Clear any active behaviors
             troop.SteeringManager.ClearBehaviors();
-
-            // Play idle animation
             troop.PlayAnimation("Idle");
         }
 

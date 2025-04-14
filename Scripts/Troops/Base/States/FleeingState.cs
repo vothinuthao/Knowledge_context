@@ -1,6 +1,5 @@
 ﻿using Core;
 using UnityEngine;
-using EventType = Core.EventType;
 
 namespace Troops.Base
 {
@@ -19,9 +18,7 @@ namespace Troops.Base
             base.Enter(troop);
             _fleeingDuration = 0f;
             troop.PlayAnimation("Flee");
-            
-            // Notify others
-            EventManager.Instance.TriggerEvent(EventType.TroopFleeing, troop);
+            EventManager.Instance.TriggerEvent(EventTypeInGame.TroopFleeing, troop);
         }
         
         public override void Update(TroopBase troop)

@@ -17,7 +17,7 @@ namespace Troops.Base
         public virtual void Enter(TroopBase troop)
         {
             // Trigger state changed event
-            EventManager.Instance.TriggerEvent(EventType.TroopStateChanged, 
+            EventManager.Instance.TriggerEvent(EventTypeInGame.TroopStateChanged, 
                 new TroopStateChangedEventArgs(troop, stateType));
         }
         

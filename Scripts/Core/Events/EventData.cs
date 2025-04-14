@@ -5,12 +5,12 @@
     /// </summary>
     public class EventData
     {
-        public EventType Type { get; private set; }
+        public EventTypeInGame TypeInGame { get; private set; }
         public System.EventArgs Args { get; private set; }
         
-        public EventData(EventType type, System.EventArgs args)
+        public EventData(EventTypeInGame typeInGame, System.EventArgs args)
         {
-            Type = type;
+            TypeInGame = typeInGame;
             Args = args;
         }
     }
