@@ -19,7 +19,7 @@ namespace Troops.Base
         public override void Execute(TroopBase troop)
         {
             troop.SteeringManager.ClearBehaviors();
-            var flee = new FleeBehavior();
+            var flee = new ContextFleeBehavior();
             troop.SteeringManager.AddBehavior(flee);
             troop.SteeringManager.SetTarget(troop.NearestEnemyTransform);
             EventManager.Instance.TriggerEvent(EventTypeInGame.TroopFleeing, troop);

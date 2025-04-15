@@ -54,7 +54,7 @@ namespace Core.Behaviors
                     return vectorProb.direction;
                 }
             }
-            return steeringVectors[steeringVectors.Count - 1].direction;
+            return steeringVectors[^1].direction;
         }
 
         /// <summary>
@@ -76,23 +76,6 @@ namespace Core.Behaviors
                 vp.probability /= sum;
                 steeringVectors[i] = vp;
             }
-        }
-
-        /// <summary>
-        /// Add a new steering vector with a given probability
-        /// </summary>
-        public void AddSteeringVector(Vector3 direction, float probability)
-        {
-            steeringVectors.Add(new VectorProbability(direction.normalized, probability));
-            NormalizeProbabilities();
-        }
-
-        /// <summary>
-        /// Clear all steering vectors
-        /// </summary>
-        public void ClearSteeringVectors()
-        {
-            steeringVectors.Clear();
         }
     }
 

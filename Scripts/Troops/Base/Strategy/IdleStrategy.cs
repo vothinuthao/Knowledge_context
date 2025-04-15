@@ -17,7 +17,7 @@ namespace Troops.Base
         public override void Execute(TroopBase troop)
         {
             troop.SteeringManager.ClearBehaviors();
-            var arrival = new ArrivalBehavior();
+            var arrival = new ContextArrivalBehavior();
             troop.SteeringManager.AddBehavior(arrival);
             troop.SteeringManager.SetTarget(troop.FormationPositionTarget);
         }

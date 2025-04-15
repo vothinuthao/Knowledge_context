@@ -18,17 +18,24 @@ namespace Troops.Config
         public float weight = 1.0f;
         public float probability = 1.0f;
         public BehaviorType behaviorType;
-        
-        [Header("Behavior Vectors")]
-        public List<SerializableVectorProbability> steeringVectors = new List<SerializableVectorProbability>();
-        
         [Header("Specific Parameters")]
         public float slowingRadius = 3.0f;
         public float arrivalRadius = 0.5f;
         public float separationRadius = 2.0f;
         public float neighborRadius = 5.0f;
         public float fleeRadius = 5.0f;
-        public float lookAheadDistance = 2.0f;
+        
+        [Header("Context Steering Settings")]
+        public float interestStrength = 1.0f;
+        public float dangerStrength = 1.0f;
+        public float directionalBias = 0.5f;
+        public AnimationCurve directionFalloff = AnimationCurve.EaseInOut(0, 1, 1, 0);
+        
+        [Header("Dynamic Weight Adjustments")]
+        public bool useDynamicWeight = true;
+        public float minWeight = 0.5f;
+        public float maxWeight = 2.0f;
+        public AnimationCurve weightByDistance = AnimationCurve.Linear(0, 2, 1, 0.5f);
         
         /// <summary>
         /// Create an instance of the appropriate steering behavior
@@ -36,43 +43,58 @@ namespace Troops.Config
         public ISteeringComponent CreateBehavior()
         {
             ISteeringComponent behavior = null;
-            
             switch (behaviorType)
             {
                 case BehaviorType.Seek:
-                    behavior = new SeekBehavior();
+                    behavior = new ContextSeekBehavior();
                     break;
                 case BehaviorType.Flee:
-                    behavior = new FleeBehavior();
+                    behavior = new ContextFleeBehavior();
                     break;
                 case BehaviorType.Arrival:
-                    behavior = new ArrivalBehavior();
+                    behavior = new ContextArrivalBehavior();
                     break;
                 case BehaviorType.Separation:
-                    behavior = new SeparationBehavior();
+                    behavior = new ContextSeparationBehavior();
                     break;
                 case BehaviorType.Cohesion:
-                    behavior = new CohesionBehavior();
+                    behavior = new ContextCohesionBehavior();
                     break;
                 case BehaviorType.Alignment:
-                    behavior = new AlignmentBehavior();
+                    behavior = new ContextAlignmentBehavior();
                     break;
                 case BehaviorType.ObstacleAvoidance:
-                    behavior = new ObstacleAvoidanceBehavior();
+                    behavior = new ContextObstacleAvoidanceBehavior();
                     break;
                 case BehaviorType.PathFollowing:
-                    behavior = new PathFollowingBehavior();
-                    break;
+                    // PathFollowing có thể thêm sau
+                    return CreateBehavior();
                 default:
-                    Debug.LogError($"Unknown behavior type: {behaviorType}");
-                    return null;
+                    // Fall back to standard behavior
+                    return CreateBehavior();
             }
-            var behaviorBase = behavior as SteeringBehaviorBase;
-            behaviorBase.ClearSteeringVectors();
-            foreach (var vectorProb in steeringVectors)
+            if (behavior is IContextConfigurable contextBehavior)
             {
-                behaviorBase.AddSteeringVector(vectorProb.direction, vectorProb.probability);
+                contextBehavior.ConfigureContextSettings(
+                    interestStrength, 
+                    dangerStrength, 
+                    directionalBias,
+                    directionFalloff,
+                    useDynamicWeight,
+                    minWeight,
+                    maxWeight,
+                    weightByDistance
+                );
             }
+            
+            var behaviorBase = behavior as SteeringBehaviorBase;
+            typeof(SteeringBehaviorBase)
+                .GetField("weight", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(behaviorBase, weight);
+                
+            typeof(SteeringBehaviorBase)
+                .GetField("probability", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                ?.SetValue(behaviorBase, probability);
 
             return behavior;
         }
@@ -87,6 +109,11 @@ namespace Troops.Config
             context.SeparationRadius = separationRadius;
             context.NeighborRadius = neighborRadius;
             context.FleeRadius = fleeRadius;
+            
+            if (context.InterestMap == null || context.DangerMap == null)
+            {
+                context.InitializeMaps();
+            }
         }
     }
 }

@@ -8,10 +8,10 @@ namespace Core.Behaviors
     /// </summary>
     public class SteeringManager : MonoBehaviour
     {
-        [SerializeField] private float maxSpeed = 5.0f;
-        [SerializeField] private float maxForce = 10.0f;
-        [SerializeField] private Transform target;
-        [SerializeField] private LayerMask obstacleLayer;
+        [SerializeField] protected float maxSpeed = 5.0f;
+        [SerializeField] protected float maxForce = 10.0f;
+        [SerializeField] protected Transform target;
+        [SerializeField] protected LayerMask obstacleLayer;
         
         [Header("Radius Settings")]
         [SerializeField] private float slowingRadius = 3.0f;
@@ -27,12 +27,12 @@ namespace Core.Behaviors
         private SteeringContext _context = new SteeringContext();
         private Vector3 _velocity = Vector3.zero;
         
-        void Start()
+        protected virtual void Start()
         {
             InitializeContext();
         }
-        
-        void Update()
+
+        protected virtual void Update()
         {
             UpdateContext();
             Vector3 steeringForce = CalculateTotalSteering();
@@ -107,7 +107,7 @@ namespace Core.Behaviors
         /// <summary>
         /// Add a steering behavior to the manager
         /// </summary>
-        public void AddBehavior(ISteeringComponent behavior)
+        public virtual void AddBehavior(ISteeringComponent behavior)
         {
             if (!_steeringBehaviors.Contains(behavior))
             {
@@ -118,7 +118,7 @@ namespace Core.Behaviors
         /// <summary>
         /// Remove a steering behavior from the manager
         /// </summary>
-        public void RemoveBehavior(ISteeringComponent behavior)
+        public virtual void RemoveBehavior(ISteeringComponent behavior)
         {
             if (_steeringBehaviors.Contains(behavior))
             {
@@ -129,7 +129,7 @@ namespace Core.Behaviors
         /// <summary>
         /// Remove all steering behaviors
         /// </summary>
-        public void ClearBehaviors()
+        public virtual void ClearBehaviors()
         {
             _steeringBehaviors.Clear();
         }
@@ -137,7 +137,7 @@ namespace Core.Behaviors
         /// <summary>
         /// Set the target for steering behaviors
         /// </summary>
-        public void SetTarget(Transform newTarget)
+        public virtual void SetTarget(Transform newTarget)
         {
             target = newTarget;
             _context.Target = newTarget;

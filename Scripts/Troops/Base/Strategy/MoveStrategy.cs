@@ -18,13 +18,13 @@ namespace Troops.Base
         public override void Execute(TroopBase troop)
         {
             troop.SteeringManager.ClearBehaviors();
-            var cohesion = new CohesionBehavior();
+            var cohesion = new ContextCohesionBehavior();
             troop.SteeringManager.AddBehavior(cohesion);
-            var separation = new SeparationBehavior();
+            var separation = new ContextSeparationBehavior();
             troop.SteeringManager.AddBehavior(separation);
-            var arrival = new ArrivalBehavior();
+            var arrival = new ContextArrivalBehavior();
             troop.SteeringManager.AddBehavior(arrival);
-            var obstacleAvoidance = new ObstacleAvoidanceBehavior();
+            var obstacleAvoidance = new ContextObstacleAvoidanceBehavior();
             troop.SteeringManager.AddBehavior(obstacleAvoidance);
             troop.SteeringManager.SetTarget(troop.FormationPositionTarget);
         }

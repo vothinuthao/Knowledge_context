@@ -18,9 +18,9 @@ namespace Troops.Base
         public override void Execute(TroopBase troop)
         {
             troop.SteeringManager.ClearBehaviors();
-            var seek = new SeekBehavior();
+            var seek = new ContextSeekBehavior();
             troop.SteeringManager.AddBehavior(seek);
-            var separation = new SeparationBehavior();
+            var separation = new ContextSeparationBehavior();
             troop.SteeringManager.AddBehavior(separation);
             troop.SteeringManager.SetTarget(troop.NearestEnemyTransform);
             if (troop.IsInAttackRange)

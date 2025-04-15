@@ -56,7 +56,7 @@ namespace Core.Behaviors
             GameObject tempTarget = new GameObject("TempTarget");
             tempTarget.transform.position = targetPoint;
             seekContext.Target = tempTarget.transform;
-            var seekBehavior = new SeekBehavior();
+            var seekBehavior = new ContextSeekBehavior();
             Vector3 steeringForce = seekBehavior.CalculateForce(seekContext);
             Object.Destroy(tempTarget);
             

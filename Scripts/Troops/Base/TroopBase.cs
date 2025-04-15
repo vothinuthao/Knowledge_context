@@ -177,7 +177,7 @@ namespace Troops.Base
         public virtual void TakeDamage(float damage)
         {
             currentHealth -= Mathf.RoundToInt(damage);
-
+            // 
             EventManager.Instance.TriggerEvent(EventTypeInGame.TroopDamaged, damage);
             if (currentHealth <= 0)
             {
@@ -256,7 +256,7 @@ namespace Troops.Base
             steeringManager.ClearBehaviors();
 
             // Add arrival behavior
-            var arrival = new ArrivalBehavior();
+            var arrival = new ContextArrivalBehavior();
             steeringManager.AddBehavior(arrival);
 
             // Set target to formation position
@@ -271,19 +271,19 @@ namespace Troops.Base
             steeringManager.ClearBehaviors();
 
             // Add cohesion behavior
-            var cohesion = new CohesionBehavior();
+            var cohesion = new ContextCohesionBehavior();
             steeringManager.AddBehavior(cohesion);
 
             // Add separation behavior
-            var separation = new SeparationBehavior();
+            var separation = new ContextSeparationBehavior();
             steeringManager.AddBehavior(separation);
 
             // Add arrival behavior
-            var arrival = new ArrivalBehavior();
+            var arrival = new ContextArrivalBehavior();
             steeringManager.AddBehavior(arrival);
 
             // Add obstacle avoidance
-            var obstacleAvoidance = new ObstacleAvoidanceBehavior();
+            var obstacleAvoidance = new ContextObstacleAvoidanceBehavior();
             steeringManager.AddBehavior(obstacleAvoidance);
 
             // Set target to formation position
@@ -298,11 +298,11 @@ namespace Troops.Base
             steeringManager.ClearBehaviors();
 
             // Add seek behavior
-            var seek = new SeekBehavior();
+            var seek = new ContextSeekBehavior();
             steeringManager.AddBehavior(seek);
 
             // Add separation behavior
-            var separation = new SeparationBehavior();
+            var separation = new ContextSeparationBehavior();
             steeringManager.AddBehavior(separation);
 
             // Set target to attack target
@@ -317,7 +317,7 @@ namespace Troops.Base
             steeringManager.ClearBehaviors();
 
             // Add flee behavior
-            var flee = new FleeBehavior();
+            var flee = new ContextFleeBehavior();
             steeringManager.AddBehavior(flee);
 
             // Set target to nearest enemy
