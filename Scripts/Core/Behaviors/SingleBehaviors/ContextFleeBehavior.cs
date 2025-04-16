@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using static Core.GameDefineData.Tags;
 
 namespace Core.Behaviors
 {
@@ -69,7 +70,7 @@ namespace Core.Behaviors
             foreach (var memoryEntity in context.MemoryEntities)
             {
                 Transform entity = memoryEntity.Key;
-                if (!entity.CompareTag("Enemy"))
+                if (!entity.CompareTag(Enemy))
                     continue;
                     
                 float memoryFactor = memoryEntity.Value / 3.0f;

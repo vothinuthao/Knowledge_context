@@ -67,10 +67,8 @@ namespace Troops.Config
                     behavior = new ContextObstacleAvoidanceBehavior();
                     break;
                 case BehaviorType.PathFollowing:
-                    // PathFollowing có thể thêm sau
                     return CreateBehavior();
                 default:
-                    // Fall back to standard behavior
                     return CreateBehavior();
             }
             if (behavior is IContextConfigurable contextBehavior)
