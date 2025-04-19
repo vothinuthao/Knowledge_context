@@ -4,8 +4,8 @@ namespace Troop
 {
     public class TroopView : MonoBehaviour
     {
-        [SerializeField]
-        private Animator _animator;
+        // [SerializeField]
+        // private Animator _animator;
         [SerializeField]
         private SpriteRenderer _spriteRenderer;
         [SerializeField]
@@ -15,8 +15,8 @@ namespace Troop
     
         private void Awake()
         {
-            if(!_animator)
-                _animator = GetComponent<Animator>();
+            // if(!_animator)
+            //     _animator = GetComponent<Animator>();
             if(!_spriteRenderer)
                 _spriteRenderer = GetComponent<SpriteRenderer>();
             isMovingHash = Animator.StringToHash("IsMoving");
@@ -32,42 +32,42 @@ namespace Troop
     
         public void UpdateAnimation(TroopState state, float speedMultiplier = 1f)
         {
-            switch (state)
-            {
-                case TroopState.Moving:
-                    _animator.SetBool(isMovingHash, true);
-                    _animator.SetBool(isAttackingHash, false);
-                    break;
-                case TroopState.Attacking:
-                    _animator.SetBool(isAttackingHash, true);
-                    break;
-                case TroopState.Idle:
-                case TroopState.Defending:
-                    _animator.SetBool(isMovingHash, false);
-                    _animator.SetBool(isAttackingHash, false);
-                    break;
-                case TroopState.Fleeing:
-                    _animator.SetBool(isMovingHash, true);
-                    _animator.SetBool(isAttackingHash, false);
-                    break;
-                case TroopState.Dead:
-                    _animator.SetTrigger("Die");
-                    break;
-            }
-        
-            _animator.SetFloat(speedMultiplierHash, speedMultiplier);
+            // switch (state)
+            // {
+            //     case TroopState.Moving:
+            //         _animator.SetBool(isMovingHash, true);
+            //         _animator.SetBool(isAttackingHash, false);
+            //         break;
+            //     case TroopState.Attacking:
+            //         _animator.SetBool(isAttackingHash, true);
+            //         break;
+            //     case TroopState.Idle:
+            //     case TroopState.Defending:
+            //         _animator.SetBool(isMovingHash, false);
+            //         _animator.SetBool(isAttackingHash, false);
+            //         break;
+            //     case TroopState.Fleeing:
+            //         _animator.SetBool(isMovingHash, true);
+            //         _animator.SetBool(isAttackingHash, false);
+            //         break;
+            //     case TroopState.Dead:
+            //         _animator.SetTrigger("Die");
+            //         break;
+            // }
+            //
+            // _animator.SetFloat(speedMultiplierHash, speedMultiplier);
         }
     
         public void TriggerAnimation(string triggerName)
         {
-            _animator.SetTrigger(triggerName);
+            // _animator.SetTrigger(triggerName);
         }
     
         public void SetAnimatorController(RuntimeAnimatorController controller)
         {
             if (controller != null)
             {
-                _animator.runtimeAnimatorController = controller;
+                // _animator.runtimeAnimatorController = controller;
             }
         }
     

@@ -30,6 +30,7 @@ public class IslandGenerator : MonoBehaviour
     
     // Data lưu trữ vị trí trên đảo
     private bool[,] _validPositions;
+    [SerializeField]
     private List<Vector3> _validWorldPositions = new List<Vector3>();
     private List<GameObject> _positionMarkers = new List<GameObject>();
     private List<Transform> _squadSpawnPoints = new List<Transform>();
