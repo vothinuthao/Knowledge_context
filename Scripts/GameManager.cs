@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections.Generic;
 using Core.Patterns.Singleton;
+using Generate;
 using Troop;
 
 public class GameManager : ManualSingletonMono<GameManager>

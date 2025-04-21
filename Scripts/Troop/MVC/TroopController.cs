@@ -6,6 +6,7 @@ namespace Troop
 {
     public class TroopController : MonoBehaviour
     {
+        [SerializeField]
         private TroopModel _model;
         private TroopView _view;
         private Transform _cachedTransform;
@@ -19,6 +20,8 @@ namespace Troop
             _view = GetComponent<TroopView>();
             _pathComponent = GetComponent<PathComponent>();
             _steeringContext = new SteeringContext();
+            if (groundLayer == 0)
+                groundLayer = LayerMask.GetMask("Ground");
         }
     
         public void Initialize(TroopConfigSO config)
@@ -50,12 +53,25 @@ namespace Troop
         }
         private void UpdateSteeringContext()
         {
+            if (_model == null) return;
+    
             _steeringContext.TroopModel = _model;
+            _steeringContext.TargetPosition = _targetPosition; // Thêm dòng này để lưu target position
+    
             if (_pathComponent)
                 _steeringContext.CurrentPath = _pathComponent.CurrentBehaviorPath;
-            
+        
+            // Thêm các dòng này
             _steeringContext.DeltaTime = Time.deltaTime;
+    
+            // Nếu troop đang di chuyển, cập nhật currentState
+            if ((_targetPosition - _model.Position).magnitude > 0.1f) 
+            {
+                _model.CurrentState = TroopState.Moving;
+            }
         }
+        private Vector3 _targetPosition = Vector3.zero;
+        
     
         // Tính toán lực steering từ tất cả behaviors
         private Vector3 CalculateSteeringForces()
@@ -163,6 +179,7 @@ namespace Troop
         // Phương thức public để thiết lập target position
         public void SetTargetPosition(Vector3 position)
         {
+            _targetPosition = position;
             _steeringContext.TargetPosition = position;
         }
     

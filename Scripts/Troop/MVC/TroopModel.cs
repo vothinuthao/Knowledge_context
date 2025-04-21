@@ -1,9 +1,12 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using SteeringBehavior;
+using Unity.VisualScripting;
 using UnityEngine;
 
 namespace Troop
 {
+    [Serializable]
     public class TroopModel
     {
         public string TroopName { get; private set; }
