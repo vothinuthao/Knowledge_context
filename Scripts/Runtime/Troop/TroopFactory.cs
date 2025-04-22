@@ -141,13 +141,7 @@ namespace Troop
     
             GameObject troopObject;
             if (config.troopPrefab)
-            {
                 troopObject = Instantiate(config.troopPrefab, position, rotation, parent);
-            }
-            // else if (troopPrefab)
-            // {
-            //     troopObject = Instantiate(troopPrefab, position, rotation, parent);
-            // }
             else
                 return null;
             troopObject.name = config.troopName;

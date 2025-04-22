@@ -103,7 +103,7 @@ public class KnockbackState : TroopStateBase
         
         private void DisableAllBehaviors(TroopController troop)
         {
-            foreach (var behavior in troop.GetModel().SteeringBehavior.GetStrategies())
+            foreach (var behavior in troop.GetModel().SteeringBehavior.GetSteeringBehaviors())
             {
                 troop.EnableBehavior(behavior.GetName(), false);
             }

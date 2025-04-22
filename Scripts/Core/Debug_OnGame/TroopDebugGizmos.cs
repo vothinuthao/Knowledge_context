@@ -112,7 +112,7 @@ namespace Core.Debug_OnGame
                 if (model.SteeringBehavior != null)
                 {
                     // Lấy từng behavior và force tương ứng
-                    foreach (ISteeringBehavior behavior in model.SteeringBehavior.GetStrategies())
+                    foreach (ISteeringBehavior behavior in model.SteeringBehavior.GetSteeringBehaviors())
                     {
                         if (behavior.IsEnabled())
                         {

@@ -39,7 +39,7 @@ namespace Core.Debug_OnGame
             // Hiển thị behaviors
             GUILayout.Label("Behaviors:", EditorStyles.boldLabel);
             
-            foreach (var behavior in _troopController.GetModel().SteeringBehavior.GetStrategies())
+            foreach (var behavior in _troopController.GetModel().SteeringBehavior.GetSteeringBehaviors())
             {
                 string status = behavior.IsEnabled() ? "Enabled" : "Disabled";
                 GUILayout.Label($"- {behavior.GetName()}: {status} (Weight: {behavior.GetWeight()})");

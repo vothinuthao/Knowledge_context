@@ -97,7 +97,7 @@ namespace Troop
         
         public void RemoveBehavior(string behaviorName)
         {
-            List<ISteeringBehavior> behaviors = SteeringBehavior.GetStrategies();
+            List<ISteeringBehavior> behaviors = SteeringBehavior.GetSteeringBehaviors();
             
             foreach (var behavior in behaviors)
             {
