@@ -67,9 +67,9 @@ namespace Troop
             if (troop == null) return;
         
             // Add debug component if needed
-            if (addDebugComponentToTroops && !troop.GetComponent<TroopDebugComponent>())
+            if (addDebugComponentToTroops && !troop.GetComponent<EnhancedTroopDebugComponent>())
             {
-                troop.gameObject.AddComponent<TroopDebugComponent>();
+                troop.gameObject.AddComponent<EnhancedTroopDebugComponent>();
             }
         
             // Initialize movement tracking
@@ -307,9 +307,9 @@ namespace Troop
         
             foreach (var troop in troops)
             {
-                if (!troop.GetComponent<TroopDebugComponent>())
+                if (!troop.GetComponent<EnhancedTroopDebugComponent>())
                 {
-                    troop.gameObject.AddComponent<TroopDebugComponent>();
+                    troop.gameObject.AddComponent<EnhancedTroopDebugComponent>();
                     added++;
                 }
             }
