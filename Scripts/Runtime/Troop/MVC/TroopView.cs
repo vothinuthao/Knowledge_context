@@ -17,17 +17,31 @@ namespace Troop
         {
             // if(!_animator)
             //     _animator = GetComponent<Animator>();
-            if(!_spriteRenderer)
-                _spriteRenderer = GetComponent<SpriteRenderer>();
-            isMovingHash = Animator.StringToHash("IsMoving");
-            isAttackingHash = Animator.StringToHash("IsAttacking");
-            speedMultiplierHash = Animator.StringToHash("SpeedMultiplier");
+            // if(!_spriteRenderer)
+            //     _spriteRenderer = GetComponent<SpriteRenderer>();
+            // isMovingHash = Animator.StringToHash("IsMoving");
+            // isAttackingHash = Animator.StringToHash("IsAttacking");
+            // speedMultiplierHash = Animator.StringToHash("SpeedMultiplier");
+            if (transform.localScale.magnitude < 0.1f)
+            {
+                transform.localScale = new Vector3(0.5f, 0.5f, 0.5f);
+            }
         }
     
         public void UpdateTransform(Vector3 position, Quaternion rotation)
         {
-            transform.position = position;
-            transform.rotation = rotation;
+            if (transform.position != position)
+            {
+                transform.position = position;
+            }
+    
+            if (transform.rotation != rotation)
+            {
+                transform.rotation = rotation;
+            }
+    
+            // Debug log
+            Debug.Log($"TroopView {name} updated position: {transform.position}");
         }
     
         public void UpdateAnimation(TroopState state, float speedMultiplier = 1f)

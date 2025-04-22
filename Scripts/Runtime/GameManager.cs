@@ -45,25 +45,25 @@ public class GameManager : ManualSingletonMono<GameManager>
     {
         
         // Khởi tạo singleton managers nếu chưa có
-        if (troopFactory == null)
-        {
-            troopFactory = FindObjectOfType<TroopFactory>();
-            if (troopFactory == null)
-            {
-                GameObject factoryObj = new GameObject("TroopFactory");
-                troopFactory = factoryObj.AddComponent<TroopFactory>();
-            }
-        }
-        
-        if (troopManager == null)
-        {
-            troopManager = FindObjectOfType<TroopManager>();
-            if (troopManager == null)
-            {
-                GameObject managerObj = new GameObject("TroopManager");
-                troopManager = managerObj.AddComponent<TroopManager>();
-            }
-        }
+        // if (troopFactory == null)
+        // {
+        //     troopFactory = FindObjectOfType<TroopFactory>();
+        //     if (troopFactory == null)
+        //     {
+        //         GameObject factoryObj = new GameObject("TroopFactory");
+        //         troopFactory = factoryObj.AddComponent<TroopFactory>();
+        //     }
+        // }
+        //
+        // if (troopManager == null)
+        // {
+        //     troopManager = FindObjectOfType<TroopManager>();
+        //     if (troopManager == null)
+        //     {
+        //         GameObject managerObj = new GameObject("TroopManager");
+        //         troopManager = managerObj.AddComponent<TroopManager>();
+        //     }
+        // }
     }
     
     private void Start()

@@ -71,14 +71,19 @@ public class SquadSystem : MonoBehaviour
     private Vector3 GetPositionOnGround(Vector3 position)
     {
         RaycastHit hit;
+        // Bắt đầu raycast từ cao hơn để đảm bảo hit được ground
         Vector3 start = position + Vector3.up * 10;
+    
+        Debug.DrawRay(start, Vector3.down * 20f, Color.red, 1f); // Visual debug
     
         if (Physics.Raycast(start, Vector3.down, out hit, 20f, groundLayer))
         {
-            return hit.point;
+            // Thêm offset nhỏ để troop không bị chìm
+            return hit.point + Vector3.up * 0.1f;
         }
     
-        return position;
+        // Nếu không hit được, return với y=0
+        return new Vector3(position.x, 0.1f, position.z);
     }
     private Vector3 CalculateLocalPosition(int row, int col)
     {
@@ -116,21 +121,54 @@ public class SquadSystem : MonoBehaviour
         }
     }
     
+    // public bool AddTroop(TroopController troop)
+    // {
+    //     if (troop == null || _troops.Contains(troop))
+    //         return false;
+    //     Vector2Int position = FindEmptyPosition();
+    //     if (position.x == -1 || position.y == -1)
+    //         return false;
+    //     _occupiedPositions[position.x, position.y] = true;
+    //     TroopControllerSquadExtensions.Instance.SetSquadPosition(troop, this, position);
+    //     
+    //     _troops.Add(troop);
+    //     
+    //     Vector3 targetPosition = _worldPositions[position.x, position.y];
+    //     troop.SetTargetPosition(targetPosition);
+    //     
+    //     return true;
+    // }
+    // Trong SquadSystem.cs, cập nhật AddTroop để đặt troop vào đúng vị trí ngay lập tức:
     public bool AddTroop(TroopController troop)
     {
         if (troop == null || _troops.Contains(troop))
             return false;
+    
+        // Tìm vị trí trống
         Vector2Int position = FindEmptyPosition();
         if (position.x == -1 || position.y == -1)
             return false;
+    
+        // Đánh dấu vị trí đã được chiếm
         _occupiedPositions[position.x, position.y] = true;
+    
+        // Lưu thông tin vị trí của troop trong squad
         TroopControllerSquadExtensions.Instance.SetSquadPosition(troop, this, position);
-        
+    
+        // Thêm troop vào danh sách
         _troops.Add(troop);
-        
-        Vector3 targetPosition = _worldPositions[position.x, position.y];
-        troop.SetTargetPosition(targetPosition);
-        
+    
+        // Lấy vị trí world tương ứng
+        Vector3 worldPosition = _worldPositions[position.x, position.y];
+    
+        // Set target position cho troop để nó di chuyển đến đó
+        troop.SetTargetPosition(worldPosition);
+    
+        // *** THÊM DÒNG NÀY: Cập nhật vị trí troop ngay lập tức ***
+        troop.GetModel().Position = worldPosition;
+    
+        Debug.Log($"Đã thêm troop {troop.name} vào squad tại vị trí {position}, world pos: {worldPosition}");
+    
         return true;
     }
     

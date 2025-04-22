@@ -60,30 +60,70 @@ namespace Troop
                 _enemyLayer = LayerMask.GetMask("Enemy");
         }
     
+        // public void Initialize(TroopConfigSO config)
+        // {
+        //     _model = new TroopModel(config, gameObject);
+        //     
+        //     if (config.animatorController)
+        //     {
+        //         _view.SetAnimatorController(config.animatorController);
+        //     }
+        //     
+        //     // Thiết lập transform
+        //     _model.Position = _cachedTransform.position;
+        //     _model.Rotation = _cachedTransform.rotation;
+        //     
+        //     // Khởi tạo behavior enabled status
+        //     foreach (var behavior in _model.SteeringBehavior.GetStrategies())
+        //     {
+        //         _behaviorEnabled[behavior.GetName()] = true;
+        //     }
+        //     
+        //     // Khởi tạo state machine
+        //     StateMachine.ChangeState<IdleState>();
+        //     
+        //     // Cập nhật steering context
+        //     UpdateSteeringContext();
+        // }
         public void Initialize(TroopConfigSO config)
         {
-            _model = new TroopModel(config, gameObject);
-            
-            if (config.animatorController)
+            _model = new TroopModel(config);
+    
+            if (config.animatorController != null)
             {
                 _view.SetAnimatorController(config.animatorController);
             }
-            
-            // Thiết lập transform
+    
+            // Thiết lập renderer màu sắc theo team (thêm vào)
+            SetupVisuals();
+    
             _model.Position = _cachedTransform.position;
             _model.Rotation = _cachedTransform.rotation;
-            
-            // Khởi tạo behavior enabled status
-            foreach (var behavior in _model.SteeringBehavior.GetStrategies())
-            {
-                _behaviorEnabled[behavior.GetName()] = true;
-            }
-            
-            // Khởi tạo state machine
-            StateMachine.ChangeState<IdleState>();
-            
+    
+            // *** THÊM DÒNG NÀY: Cập nhật view ngay lập tức ***
+            UpdateView();
+    
             // Cập nhật steering context
             UpdateSteeringContext();
+        }
+        private void SetupVisuals()
+        {
+            if (_view != null)
+            {
+                Renderer renderer = GetComponentInChildren<Renderer>();
+                if (renderer != null)
+                {
+                    // Màu dựa trên team
+                    if (gameObject.CompareTag("Player"))
+                    {
+                        renderer.material.color = Color.blue;
+                    }
+                    else if (gameObject.CompareTag("Enemy"))
+                    {
+                        renderer.material.color = Color.red;
+                    }
+                }
+            }
         }
     
         private void Update()
