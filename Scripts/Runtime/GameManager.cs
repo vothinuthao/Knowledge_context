@@ -68,8 +68,6 @@ public class GameManager : ManualSingletonMono<GameManager>
     
     private void Start()
     {
-        // Setup game
-        CreateInitialSquads();
     }
     
     private void Update()
@@ -191,7 +189,7 @@ private void CreateInitialSquads()
     // Thêm troops vào squad
     private void PopulateSquad(SquadSystem squad, TroopConfigSO troopConfig, string tag, int count)
     {
-        count = Mathf.Min(count, 9); // Giới hạn 9 troop trong squad
+        count = Mathf.Min(count, 9);
         
         for (int i = 0; i < count; i++)
         {
@@ -200,14 +198,8 @@ private void CreateInitialSquads()
                 squad.transform.position + Random.insideUnitSphere * 2f,
                 Quaternion.identity
             );
-            
-            // Thiết lập tag
             troop.gameObject.tag = tag;
-            
-            // Thêm vào squad
             squad.AddTroop(troop);
-            
-            // Đăng ký với manager
             troopManager.RegisterTroop(troop);
         }
     }

@@ -182,8 +182,7 @@ namespace Generate
                 return;
             }
         
-            // Xác định số lượng troop cần tạo
-            int troopCount = 9; // Mặc định là 5 troop
+            int troopCount = 9;
             if (troopCountDropdown != null)
                 troopCount = troopCountDropdown.value + 1; // +1 vì dropdown bắt đầu từ 0
         

@@ -136,7 +136,7 @@ namespace Troop
         // Trong TroopFactory.cs, thêm debug log để kiểm tra:
         public TroopController CreateTroop(TroopConfigSO config, Vector3 position, Quaternion rotation, Transform parent = null)
         {
-            if (config)
+            if (!config)
                 return null;
     
             GameObject troopObject;
@@ -144,32 +144,14 @@ namespace Troop
             {
                 troopObject = Instantiate(config.troopPrefab, position, rotation, parent);
             }
-            else if (troopPrefab)
-            {
-                troopObject = Instantiate(troopPrefab, position, rotation, parent);
-            }
+            // else if (troopPrefab)
+            // {
+            //     troopObject = Instantiate(troopPrefab, position, rotation, parent);
+            // }
             else
-            {
-                Debug.LogError("TroopFactory: Không thể tạo troop vì không có prefab");
                 return null;
-            }
-    
-            // Thiết lập tên
             troopObject.name = config.troopName;
-            troopObject.layer = LayerMask.NameToLayer("Default");
             TroopController controller = troopObject.GetComponent<TroopController>();
-            if (controller == null)
-            {
-                controller = troopObject.AddComponent<TroopController>();
-            }
-    
-            TroopView view = troopObject.GetComponent<TroopView>();
-            if (view == null)
-            {
-                view = troopObject.AddComponent<TroopView>();
-            }
-    
-            // Khởi tạo controller với config
             controller.Initialize(config);
     
             return controller;

@@ -167,7 +167,6 @@ namespace Troop
         
         private Vector3 CalculateSteeringForces()
         {
-            // Tạo một composite behavior tạm thời chỉ với các behavior đang enabled
             CompositeSteeringBehavior activeBehaviors = new CompositeSteeringBehavior();
             
             foreach (var behavior in _model.SteeringBehavior.GetStrategies())
