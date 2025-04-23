@@ -4,18 +4,33 @@ using SteeringBehavior;
 using Troop;
 using UnityEditor;
 using UnityEngine;
+using System.IO;
 
 public class SteeringBehaviorEditor : EditorWindow
 {
     // References
     private TroopConfigSO selectedConfig;
-    private Vector2 scrollPosition;
-    private List<SteeringBehaviorSO> allBehaviorTypes;
-    private SteeringBehaviorSO behaviorToAdd;
+    private TroopTemplate selectedTemplate;
+    private BehaviorTemplateSet templateSet;
     
-    // Editor các trường của behavior
+    private Vector2 behaviorScrollPosition;
+    private Vector2 templateScrollPosition;
+    
+    // Editor states
     private Dictionary<SteeringBehaviorSO, bool> foldoutStates = new Dictionary<SteeringBehaviorSO, bool>();
     private SerializedObject serializedConfig;
+    private SerializedObject serializedTemplate;
+    
+    // UI tabs
+    private enum EditorTab { Behaviors, Templates, TroopTemplates }
+    private EditorTab currentTab = EditorTab.Behaviors;
+    
+    // Filter settings
+    private bool showMovementBehaviors = true;
+    private bool showFormationBehaviors = true;
+    private bool showCombatBehaviors = true;
+    private bool showSpecialBehaviors = true;
+    private bool showEssentialBehaviors = true;
     
     // Mở cửa sổ editor
     [MenuItem("Wiking Raven/Steering Behavior Editor")]
@@ -26,11 +41,47 @@ public class SteeringBehaviorEditor : EditorWindow
     
     private void OnEnable()
     {
-        // Tìm tất cả các loại behavior trong dự án
-        allBehaviorTypes = FindAllBehaviorTypes();
+        // Find all available template sets
+        string[] templateSetGuids = AssetDatabase.FindAssets("t:BehaviorTemplateSet");
+        if (templateSetGuids.Length > 0)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(templateSetGuids[0]);
+            templateSet = AssetDatabase.LoadAssetAtPath<BehaviorTemplateSet>(path);
+        }
     }
     
     private void OnGUI()
+    {
+        // Tabs
+        EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
+        if (GUILayout.Toggle(currentTab == EditorTab.Behaviors, "Behaviors", EditorStyles.toolbarButton))
+            currentTab = EditorTab.Behaviors;
+        if (GUILayout.Toggle(currentTab == EditorTab.Templates, "Behavior Templates", EditorStyles.toolbarButton))
+            currentTab = EditorTab.Templates;
+        if (GUILayout.Toggle(currentTab == EditorTab.TroopTemplates, "Troop Templates", EditorStyles.toolbarButton))
+            currentTab = EditorTab.TroopTemplates;
+        EditorGUILayout.EndHorizontal();
+        
+        EditorGUILayout.Space(10);
+        
+        // Draw the appropriate tab
+        switch (currentTab)
+        {
+            case EditorTab.Behaviors:
+                DrawBehaviorsTab();
+                break;
+            case EditorTab.Templates:
+                DrawTemplatesTab();
+                break;
+            case EditorTab.TroopTemplates:
+                DrawTroopTemplatesTab();
+                break;
+        }
+    }
+    
+    #region Behaviors Tab
+    
+    private void DrawBehaviorsTab()
     {
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
         EditorGUILayout.LabelField("Troop Config", EditorStyles.boldLabel);
@@ -51,6 +102,37 @@ public class SteeringBehaviorEditor : EditorWindow
         if (selectedConfig == null)
         {
             EditorGUILayout.HelpBox("Hãy chọn một Troop Config để chỉnh sửa behaviors.", MessageType.Info);
+            
+            // Thêm nút tạo config mới
+            if (GUILayout.Button("Create New Troop Config"))
+            {
+                string path = EditorUtility.SaveFilePanelInProject(
+                    "Create Troop Config",
+                    "New Troop Config",
+                    "asset",
+                    "Save new troop config to"
+                );
+                
+                if (!string.IsNullOrEmpty(path))
+                {
+                    TroopConfigSO newConfig = ScriptableObject.CreateInstance<TroopConfigSO>();
+                    newConfig.troopName = "New Troop";
+                    newConfig.health = 100f;
+                    newConfig.attackPower = 10f;
+                    newConfig.moveSpeed = 3f;
+                    newConfig.attackRange = 1.5f;
+                    newConfig.attackSpeed = 1f;
+                    newConfig.behaviors = new List<SteeringBehaviorSO>();
+                    
+                    AssetDatabase.CreateAsset(newConfig, path);
+                    AssetDatabase.SaveAssets();
+                    AssetDatabase.Refresh();
+                    
+                    selectedConfig = newConfig;
+                    serializedConfig = new SerializedObject(selectedConfig);
+                }
+            }
+            
             return;
         }
         
@@ -61,6 +143,20 @@ public class SteeringBehaviorEditor : EditorWindow
         
         EditorGUILayout.Space(10);
         
+        // Filters
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        EditorGUILayout.LabelField("Filter Behaviors", EditorStyles.boldLabel);
+        
+        EditorGUILayout.BeginHorizontal();
+        showMovementBehaviors = EditorGUILayout.ToggleLeft("Movement", showMovementBehaviors, GUILayout.Width(100));
+        showFormationBehaviors = EditorGUILayout.ToggleLeft("Formation", showFormationBehaviors, GUILayout.Width(100));
+        showCombatBehaviors = EditorGUILayout.ToggleLeft("Combat", showCombatBehaviors, GUILayout.Width(100));
+        showSpecialBehaviors = EditorGUILayout.ToggleLeft("Special", showSpecialBehaviors, GUILayout.Width(100));
+        showEssentialBehaviors = EditorGUILayout.ToggleLeft("Essential", showEssentialBehaviors, GUILayout.Width(100));
+        EditorGUILayout.EndHorizontal();
+        
+        EditorGUILayout.EndVertical();
+        
         // Editor cho behavior list
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
         EditorGUILayout.LabelField("Behaviors", EditorStyles.boldLabel);
@@ -68,25 +164,62 @@ public class SteeringBehaviorEditor : EditorWindow
         // Tìm danh sách behaviors
         SerializedProperty behaviorListProperty = serializedConfig.FindProperty("behaviors");
         
-        // Phần thêm behavior mới
-        EditorGUILayout.BeginHorizontal();
-        behaviorToAdd = EditorGUILayout.ObjectField("Add Behavior", behaviorToAdd, typeof(SteeringBehaviorSO), false) as SteeringBehaviorSO;
-        GUI.enabled = behaviorToAdd != null && !selectedConfig.behaviors.Contains(behaviorToAdd);
-        if (GUILayout.Button("Add", GUILayout.Width(60)))
+        // Phần thêm behavior từ template
+        if (templateSet != null)
         {
-            // Thêm behavior mới
-            Undo.RecordObject(selectedConfig, "Add Behavior");
-            selectedConfig.behaviors.Add(behaviorToAdd);
-            behaviorToAdd = null;
-            serializedConfig.Update();
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Add From Template:", GUILayout.Width(120));
+            
+            if (GUILayout.Button("Movement", GUILayout.Width(80)))
+            {
+                AddBehaviorsByCategory(BehaviorCategory.Movement);
+            }
+            
+            if (GUILayout.Button("Formation", GUILayout.Width(80)))
+            {
+                AddBehaviorsByCategory(BehaviorCategory.Formation);
+            }
+            
+            if (GUILayout.Button("Combat", GUILayout.Width(80)))
+            {
+                AddBehaviorsByCategory(BehaviorCategory.Combat);
+            }
+            
+            if (GUILayout.Button("Special", GUILayout.Width(80)))
+            {
+                AddBehaviorsByCategory(BehaviorCategory.Special);
+            }
+            
+            if (GUILayout.Button("Essential", GUILayout.Width(80)))
+            {
+                AddBehaviorsByCategory(BehaviorCategory.Essential);
+            }
+            
+            EditorGUILayout.EndHorizontal();
         }
-        GUI.enabled = true;
-        EditorGUILayout.EndHorizontal();
         
         EditorGUILayout.Space(5);
         
+        // Manual behavior add
+        EditorGUILayout.BeginHorizontal();
+        EditorGUILayout.LabelField("Add Individual Behavior:", GUILayout.Width(150));
+        
+        if (GUILayout.Button("Create New Behavior", GUILayout.Width(150)))
+        {
+            ShowCreateBehaviorMenu();
+        }
+        
+        if (GUILayout.Button("Find Existing", GUILayout.Width(150)))
+        {
+            OpenAddBehaviorWindow();
+        }
+        
+        EditorGUILayout.EndHorizontal();
+        
+        EditorGUILayout.Space(10);
+        
         // Hiển thị danh sách các behavior
-        scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+        behaviorScrollPosition = EditorGUILayout.BeginScrollView(behaviorScrollPosition);
         
         for (int i = 0; i < behaviorListProperty.arraySize; i++)
         {
@@ -94,6 +227,11 @@ public class SteeringBehaviorEditor : EditorWindow
             SteeringBehaviorSO behavior = behaviorProperty.objectReferenceValue as SteeringBehaviorSO;
             
             if (behavior == null) continue;
+            
+            // Filtering
+            BehaviorCategory category = GetBehaviorCategory(behavior);
+            if (!ShouldShowBehavior(category))
+                continue;
             
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             
@@ -106,8 +244,18 @@ public class SteeringBehaviorEditor : EditorWindow
                 foldoutStates[behavior] = false;
             }
             
+            // Show behavior category as an icon/color
+            GUI.color = GetCategoryColor(category);
+            EditorGUILayout.LabelField(GetCategoryIcon(category), GUILayout.Width(20));
+            GUI.color = Color.white;
+            
             // Foldout with behavior name
             foldoutStates[behavior] = EditorGUILayout.Foldout(foldoutStates[behavior], behavior.name, true);
+            
+            // Priority field
+            EditorGUILayout.LabelField("Priority:", GUILayout.Width(50));
+            int priority = EditorGUILayout.IntField(GetBehaviorPriority(behavior), GUILayout.Width(40));
+            SetBehaviorPriority(behavior, priority);
             
             // Move up button
             GUI.enabled = i > 0;
@@ -174,26 +322,20 @@ public class SteeringBehaviorEditor : EditorWindow
         
         EditorGUILayout.Space(10);
         
-        // Buttons to save, load or create behaviors
+        // Buttons for template operations
         EditorGUILayout.BeginHorizontal();
         
-        if (GUILayout.Button("Find All Behavior Types"))
+        if (GUILayout.Button("Save As Template"))
         {
-            allBehaviorTypes = FindAllBehaviorTypes();
+            SaveBehaviorsAsTemplate();
         }
         
-        if (GUILayout.Button("Create New Behavior"))
+        if (GUILayout.Button("Apply Default Template"))
         {
-            ShowCreateBehaviorMenu();
+            ApplyDefaultTemplate();
         }
         
         EditorGUILayout.EndHorizontal();
-        
-        // Button to create a template behavior set
-        if (GUILayout.Button("Create Template Behavior Set"))
-        {
-            CreateTemplateBehaviorSet();
-        }
         
         EditorGUILayout.EndVertical();
         
@@ -201,27 +343,62 @@ public class SteeringBehaviorEditor : EditorWindow
         serializedConfig.ApplyModifiedProperties();
     }
     
-    // Tìm tất cả các loại behavior trong dự án
-    private List<SteeringBehaviorSO> FindAllBehaviorTypes()
+    private void AddBehaviorsByCategory(BehaviorCategory category)
     {
-        List<SteeringBehaviorSO> results = new List<SteeringBehaviorSO>();
+        if (templateSet == null || selectedConfig == null) return;
         
-        // Tìm tất cả các asset kiểu SteeringBehaviorSO
+        Undo.RecordObject(selectedConfig, "Add Behaviors By Category");
+        
+        List<SteeringBehaviorSO> behaviorsToAdd = templateSet.GetBehaviorsByCategory(category);
+        
+        foreach (var behavior in behaviorsToAdd)
+        {
+            if (!selectedConfig.behaviors.Contains(behavior))
+            {
+                selectedConfig.behaviors.Add(behavior);
+            }
+        }
+        
+        serializedConfig.Update();
+    }
+    
+    private void OpenAddBehaviorWindow()
+    {
+        // Find all behavior SOs
         string[] guids = AssetDatabase.FindAssets("t:SteeringBehaviorSO");
+        List<SteeringBehaviorSO> availableBehaviors = new List<SteeringBehaviorSO>();
+        
         foreach (string guid in guids)
         {
             string path = AssetDatabase.GUIDToAssetPath(guid);
             SteeringBehaviorSO behavior = AssetDatabase.LoadAssetAtPath<SteeringBehaviorSO>(path);
-            if (behavior != null)
+            if (behavior != null && !selectedConfig.behaviors.Contains(behavior))
             {
-                results.Add(behavior);
+                availableBehaviors.Add(behavior);
             }
         }
         
-        return results;
+        if (availableBehaviors.Count == 0)
+        {
+            EditorUtility.DisplayDialog("No Behaviors Found", "No additional behaviors found. You can create new ones using the 'Create New Behavior' button.", "OK");
+            return;
+        }
+        
+        // Create popup window
+        GenericMenu menu = new GenericMenu();
+        
+        foreach (var behavior in availableBehaviors)
+        {
+            menu.AddItem(new GUIContent(behavior.name), false, () => {
+                Undo.RecordObject(selectedConfig, "Add Behavior");
+                selectedConfig.behaviors.Add(behavior);
+                serializedConfig.Update();
+            });
+        }
+        
+        menu.ShowAsContext();
     }
     
-    // Hiển thị menu để tạo behavior mới
     private void ShowCreateBehaviorMenu()
     {
         GenericMenu menu = new GenericMenu();
@@ -236,10 +413,12 @@ public class SteeringBehaviorEditor : EditorWindow
         menu.AddItem(new GUIContent("Obstacle Avoidance"), false, CreateBehavior<ObstacleAvoidanceBehaviorSO>);
         menu.AddItem(new GUIContent("Path Following"), false, CreateBehavior<PathFollowingBehaviorSO>);
         
+        // Add more behaviors based on the Troop Behavior document
+        // Example: menu.AddItem(new GUIContent("Jump Attack"), false, CreateCustomBehavior<JumpAttackBehaviorSO>);
+        
         menu.ShowAsContext();
     }
     
-    // Tạo behavior từng loại cụ thể
     private void CreateBehavior<T>() where T : SteeringBehaviorSO
     {
         string path = EditorUtility.SaveFilePanelInProject(
@@ -251,56 +430,453 @@ public class SteeringBehaviorEditor : EditorWindow
         
         if (string.IsNullOrEmpty(path)) return;
         
-        T behaviorAsset = CreateInstance<T>();
+        T behaviorAsset = ScriptableObject.CreateInstance<T>();
         AssetDatabase.CreateAsset(behaviorAsset, path);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         
-        behaviorToAdd = behaviorAsset;
+        if (selectedConfig != null)
+        {
+            Undo.RecordObject(selectedConfig, "Add New Behavior");
+            selectedConfig.behaviors.Add(behaviorAsset);
+            serializedConfig.Update();
+        }
     }
     
-    // Tạo template behavior set cho một troop cụ thể
-    private void CreateTemplateBehaviorSet()
+    private void SaveBehaviorsAsTemplate()
     {
-        if (selectedConfig == null) return;
+        if (selectedConfig == null || selectedConfig.behaviors.Count == 0) return;
         
-        string path = EditorUtility.SaveFolderPanel("Save Behavior Set", "Assets", selectedConfig.name + "_Behaviors");
-        if (string.IsNullOrEmpty(path)) return;
+        string templateName = EditorUtility.SaveFilePanelInProject(
+            "Save As Template",
+            selectedConfig.troopName + "_Template",
+            "asset",
+            "Save behavior template as"
+        );
         
-        // Convert to project relative path
-        path = "Assets" + path.Substring(Application.dataPath.Length);
+        if (string.IsNullOrEmpty(templateName)) return;
         
-        // Tạo và lưu các behavior cơ bản
-        SeekBehaviorSO seek = CreateInstance<SeekBehaviorSO>();
-        seek.weight = 1.0f;
-        seek.description = "Base movement to target";
-        AssetDatabase.CreateAsset(seek, path + "/Seek.asset");
+        // Create template
+        TroopTemplate template = ScriptableObject.CreateInstance<TroopTemplate>();
+        template.templateName = selectedConfig.troopName + " Template";
+        template.description = "Template based on " + selectedConfig.troopName;
         
-        ArrivalBehaviorSO arrival = CreateInstance<ArrivalBehaviorSO>();
-        arrival.weight = 2.0f;
-        arrival.slowingDistance = 3.0f;
-        arrival.description = "Slow down when approaching target";
-        AssetDatabase.CreateAsset(arrival, path + "/Arrival.asset");
+        // Copy base stats
+        template.baseHealth = selectedConfig.health;
+        template.baseAttackPower = selectedConfig.attackPower;
+        template.baseMoveSpeed = selectedConfig.moveSpeed;
+        template.baseAttackRange = selectedConfig.attackRange;
+        template.baseAttackSpeed = selectedConfig.attackSpeed;
         
-        SeparationBehaviorSO separation = CreateInstance<SeparationBehaviorSO>();
-        separation.weight = 1.5f;
-        separation.separationRadius = 2.0f;
-        separation.description = "Keep distance from allies";
-        AssetDatabase.CreateAsset(separation, path + "/Separation.asset");
+        // Reference template set
+        template.templateSet = templateSet;
         
-        // Thêm vào config
-        Undo.RecordObject(selectedConfig, "Add Template Behaviors");
-        selectedConfig.behaviors.Clear();
-        selectedConfig.behaviors.Add(seek);
-        selectedConfig.behaviors.Add(arrival);
-        selectedConfig.behaviors.Add(separation);
-        
+        // Save the template
+        AssetDatabase.CreateAsset(template, templateName);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         
-        // Cập nhật serialized object
-        serializedConfig.Update();
+        EditorUtility.DisplayDialog("Template Saved", "Behavior template saved successfully!", "OK");
     }
+    
+    private void ApplyDefaultTemplate()
+    {
+        if (selectedConfig == null) return;
+        
+        if (EditorUtility.DisplayDialog("Apply Default Template",
+            "This will clear all existing behaviors and apply default ones. Continue?",
+            "Yes", "Cancel"))
+        {
+            if (templateSet != null)
+            {
+                Undo.RecordObject(selectedConfig, "Apply Default Template");
+                
+                selectedConfig.behaviors.Clear();
+                selectedConfig.behaviors.AddRange(templateSet.GetDefaultBehaviors());
+                
+                serializedConfig.Update();
+            }
+            else
+            {
+                EditorUtility.DisplayDialog("No Template Set", "No behavior template set found. Please create one first.", "OK");
+            }
+        }
+    }
+    
+    // Helper functions for categories
+    private BehaviorCategory GetBehaviorCategory(SteeringBehaviorSO behavior)
+    {
+        if (templateSet == null) return BehaviorCategory.Movement;
+        
+        foreach (var template in GetAllTemplates())
+        {
+            if (template.behaviorSO == behavior)
+            {
+                return template.category;
+            }
+        }
+        
+        // Default to Movement if not found
+        return BehaviorCategory.Movement;
+    }
+    
+    private int GetBehaviorPriority(SteeringBehaviorSO behavior)
+    {
+        // Simple reflection to get priority field if it exists
+        System.Type type = behavior.GetType();
+        var field = type.GetField("priority");
+        if (field != null)
+        {
+            return (int)field.GetValue(behavior);
+        }
+        
+        // Default priority
+        return 0;
+    }
+    
+    private void SetBehaviorPriority(SteeringBehaviorSO behavior, int priority)
+    {
+        // Simple reflection to set priority field if it exists
+        System.Type type = behavior.GetType();
+        var field = type.GetField("priority");
+        if (field != null)
+        {
+            Undo.RecordObject(behavior, "Change Behavior Priority");
+            field.SetValue(behavior, priority);
+            EditorUtility.SetDirty(behavior);
+        }
+    }
+    
+    private bool ShouldShowBehavior(BehaviorCategory category)
+    {
+        switch (category)
+        {
+            case BehaviorCategory.Movement: return showMovementBehaviors;
+            case BehaviorCategory.Formation: return showFormationBehaviors;
+            case BehaviorCategory.Combat: return showCombatBehaviors;
+            case BehaviorCategory.Special: return showSpecialBehaviors;
+            case BehaviorCategory.Essential: return showEssentialBehaviors;
+            default: return true;
+        }
+    }
+    
+    private Color GetCategoryColor(BehaviorCategory category)
+    {
+        switch (category)
+        {
+            case BehaviorCategory.Movement: return new Color(0.2f, 0.7f, 0.2f);
+            case BehaviorCategory.Formation: return new Color(0.2f, 0.2f, 0.7f);
+            case BehaviorCategory.Combat: return new Color(0.7f, 0.2f, 0.2f);
+            case BehaviorCategory.Special: return new Color(0.7f, 0.7f, 0.2f);
+            case BehaviorCategory.Essential: return new Color(0.7f, 0.2f, 0.7f);
+            default: return Color.white;
+        }
+    }
+    
+    private string GetCategoryIcon(BehaviorCategory category)
+    {
+        switch (category)
+        {
+            case BehaviorCategory.Movement: return "⟳";
+            case BehaviorCategory.Formation: return "⧉";
+            case BehaviorCategory.Combat: return "⚔";
+            case BehaviorCategory.Special: return "★";
+            case BehaviorCategory.Essential: return "⚙";
+            default: return "⋄";
+        }
+    }
+    
+    #endregion
+    
+    #region Templates Tab
+    
+    private void DrawTemplatesTab()
+    {
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        EditorGUILayout.LabelField("Behavior Template Set", EditorStyles.boldLabel);
+        
+        EditorGUI.BeginChangeCheck();
+        templateSet = EditorGUILayout.ObjectField("Template Set", templateSet, typeof(BehaviorTemplateSet), false) as BehaviorTemplateSet;
+        EditorGUILayout.EndVertical();
+        
+        if (templateSet == null)
+        {
+            EditorGUILayout.HelpBox("No template set selected. Create or select a BehaviorTemplateSet asset.", MessageType.Info);
+            
+            if (GUILayout.Button("Create New Template Set"))
+            {
+                string path = EditorUtility.SaveFilePanelInProject(
+                    "Create Template Set",
+                    "BehaviorTemplateSet",
+                    "asset",
+                    "Save template set asset to"
+                );
+                
+                if (!string.IsNullOrEmpty(path))
+                {
+                    BehaviorTemplateSet newSet = ScriptableObject.CreateInstance<BehaviorTemplateSet>();
+                    AssetDatabase.CreateAsset(newSet, path);
+                    AssetDatabase.SaveAssets();
+                    AssetDatabase.Refresh();
+                    
+                    templateSet = newSet;
+                }
+            }
+            
+            return;
+        }
+        
+        EditorGUILayout.Space(10);
+        
+        // Template management section
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        EditorGUILayout.LabelField("Behavior Templates", EditorStyles.boldLabel);
+        
+        // List all templates
+        templateScrollPosition = EditorGUILayout.BeginScrollView(templateScrollPosition);
+        
+        List<BehaviorTemplate> templates = GetAllTemplates();
+        
+        for (int i = 0; i < templates.Count; i++)
+        {
+            BehaviorTemplate template = templates[i];
+            
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            
+            EditorGUILayout.BeginHorizontal();
+            GUI.color = GetCategoryColor(template.category);
+            EditorGUILayout.LabelField(GetCategoryIcon(template.category), GUILayout.Width(20));
+            GUI.color = Color.white;
+            
+            EditorGUILayout.LabelField(template.name, EditorStyles.boldLabel);
+            
+            // Category dropdown
+            template.category = (BehaviorCategory)EditorGUILayout.EnumPopup(template.category, GUILayout.Width(100));
+            
+            // Default toggle
+            template.isDefault = EditorGUILayout.Toggle("Default", template.isDefault, GUILayout.Width(80));
+            
+            EditorGUILayout.EndHorizontal();
+            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Behavior:", GUILayout.Width(60));
+            template.behaviorSO = EditorGUILayout.ObjectField(template.behaviorSO, typeof(SteeringBehaviorSO), false) as SteeringBehaviorSO;
+            EditorGUILayout.EndHorizontal();
+            
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Description:", GUILayout.Width(80));
+            template.description = EditorGUILayout.TextField(template.description);
+            EditorGUILayout.EndHorizontal();
+            
+            EditorGUILayout.EndVertical();
+        }
+        
+        EditorGUILayout.EndScrollView();
+        
+        // Add template button
+        if (GUILayout.Button("Add New Template"))
+        {
+            AddNewTemplate();
+        }
+        
+        EditorGUILayout.EndVertical();
+    }
+    
+    private List<BehaviorTemplate> GetAllTemplates()
+    {
+        // This is a placeholder - in a real implementation you would access the templates from the templateSet
+        // For now we'll return an empty list
+        return new List<BehaviorTemplate>();
+    }
+    
+    private void AddNewTemplate()
+    {
+        // Create a new template dialog
+        string[] behaviorGuids = AssetDatabase.FindAssets("t:SteeringBehaviorSO");
+        
+        if (behaviorGuids.Length == 0)
+        {
+            EditorUtility.DisplayDialog("No Behaviors", "No steering behaviors found in the project.", "OK");
+            return;
+        }
+        
+        GenericMenu menu = new GenericMenu();
+        
+        foreach (string guid in behaviorGuids)
+        {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            SteeringBehaviorSO behavior = AssetDatabase.LoadAssetAtPath<SteeringBehaviorSO>(path);
+            
+            menu.AddItem(new GUIContent(behavior.name), false, () => {
+                BehaviorTemplate newTemplate = new BehaviorTemplate
+                {
+                    name = behavior.name,
+                    behaviorSO = behavior,
+                    category = BehaviorCategory.Movement,
+                    isDefault = false,
+                    description = "Template for " + behavior.name
+                };
+                
+                // Add the template to the set
+                // This would need proper implementation in the BehaviorTemplateSet class
+                EditorUtility.SetDirty(templateSet);
+            });
+        }
+        
+        menu.ShowAsContext();
+    }
+    
+    #endregion
+    
+    #region Troop Templates Tab
+    
+    private void DrawTroopTemplatesTab()
+    {
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        EditorGUILayout.LabelField("Troop Template Management", EditorStyles.boldLabel);
+        
+        EditorGUI.BeginChangeCheck();
+        selectedTemplate = EditorGUILayout.ObjectField("Troop Template", selectedTemplate, typeof(TroopTemplate), false) as TroopTemplate;
+        
+        if (EditorGUI.EndChangeCheck())
+        {
+            if (selectedTemplate != null)
+            {
+                serializedTemplate = new SerializedObject(selectedTemplate);
+            }
+        }
+        
+        EditorGUILayout.EndVertical();
+        
+        if (selectedTemplate == null)
+        {
+            EditorGUILayout.HelpBox("No troop template selected. Create or select a TroopTemplate asset.", MessageType.Info);
+            
+            if (GUILayout.Button("Create New Troop Template"))
+            {
+                string path = EditorUtility.SaveFilePanelInProject(
+                    "Create Troop Template",
+                    "TroopTemplate",
+                    "asset",
+                    "Save troop template asset to"
+                );
+                
+                if (!string.IsNullOrEmpty(path))
+                {
+                    TroopTemplate newTemplate = ScriptableObject.CreateInstance<TroopTemplate>();
+                    newTemplate.templateName = "New Troop Template";
+                    newTemplate.templateSet = templateSet;
+                    
+                    AssetDatabase.CreateAsset(newTemplate, path);
+                    AssetDatabase.SaveAssets();
+                    AssetDatabase.Refresh();
+                    
+                    selectedTemplate = newTemplate;
+                    serializedTemplate = new SerializedObject(selectedTemplate);
+                }
+            }
+            
+            return;
+        }
+        
+        if (serializedTemplate == null)
+        {
+            serializedTemplate = new SerializedObject(selectedTemplate);
+        }
+        
+        EditorGUILayout.Space(10);
+        
+        // Troop template editor
+        EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+        
+        SerializedProperty templateNameProp = serializedTemplate.FindProperty("templateName");
+        SerializedProperty descriptionProp = serializedTemplate.FindProperty("description");
+        
+        // Basic properties
+        EditorGUILayout.PropertyField(templateNameProp);
+        EditorGUILayout.PropertyField(descriptionProp);
+        
+        EditorGUILayout.Space(5);
+        
+        // Base stats
+        EditorGUILayout.LabelField("Base Stats", EditorStyles.boldLabel);
+        
+        SerializedProperty healthProp = serializedTemplate.FindProperty("baseHealth");
+        SerializedProperty attackPowerProp = serializedTemplate.FindProperty("baseAttackPower");
+        SerializedProperty moveSpeedProp = serializedTemplate.FindProperty("baseMoveSpeed");
+        SerializedProperty attackRangeProp = serializedTemplate.FindProperty("baseAttackRange");
+        SerializedProperty attackSpeedProp = serializedTemplate.FindProperty("baseAttackSpeed");
+        
+        EditorGUILayout.PropertyField(healthProp);
+        EditorGUILayout.PropertyField(attackPowerProp);
+        EditorGUILayout.PropertyField(moveSpeedProp);
+        EditorGUILayout.PropertyField(attackRangeProp);
+        EditorGUILayout.PropertyField(attackSpeedProp);
+        
+        EditorGUILayout.Space(5);
+        
+        // Behavior categories
+        EditorGUILayout.LabelField("Behavior Categories", EditorStyles.boldLabel);
+        
+        SerializedProperty movementProp = serializedTemplate.FindProperty("includeMovementBehaviors");
+        SerializedProperty formationProp = serializedTemplate.FindProperty("includeFormationBehaviors");
+        SerializedProperty combatProp = serializedTemplate.FindProperty("includeCombatBehaviors");
+        SerializedProperty specialProp = serializedTemplate.FindProperty("includeSpecialBehaviors");
+        
+        EditorGUILayout.PropertyField(movementProp);
+        EditorGUILayout.PropertyField(formationProp);
+        EditorGUILayout.PropertyField(combatProp);
+        EditorGUILayout.PropertyField(specialProp);
+        
+        EditorGUILayout.Space(5);
+        
+        // Template set reference
+        SerializedProperty templateSetProp = serializedTemplate.FindProperty("templateSet");
+        EditorGUILayout.PropertyField(templateSetProp);
+        
+        EditorGUILayout.Space(5);
+        
+        // Create troop from template button
+        if (GUILayout.Button("Create Troop From Template"))
+        {
+            CreateTroopFromTemplate();
+        }
+        
+        EditorGUILayout.EndVertical();
+        
+        // Apply changes
+        serializedTemplate.ApplyModifiedProperties();
+    }
+    
+    private void CreateTroopFromTemplate()
+    {
+        if (selectedTemplate == null) return;
+        
+        string troopName = EditorUtility.SaveFilePanelInProject(
+            "Create Troop Config",
+            selectedTemplate.templateName + "_Troop",
+            "asset",
+            "Save new troop config to"
+        );
+        
+        if (string.IsNullOrEmpty(troopName)) return;
+        
+        // Create the troop config
+        TroopConfigSO newTroop = selectedTemplate.CreateTroopConfig(Path.GetFileNameWithoutExtension(troopName));
+        
+        // Save it
+        AssetDatabase.CreateAsset(newTroop, troopName);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        
+        // Select it
+        selectedConfig = newTroop;
+        serializedConfig = new SerializedObject(selectedConfig);
+        currentTab = EditorTab.Behaviors;
+        
+        EditorUtility.DisplayDialog("Troop Created", "New troop config created successfully!", "OK");
+    }
+    
+    #endregion
 }
-
 #endif
