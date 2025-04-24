@@ -44,8 +44,7 @@ namespace Factories
             GameObject troopObject = GameObject.Instantiate(_troopPrefab, position, rotation);
             troopObject.name = $"Troop_{troopType}_{entity.Id}";
             
-            // Add EntityBehaviour component
-            var entityBehaviour = troopObject.AddComponent<EntityBehaviour>();
+            var entityBehaviour = troopObject.GetComponent<EntityBehaviour>();
             entityBehaviour.Initialize(entity, _world);
             
             return entity;

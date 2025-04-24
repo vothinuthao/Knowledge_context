@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Core.ECS;
+using Debug_Tool;
 using Movement;
 using Squad;
 using UnityEngine;
@@ -7,13 +8,13 @@ using UnityEngine;
 namespace Management
 {
     /// <summary>
-    /// Manages squad selection and movement commands
+    /// Quản lý việc chọn và điều khiển Squad di chuyển giữa các ô
     /// </summary>
     public class SquadSelectionManager : MonoBehaviour
     {
         [Header("Selection Settings")]
-        [SerializeField] private LayerMask selectableLayers;
-        [SerializeField] private LayerMask groundLayers;
+        [SerializeField] private LayerMask selectableLayers; // Nên chọn layer Troop và Squad
+        [SerializeField] private LayerMask groundLayers;     // Nên chọn layer Ground
         [SerializeField] private float selectionDistance = 1000f;
         [SerializeField] private GameObject selectionCirclePrefab;
     
@@ -24,7 +25,7 @@ namespace Management
         [SerializeField] private float selectionCircleScale = 1.2f;
 
         [Header("Debug")]
-        [SerializeField] private bool debugMode = false;
+        [SerializeField] private bool debugMode = true; // Bật chế độ debug
     
         // Currently selected squad
         private Entity selectedSquad = null;
@@ -38,7 +39,6 @@ namespace Management
     
         private void Start()
         {
-            // Get WorldManager reference
             worldManager = WorldManager.Instance;
             if (worldManager == null)
             {
@@ -47,6 +47,7 @@ namespace Management
                 return;
             }
         
+            // Tạo selection circle nếu prefab được gán
             if (selectionCirclePrefab != null)
             {
                 selectionCircle = Instantiate(selectionCirclePrefab, Vector3.zero, Quaternion.Euler(90, 0, 0));
@@ -54,143 +55,148 @@ namespace Management
                 selectionCircle.SetActive(false);
             }
             
+            // Kiểm tra và cảnh báo nếu layer mask chưa được thiết lập
             if (selectableLayers.value == 0)
             {
-                Debug.LogWarning("Selectable layers mask is not set! Setting to default 'Default' layer.");
-                selectableLayers = LayerMask.GetMask("Default");
+                Debug.LogError("Selectable layers mask chưa được thiết lập! Vui lòng thiết lập Troop và Squad layer.");
+                // Thiết lập mặc định cho Troop (Layer 9) và Squad (Layer 10)
+                selectableLayers = (1 << 9) | (1 << 10);
             }
             
             if (groundLayers.value == 0)
             {
-                Debug.LogWarning("Ground layers mask is not set! Setting to default 'Ground' layer.");
-                groundLayers = LayerMask.GetMask("Ground");
+                Debug.LogError("Ground layers mask chưa được thiết lập! Vui lòng thiết lập Ground layer.");
+                // Thiết lập mặc định cho Ground (Layer 8)
+                groundLayers = 1 << 8;
             }
+            
+            Debug.Log($"SquadSelectionManager đã khởi tạo với layer mask: selectableLayers={LayerMaskToString(selectableLayers)}, groundLayers={LayerMaskToString(groundLayers)}");
         }
     
         private void Update()
         {
-            // Handle squad selection
+            // Xử lý chọn squad
             if (Input.GetMouseButtonDown(0))
             {
                 HandleSelection();
             }
         
-            // Handle squad command to move
+            // Xử lý di chuyển squad
             if (Input.GetMouseButtonDown(1) && selectedSquad != null)
             {
                 HandleMovementCommand();
             }
         
-            // Update selection circle position
+            // Cập nhật vị trí selection circle
             UpdateSelectionCircle();
         
-            // Handle hotkeys
+            // Xử lý phím tắt
             HandleHotkeys();
-            
-            // Debug logging
-            if (debugMode && Input.GetMouseButtonDown(0))
-            {
-                DebugRaycastInfo();
-            }
         }
     
         /// <summary>
-        /// Handles selection of squads and troops with mouse click
+        /// Xử lý chọn Squad bằng chuột
         /// </summary>
         private void HandleSelection()
         {
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-            RaycastHit hit;
-        
-            if (Physics.Raycast(ray, out hit, selectionDistance, selectableLayers))
-            {
-                GameObject hitObject = hit.collider.gameObject;
-                
-                if (debugMode)
-                {
-                    Debug.Log($"Hit object: {hitObject.name} on layer {LayerMask.LayerToName(hitObject.layer)}");
-                }
+            RaycastHit[] hits = Physics.RaycastAll(ray, selectionDistance, selectableLayers);
             
-                // Try to find entity behaviour in hit object or its parent
-                EntityBehaviour entityBehaviour = hitObject.GetComponent<EntityBehaviour>();
-                if (entityBehaviour == null)
+            if (debugMode)
+            {
+                Debug.Log($"Raycast detected {hits.Length} objects with selectableLayers = {LayerMaskToString(selectableLayers)}");
+                foreach (var hit in hits)
                 {
-                    // Try to get from parent if not found on direct hit
-                    entityBehaviour = hitObject.GetComponentInParent<EntityBehaviour>();
-                }
-                
-                if (entityBehaviour != null)
-                {
-                    Entity entity = entityBehaviour.GetEntity();
-                    
-                    if (debugMode && entity != null)
-                    {
-                        Debug.Log($"Found entity with ID: {entity.Id}");
-                    }
-                
-                    // Check if this is a troop entity
-                    if (entity != null && entity.HasComponent<SquadMemberComponent>())
-                    {
-                        // Get the squadron this troop belongs to
-                        SquadMemberComponent squadMember = entity.GetComponent<SquadMemberComponent>();
-                        int squadId = squadMember.SquadEntityId;
-                    
-                        // Find the squad entity
-                        Entity squadEntity = FindSquadById(squadId);
-                    
-                        if (squadEntity != null)
-                        {
-                            // Deselect current squad if any
-                            DeselectCurrentSquad();
-                        
-                            // Select new squad
-                            SelectSquad(squadEntity);
-                        
-                            Debug.Log($"Selected Squad ID: {squadEntity.Id}");
-                        }
-                    }
-                    else if (entity != null && entity.HasComponent<SquadStateComponent>())
-                    {
-                        // Direct squadron selection
-                        DeselectCurrentSquad();
-                        SelectSquad(entity);
-                    
-                        Debug.Log($"Selected Squad ID: {entity.Id}");
-                    }
-                }
-                else if (debugMode)
-                {
-                    Debug.LogWarning("No EntityBehaviour component found on hit object or its parents");
+                    Debug.Log($"Hit: {hit.collider.gameObject.name} | Layer: {LayerMask.LayerToName(hit.collider.gameObject.layer)} | Distance: {hit.distance}");
                 }
             }
-            else
+            
+            if (hits.Length == 0)
             {
-                // Clicked on empty space, only deselect if not hitting UI
+                if (debugMode) Debug.Log("Không hit được đối tượng nào thuộc selectableLayers");
                 if (!UnityEngine.EventSystems.EventSystem.current || 
                     !UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
                 {
                     DeselectCurrentSquad();
                 }
+                return;
+            }
+            RaycastHit closestHit = hits[0];
+            foreach (var hit in hits)
+            {
+                if (hit.distance < closestHit.distance)
+                {
+                    closestHit = hit;
+                }
+            }
+            
+            GameObject hitObject = closestHit.collider.gameObject;
+            if (debugMode) Debug.Log($"Xử lý hit object: {hitObject.name} với layer {LayerMask.LayerToName(hitObject.layer)}");
+            EntityBehaviour entityBehaviour = hitObject.GetComponent<EntityBehaviour>();
+            if (!entityBehaviour)
+            {
+                entityBehaviour = hitObject.GetComponentInParent<EntityBehaviour>();
+            }
+            
+            if (entityBehaviour)
+            {
+                Entity entity = entityBehaviour.GetEntity();
+                if (debugMode && entity != null) Debug.Log($"Tìm thấy entity ID: {entity.Id}");
+                if (entity != null && entity.HasComponent<SquadMemberComponent>())
+                {
+                    SquadMemberComponent squadMember = entity.GetComponent<SquadMemberComponent>();
+                    int squadId = squadMember.SquadEntityId;
+                    Entity squadEntity = FindSquadById(squadId);
+                    
+                    if (squadEntity != null)
+                    {
+                        // Bỏ chọn squad hiện tại nếu có
+                        DeselectCurrentSquad();
+                        
+                        // Chọn squad mới
+                        SelectSquad(squadEntity);
+                        
+                        Debug.Log($"Đã chọn Squad ID: {squadEntity.Id}");
+                    }
+                    else if (debugMode)
+                    {
+                        Debug.LogWarning($"Không tìm thấy Squad với ID: {squadId}");
+                    }
+                }
+                else if (entity != null && entity.HasComponent<SquadStateComponent>())
+                {
+                    DeselectCurrentSquad();
+                    SelectSquad(entity);
+                    Debug.Log($"Đã chọn Squad ID: {entity.Id}");
+                }
+            }
+            else if (debugMode)
+            {
+                Debug.LogWarning("Không tìm thấy EntityBehaviour trên đối tượng được hit hoặc parent của nó");
             }
         }
         
         /// <summary>
-        /// Helper method to find a squad entity by ID
+        /// Tìm Squad entity theo ID
         /// </summary>
         private Entity FindSquadById(int squadId)
         {
-            foreach (var candidateEntity in worldManager.GetWorld().GetEntitiesWith<SquadStateComponent>())
+            // Tìm tất cả squad entity
+            var squadEntities = worldManager.GetWorld().GetEntitiesWith<SquadStateComponent>();
+            
+            foreach (var entity in squadEntities)
             {
-                if (candidateEntity.Id == squadId)
+                if (entity.Id == squadId)
                 {
-                    return candidateEntity;
+                    return entity;
                 }
             }
+            
             return null;
         }
     
         /// <summary>
-        /// Handles movement commands for the selected squad
+        /// Xử lý lệnh di chuyển Squad
         /// </summary>
         private void HandleMovementCommand()
         {
@@ -205,38 +211,38 @@ namespace Management
                 
                 if (debugMode)
                 {
-                    Debug.Log($"Movement target: {targetPosition}");
+                    Debug.Log($"Hit point for movement: {targetPosition}");
                 }
             
-                // Check if we have a grid manager
+                // Kiểm tra nếu có GridManager
                 if (GridManager.Instance != null)
                 {
-                    // Get the cell under the cursor
+                    // Lấy tọa độ ô dưới con trỏ
                     Vector2Int cellCoordinates = GridManager.Instance.GetGridCoordinates(targetPosition);
                     
                     if (debugMode)
                     {
-                        Debug.Log($"Target cell coordinates: {cellCoordinates}");
+                        Debug.Log($"Cell coordinates: {cellCoordinates}");
                         Debug.Log($"Cell occupied: {GridManager.Instance.IsCellOccupied(cellCoordinates)}");
                     }
                 
-                    // Check if cell is valid and not occupied (or is occupied by the current squad)
+                    // Kiểm tra ô có hợp lệ và không bị chiếm
                     if (GridManager.Instance.IsWithinGrid(cellCoordinates))
                     {
                         bool canMoveToCell = true;
                         
                         if (GridManager.Instance.IsCellOccupied(cellCoordinates))
                         {
-                            // Check if cell is occupied by current squad
+                            // Kiểm tra xem ô có bị chiếm bởi squad hiện tại không
                             if (selectedSquad.HasComponent<PositionComponent>())
                             {
                                 Vector3 currentPos = selectedSquad.GetComponent<PositionComponent>().Position;
                                 Vector2Int currentCell = GridManager.Instance.GetGridCoordinates(currentPos);
                                 
-                                // Allow movement if moving to the same cell or adjacent
+                                // Cho phép di chuyển nếu đang ở chính ô đó hoặc ô liền kề
                                 canMoveToCell = (currentCell == cellCoordinates) || 
-                                               (Mathf.Abs(currentCell.x - cellCoordinates.x) <= 1 && 
-                                                Mathf.Abs(currentCell.y - cellCoordinates.y) <= 1);
+                                              (Mathf.Abs(currentCell.x - cellCoordinates.x) <= 1 && 
+                                               Mathf.Abs(currentCell.y - cellCoordinates.y) <= 1);
                             }
                             else
                             {
@@ -246,85 +252,100 @@ namespace Management
                         
                         if (canMoveToCell)
                         {
-                            // Update target position to cell center
+                            // Cập nhật vị trí đích thành tâm của ô
                             targetPosition = GridManager.Instance.GetCellCenter(cellCoordinates);
                         
-                            // Mark current cell as unoccupied
+                            // Đánh dấu ô hiện tại là không bị chiếm
                             if (selectedSquad.HasComponent<PositionComponent>())
                             {
                                 Vector3 currentPos = selectedSquad.GetComponent<PositionComponent>().Position;
                                 Vector2Int currentCell = GridManager.Instance.GetGridCoordinates(currentPos);
                                 
-                                if (currentCell != cellCoordinates) // Only if moving to a different cell
+                                if (currentCell != cellCoordinates) // Chỉ khi di chuyển đến ô khác
                                 {
                                     GridManager.Instance.SetCellOccupied(currentCell, false);
                                     GridManager.Instance.SetCellOccupied(cellCoordinates, true);
                                 }
                             }
                         
-                            // Select the cell in grid
+                            // Chọn ô trong grid
                             GridManager.Instance.SelectCell(cellCoordinates);
                             
-                            // Issue movement command
+                            // Ra lệnh di chuyển
                             worldManager.CommandSquadMove(selectedSquad, targetPosition);
-                            Debug.Log($"Moving Squad {selectedSquad.Id} to {targetPosition} (Cell: {cellCoordinates})");
+                            Debug.Log($"Di chuyển Squad {selectedSquad.Id} đến {targetPosition} (Cell: {cellCoordinates})");
                         }
                         else
                         {
-                            Debug.Log("Cell is occupied by another squad. Cannot move there.");
+                            Debug.Log("Ô đã bị chiếm bởi đội quân khác. Không thể di chuyển đến đó.");
                         }
                     }
                     else
                     {
-                        Debug.Log($"Cell coordinates {cellCoordinates} are outside the grid. Cannot move there.");
+                        Debug.Log($"Tọa độ ô {cellCoordinates} nằm ngoài grid. Không thể di chuyển đến đó.");
                     }
                 }
                 else
                 {
-                    // No grid manager, just move directly to hit point
+                    // Không có GridManager, di chuyển trực tiếp đến hit point
                     worldManager.CommandSquadMove(selectedSquad, targetPosition);
-                    Debug.Log($"Moving Squad {selectedSquad.Id} to {targetPosition} (No grid)");
+                    Debug.Log($"Di chuyển Squad {selectedSquad.Id} đến {targetPosition} (Không có grid)");
+                }
+            }
+            else if (debugMode)
+            {
+                Debug.LogWarning("Không hit được đối tượng nào thuộc groundLayers");
+            }
+        }
+    
+        /// <summary>
+        /// Xử lý các phím tắt
+        /// </summary>
+        private void HandleHotkeys()
+        {
+            // Lệnh dừng lại
+            if (Input.GetKeyDown(KeyCode.S) && selectedSquad != null)
+            {
+                worldManager.CommandSquadStop(selectedSquad);
+                Debug.Log($"Ra lệnh Squad {selectedSquad.Id} dừng lại");
+            }
+            if (Input.GetKeyDown(KeyCode.D) && selectedSquad != null)
+            {
+                worldManager.CommandSquadDefend(selectedSquad);
+                Debug.Log($"Ra lệnh Squad {selectedSquad.Id} phòng thủ tại vị trí hiện tại");
+            }
+            
+            // Hiển thị debug info với F1
+            if (Input.GetKeyDown(KeyCode.F1))
+            {
+                debugMode = !debugMode;
+                Debug.Log($"Debug mode: {(debugMode ? "ON" : "OFF")}");
+                
+                var visualizers = FindObjectsOfType<TroopDebugVisualizer>();
+                foreach (var viz in visualizers)
+                {
+                    viz.enabled = debugMode;
                 }
             }
         }
     
         /// <summary>
-        /// Handles hotkeys for squad commands
-        /// </summary>
-        private void HandleHotkeys()
-        {
-            // Stop command
-            if (Input.GetKeyDown(KeyCode.S) && selectedSquad != null)
-            {
-                worldManager.CommandSquadStop(selectedSquad);
-                Debug.Log($"Commanding Squad {selectedSquad.Id} to stop");
-            }
-        
-            // Defend command 
-            if (Input.GetKeyDown(KeyCode.D) && selectedSquad != null)
-            {
-                worldManager.CommandSquadDefend(selectedSquad);
-                Debug.Log($"Commanding Squad {selectedSquad.Id} to defend position");
-            }
-        }
-    
-        /// <summary>
-        /// Selects a squad and shows visual indicator
+        /// Chọn một Squad và hiển thị indicator
         /// </summary>
         private void SelectSquad(Entity squad)
         {
             selectedSquad = squad;
         
-            // Show selection circle
+            // Hiển thị selection circle
             if (selectionCircle != null)
             {
                 selectionCircle.SetActive(true);
             }
         
-            // Update selection circle position
+            // Cập nhật vị trí selection circle
             UpdateSelectionCircle();
         
-            // If we have a grid, also select cell
+            // Nếu có GridManager, cũng chọn ô
             if (GridManager.Instance != null && squad.HasComponent<PositionComponent>())
             {
                 Vector3 squadPos = squad.GetComponent<PositionComponent>().Position;
@@ -334,7 +355,7 @@ namespace Management
         }
     
         /// <summary>
-        /// Deselects the current squad and hides indicators
+        /// Bỏ chọn Squad hiện tại
         /// </summary>
         private void DeselectCurrentSquad()
         {
@@ -342,7 +363,7 @@ namespace Management
         
             selectedSquad = null;
         
-            // Hide selection circle
+            // Ẩn selection circle
             if (selectionCircle != null)
             {
                 selectionCircle.SetActive(false);
@@ -350,7 +371,7 @@ namespace Management
         }
     
         /// <summary>
-        /// Updates the position of the selection circle to follow the selected squad
+        /// Cập nhật vị trí của selection circle
         /// </summary>
         private void UpdateSelectionCircle()
         {
@@ -368,7 +389,7 @@ namespace Management
         }
     
         /// <summary>
-        /// Returns the currently selected squad
+        /// Lấy squad đang được chọn
         /// </summary>
         public Entity GetSelectedSquad()
         {
@@ -376,37 +397,33 @@ namespace Management
         }
     
         /// <summary>
-        /// Registers a GameObject that represents a squad
+        /// Đăng ký GameObject đại diện cho một Squad
         /// </summary>
         public void RegisterSquadGameObject(int squadId, GameObject squadObject)
         {
             if (!squadGameObjects.ContainsKey(squadId))
             {
                 squadGameObjects.Add(squadId, squadObject);
+                
+                // Đảm bảo đối tượng có đúng layer
+                squadObject.layer = LayerMask.NameToLayer("Squad");
+                
+                // Đảm bảo đối tượng có collider
+                Collider collider = squadObject.GetComponent<Collider>();
+                if (collider == null)
+                {
+                    BoxCollider boxCollider = squadObject.AddComponent<BoxCollider>();
+                    boxCollider.size = new Vector3(5f, 0.5f, 5f);
+                    boxCollider.center = new Vector3(0, 0.25f, 0);
+                    boxCollider.isTrigger = true;
+                }
+                
+                if (debugMode) Debug.Log($"Đã đăng ký Squad GameObject {squadObject.name} với ID {squadId}");
             }
         }
         
         /// <summary>
-        /// Helper method to debug raycast issues
-        /// </summary>
-        private void DebugRaycastInfo()
-        {
-            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-            RaycastHit[] hits = Physics.RaycastAll(ray, selectionDistance);
-            
-            Debug.Log($"Raycast detected {hits.Length} objects");
-            
-            foreach (var hit in hits)
-            {
-                Debug.Log($"Hit: {hit.collider.gameObject.name} | Layer: {LayerMask.LayerToName(hit.collider.gameObject.layer)} | Distance: {hit.distance}");
-            }
-            
-            Debug.Log($"Selectable layers: {LayerMaskToString(selectableLayers)}");
-            Debug.Log($"Ground layers: {LayerMaskToString(groundLayers)}");
-        }
-        
-        /// <summary>
-        /// Helper method to convert layer mask to readable string
+        /// Chuyển đổi LayerMask thành chuỗi để debug
         /// </summary>
         private string LayerMaskToString(LayerMask mask)
         {

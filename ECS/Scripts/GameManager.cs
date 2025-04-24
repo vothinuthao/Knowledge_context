@@ -4,16 +4,16 @@ using Factories;
 using Steering.Config;
 using System.Collections.Generic;
 using Configs;
-using Core.Singleton;
 using Debug_Tool;
 using Management;
 using Squad;
 
 /// <summary>
-/// GameManager tích hợp tất cả các hệ thống của game
+/// GameManager integrates all game systems
 /// </summary>
-public class GameManager : ManualSingletonMono<GameManager>
+public class GameManager : MonoBehaviour
 {
+    public static GameManager Instance { get; private set; }
     
     [Header("References")]
     [SerializeField] private WorldManager worldManager;
@@ -27,20 +27,40 @@ public class GameManager : ManualSingletonMono<GameManager>
     
     [Header("Debug")]
     [SerializeField] private bool enableTroopDebugging = true;
-    [SerializeField] private bool showDebugInfo = false;
+    [SerializeField] private bool showDebugInfo = true;
     
     // Tracking squad and troop entities
     private Dictionary<int, Entity> squads = new Dictionary<int, Entity>();
     private Dictionary<int, GameObject> squadObjects = new Dictionary<int, GameObject>();
     private Dictionary<int, List<Entity>> troopsInSquad = new Dictionary<int, List<Entity>>();
-
-    protected override void Awake()
+    
+    private void Awake()
     {
-        base.Awake();
+        if (Instance == null)
+        {
+            Instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+        
+        // Find references if not set
+        if (worldManager == null) worldManager = FindObjectOfType<WorldManager>();
+        if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
+        if (selectionManager == null) selectionManager = FindObjectOfType<SquadSelectionManager>();
+        
+        if (worldManager == null)
+        {
+            Debug.LogError("WorldManager không tìm thấy! Hãy đảm bảo đã thêm WorldManager vào scene.");
+            enabled = false;
+            return;
+        }
     }
     
     private void Start()
     {
+        // Khởi tạo game
         StartGame();
     }
     
@@ -50,6 +70,20 @@ public class GameManager : ManualSingletonMono<GameManager>
         {
             DrawDebugInfo();
         }
+        
+        // Toggle debug info với F1
+        if (Input.GetKeyDown(KeyCode.F1))
+        {
+            enableTroopDebugging = !enableTroopDebugging;
+            showDebugInfo = enableTroopDebugging;
+            ToggleTroopDebugging(enableTroopDebugging);
+        }
+        
+        // Refresh squad positions với F2
+        if (Input.GetKeyDown(KeyCode.F2) && gridManager != null)
+        {
+            RefreshSquadPositions();
+        }
     }
     
     /// <summary>
@@ -58,7 +92,9 @@ public class GameManager : ManualSingletonMono<GameManager>
     private void StartGame()
     {
         Debug.Log("Khởi tạo game...");
-        Invoke(nameof(CreateTestSquads), 0.1f);
+        
+        // Wait a frame to ensure everything is initialized
+        Invoke("CreateTestSquads", 0.1f);
     }
     
     /// <summary>
@@ -67,9 +103,17 @@ public class GameManager : ManualSingletonMono<GameManager>
     private void CreateTestSquads()
     {
         Debug.Log("Tạo các squad test...");
+        
+        // Tạo squad đầu tiên
         CreateSquad(new Vector3(3, 0, 3), Quaternion.identity, "Infantry", 9);
+        
+        // Tạo squad thứ hai
         CreateSquad(new Vector3(9, 0, 9), Quaternion.identity, "Archer", 9);
+        
         Debug.Log($"Đã tạo {squads.Count} squads");
+        
+        // Đảm bảo có layer đúng cho các đối tượng
+        EnsureCorrectLayers();
     }
     
     /// <summary>
@@ -77,10 +121,10 @@ public class GameManager : ManualSingletonMono<GameManager>
     /// </summary>
     public Entity CreateSquad(Vector3 position, Quaternion rotation, string troopType, int troopCount)
     {
-        // Check if position is within grid
+        // Kiểm tra vị trí trong grid
         Vector2Int gridCoords = gridManager ? gridManager.GetGridCoordinates(position) : new Vector2Int(0, 0);
         
-        // Adjust position to grid if applicable
+        // Điều chỉnh vị trí vào grid nếu có thể
         if (gridManager != null)
         {
             if (!gridManager.IsWithinGrid(gridCoords))
@@ -89,15 +133,21 @@ public class GameManager : ManualSingletonMono<GameManager>
                 gridCoords = new Vector2Int(Mathf.Clamp(gridCoords.x, 0, 19), Mathf.Clamp(gridCoords.y, 0, 19));
             }
             
-            // Check if cell is occupied
+            // Kiểm tra nếu ô đã bị chiếm
             if (gridManager.IsCellOccupied(gridCoords))
             {
                 Debug.LogWarning($"Ô ({gridCoords.x}, {gridCoords.y}) đã bị chiếm. Tìm ô trống gần đó.");
                 gridCoords = FindNearestEmptyCell(gridCoords);
             }
+            
+            // Đánh dấu ô là đã bị chiếm
             gridManager.SetCellOccupied(gridCoords, true);
+            
+            // Lấy tâm của ô
             position = gridManager.GetCellCenter(gridCoords);
         }
+        
+        // Tạo squad entity
         Entity squadEntity = worldManager.CreateSquad(
             position,
             rotation,
@@ -106,20 +156,29 @@ public class GameManager : ManualSingletonMono<GameManager>
             1.5f // spacing
         );
         
-        // Create visual representation of squad
+        // Tạo visual representation của squad
         GameObject squadObject = new GameObject($"Squad_{squadEntity.Id}");
         squadObject.transform.position = position;
+        
+        // Đặt layer cho squad object
+        squadObject.layer = LayerMask.NameToLayer("Squad");
+        
+        // Thêm BoxCollider cho squad object
+        BoxCollider boxCollider = squadObject.AddComponent<BoxCollider>();
+        boxCollider.size = new Vector3(5f, 0.5f, 5f);
+        boxCollider.center = new Vector3(0, 0.25f, 0);
+        boxCollider.isTrigger = true; // Đặt là trigger để không cản trở di chuyển
         
         var squadVisual = squadObject.AddComponent<SquadVisualController>();
         squadVisual.Initialize(squadEntity);
         
-        // Store references
+        // Lưu trữ references
         int squadId = squadEntity.Id;
         squads[squadId] = squadEntity;
         squadObjects[squadId] = squadObject;
         troopsInSquad[squadId] = new List<Entity>();
         
-        // Get troop config
+        // Lấy troop config
         TroopConfigSO config = GetTroopConfig(troopType);
         
         if (config == null)
@@ -137,10 +196,10 @@ public class GameManager : ManualSingletonMono<GameManager>
         // Get troop type enum
         TroopType troopTypeEnum = GetTroopTypeEnum(troopType);
         
-        // Create troops
+        // Tạo troops
         for (int i = 0; i < troopCount; i++)
         {
-            // Create troop at random position near squad
+            // Tạo troop tại vị trí random gần squad
             Vector3 offset = new Vector3(Random.Range(-2f, 2f), 0, Random.Range(-2f, 2f));
             
             Entity troopEntity = worldManager.CreateTroop(
@@ -149,18 +208,28 @@ public class GameManager : ManualSingletonMono<GameManager>
                 troopTypeEnum
             );
             
-            // Add troop to squad
+            // Thêm troop vào squad
             worldManager.AddTroopToSquad(troopEntity, squadEntity);
             
-            // Add debug component
+            // Thêm debug component
             if (enableTroopDebugging)
             {
                 var entityBehaviour = GetEntityBehaviour(troopEntity);
                 if (entityBehaviour != null)
                 {
-                    entityBehaviour.gameObject.AddComponent<TroopDebugVisualizer>();
+                    // Đảm bảo layer đúng
+                    entityBehaviour.gameObject.layer = LayerMask.NameToLayer("Troop");
                     
-                    // Register troop visual to squad
+                    // Thêm CapsuleCollider nếu chưa có
+                    Collider troopCollider = entityBehaviour.gameObject.GetComponent<Collider>();
+                    if (troopCollider == null)
+                    {
+                        CapsuleCollider capsuleCollider = entityBehaviour.gameObject.AddComponent<CapsuleCollider>();
+                        capsuleCollider.height = 2.0f;
+                        capsuleCollider.radius = 0.5f;
+                        capsuleCollider.center = new Vector3(0, 1.0f, 0);
+                    }
+                    // Đăng ký troop visual với squad
                     squadVisual.RegisterTroopVisual(entityBehaviour.transform);
                 }
             }
@@ -168,7 +237,7 @@ public class GameManager : ManualSingletonMono<GameManager>
             // Apply steering config
             SteeringConfigFactory.ApplyConfig(troopEntity, config.SteeringConfig ?? defaultSteeringConfig);
             
-            // Store reference
+            // Lưu trữ reference
             troopsInSquad[squadId].Add(troopEntity);
         }
         
@@ -198,15 +267,15 @@ public class GameManager : ManualSingletonMono<GameManager>
         
         Vector2Int currentCoords = startCoords;
         
-        for (int i = 0; i < 100; i++) // Limit iterations
+        for (int i = 0; i < 100; i++) // Giới hạn số lần lặp
         {
-            // Check current cell
+            // Kiểm tra ô hiện tại
             if (gridManager.IsWithinGrid(currentCoords) && !gridManager.IsCellOccupied(currentCoords))
             {
                 return currentCoords;
             }
             
-            // Move to next cell in spiral
+            // Di chuyển đến ô tiếp theo theo mẫu spiral
             dx += dirX[directionIndex];
             dy += dirY[directionIndex];
             
@@ -214,13 +283,13 @@ public class GameManager : ManualSingletonMono<GameManager>
             
             stepCount++;
             
-            // Change direction if needed
+            // Đổi hướng nếu cần
             if (stepCount == stepSize)
             {
                 stepCount = 0;
                 directionIndex = (directionIndex + 1) % 4;
                 
-                // Increase step size after completing half of the spiral
+                // Tăng kích thước bước sau khi hoàn thành nửa spiral
                 if (directionIndex % 2 == 0)
                 {
                     stepSize++;
@@ -322,8 +391,147 @@ public class GameManager : ManualSingletonMono<GameManager>
             info += "No squad selected\n";
         }
         
+        // Hiển thị layer debug
+        info += "\nLayer Debug:\n";
+        info += $"- Ground layer: {LayerMask.NameToLayer("Ground")}\n";
+        info += $"- Troop layer: {LayerMask.NameToLayer("Troop")}\n";
+        info += $"- Squad layer: {LayerMask.NameToLayer("Squad")}\n";
+        
         // Draw info box
-        GUI.Box(new Rect(10, 10, 200, 100), "");
-        GUI.Label(new Rect(10, 10, 200, 100), info, style);
+        GUI.Box(new Rect(10, 10, 250, 200), "");
+        GUI.Label(new Rect(10, 10, 250, 200), info, style);
+    }
+    
+    /// <summary>
+    /// Đảm bảo layer được thiết lập đúng cho tất cả đối tượng
+    /// </summary>
+    private void EnsureCorrectLayers()
+    {
+        // Kiểm tra các layer
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        int troopLayer = LayerMask.NameToLayer("Troop");
+        int squadLayer = LayerMask.NameToLayer("Squad");
+        
+        if (groundLayer == -1 || troopLayer == -1 || squadLayer == -1)
+        {
+            Debug.LogError("Không tìm thấy một hoặc nhiều layer cần thiết (Ground, Troop, Squad). " +
+                        "Vui lòng tạo các layer này trong Project Settings.");
+            return;
+        }
+        
+        // Thiết lập layer cho Squad và GameObject của chúng
+        foreach (var kvp in squadObjects)
+        {
+            int squadId = kvp.Key;
+            GameObject squadObject = kvp.Value;
+            
+            // Thiết lập layer cho Squad GameObject
+            squadObject.layer = squadLayer;
+            
+            // Thêm BoxCollider nếu chưa có
+            Collider squadCollider = squadObject.GetComponent<Collider>();
+            if (squadCollider == null)
+            {
+                BoxCollider boxCollider = squadObject.AddComponent<BoxCollider>();
+                boxCollider.size = new Vector3(5f, 0.5f, 5f);
+                boxCollider.center = new Vector3(0, 0.25f, 0);
+                boxCollider.isTrigger = true;
+            }
+            
+            // Thiết lập layer cho các Troop của Squad này
+            if (troopsInSquad.ContainsKey(squadId))
+            {
+                foreach (var troopEntity in troopsInSquad[squadId])
+                {
+                    var entityBehaviour = GetEntityBehaviour(troopEntity);
+                    if (entityBehaviour != null)
+                    {
+                        // Thiết lập layer cho Troop GameObject
+                        entityBehaviour.gameObject.layer = troopLayer;
+                        
+                        // Thêm CapsuleCollider nếu chưa có
+                        Collider troopCollider = entityBehaviour.gameObject.GetComponent<Collider>();
+                        if (troopCollider == null)
+                        {
+                            CapsuleCollider capsuleCollider = entityBehaviour.gameObject.AddComponent<CapsuleCollider>();
+                            capsuleCollider.height = 2.0f;
+                            capsuleCollider.radius = 0.5f;
+                            capsuleCollider.center = new Vector3(0, 1.0f, 0);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Thiết lập layer cho các ô grid
+        if (gridManager != null)
+        {
+            // Khi grid được tạo, đảm bảo các cell có layer Ground
+            // Tạo script giúp đỡ để thay đổi layer
+            GameObject helperObject = new GameObject("LayerFixHelper");
+            var layerSetupHelper = helperObject.AddComponent<LayerSetupHelper>();
+            layerSetupHelper.AssignLayersToObjects();
+            
+            Debug.Log("Đã thiết lập layer cho tất cả đối tượng");
+            
+            // Xóa helper object sau khi hoàn thành
+            Destroy(helperObject, 1f);
+        }
+    }
+    
+    /// <summary>
+    /// Bật/tắt debug visualization cho tất cả troop
+    /// </summary>
+    private void ToggleTroopDebugging(bool enabled)
+    {
+        enableTroopDebugging = enabled;
+        
+        foreach (var kvp in troopsInSquad)
+        {
+            foreach (var troopEntity in kvp.Value)
+            {
+                var entityBehaviour = GetEntityBehaviour(troopEntity);
+                if (entityBehaviour != null)
+                {
+                    var debugVisualizer = entityBehaviour.GetComponent<TroopDebugVisualizer>();
+                    if (debugVisualizer != null)
+                    {
+                        debugVisualizer.enabled = enabled;
+                    }
+                }
+            }
+        }
+        
+        Debug.Log($"Debug visualization: {(enabled ? "ON" : "OFF")}");
+    }
+    
+    /// <summary>
+    /// Cập nhật vị trí của tất cả squad trên grid
+    /// </summary>
+    private void RefreshSquadPositions()
+    {
+        if (gridManager == null) return;
+        
+        // Xóa tất cả ô đã bị chiếm
+        gridManager.ClearAllOccupiedCells();
+        
+        // Đánh dấu lại các ô có squad
+        foreach (var kvp in squads)
+        {
+            Entity squadEntity = kvp.Value;
+            
+            if (squadEntity.HasComponent<Movement.PositionComponent>())
+            {
+                Vector3 position = squadEntity.GetComponent<Movement.PositionComponent>().Position;
+                Vector2Int cellCoords = gridManager.GetGridCoordinates(position);
+                
+                if (gridManager.IsWithinGrid(cellCoords))
+                {
+                    gridManager.SetCellOccupied(cellCoords, true);
+                }
+            }
+        }
+        
+        Debug.Log("Đã cập nhật vị trí của tất cả squad trên grid");
     }
 }
