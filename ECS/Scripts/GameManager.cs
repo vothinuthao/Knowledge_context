@@ -4,15 +4,16 @@ using Factories;
 using Steering.Config;
 using System.Collections.Generic;
 using Configs;
+using Core.Singleton;
+using Debug_Tool;
 using Management;
 using Squad;
 
 /// <summary>
 /// GameManager tích hợp tất cả các hệ thống của game
 /// </summary>
-public class GameManager : MonoBehaviour
+public class GameManager : ManualSingletonMono<GameManager>
 {
-    public static GameManager Instance { get; private set; }
     
     [Header("References")]
     [SerializeField] private WorldManager worldManager;
@@ -32,34 +33,14 @@ public class GameManager : MonoBehaviour
     private Dictionary<int, Entity> squads = new Dictionary<int, Entity>();
     private Dictionary<int, GameObject> squadObjects = new Dictionary<int, GameObject>();
     private Dictionary<int, List<Entity>> troopsInSquad = new Dictionary<int, List<Entity>>();
-    
-    private void Awake()
+
+    protected override void Awake()
     {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
-        }
-        
-        // Find references if not set
-        if (worldManager == null) worldManager = FindObjectOfType<WorldManager>();
-        if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
-        if (selectionManager == null) selectionManager = FindObjectOfType<SquadSelectionManager>();
-        
-        if (worldManager == null)
-        {
-            Debug.LogError("WorldManager không tìm thấy! Hãy đảm bảo đã thêm WorldManager vào scene.");
-            enabled = false;
-            return;
-        }
+        base.Awake();
     }
     
     private void Start()
     {
-        // Initialize the game
         StartGame();
     }
     
@@ -77,9 +58,7 @@ public class GameManager : MonoBehaviour
     private void StartGame()
     {
         Debug.Log("Khởi tạo game...");
-        
-        // Wait a frame to ensure everything is initialized
-        Invoke("CreateTestSquads", 0.1f);
+        Invoke(nameof(CreateTestSquads), 0.1f);
     }
     
     /// <summary>
@@ -88,13 +67,8 @@ public class GameManager : MonoBehaviour
     private void CreateTestSquads()
     {
         Debug.Log("Tạo các squad test...");
-        
-        // Tạo squad đầu tiên
         CreateSquad(new Vector3(3, 0, 3), Quaternion.identity, "Infantry", 9);
-        
-        // Tạo squad thứ hai
         CreateSquad(new Vector3(9, 0, 9), Quaternion.identity, "Archer", 9);
-        
         Debug.Log($"Đã tạo {squads.Count} squads");
     }
     
@@ -121,15 +95,9 @@ public class GameManager : MonoBehaviour
                 Debug.LogWarning($"Ô ({gridCoords.x}, {gridCoords.y}) đã bị chiếm. Tìm ô trống gần đó.");
                 gridCoords = FindNearestEmptyCell(gridCoords);
             }
-            
-            // Mark cell as occupied
             gridManager.SetCellOccupied(gridCoords, true);
-            
-            // Get center of cell
             position = gridManager.GetCellCenter(gridCoords);
         }
-        
-        // Create squad entity
         Entity squadEntity = worldManager.CreateSquad(
             position,
             rotation,

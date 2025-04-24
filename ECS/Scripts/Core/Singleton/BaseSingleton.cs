@@ -55,7 +55,7 @@ namespace Core.Singleton
         }
 
         //MUST OVERRIDE AWAKE AT CHILD CLASS
-        public virtual void Awake()
+        protected virtual void Awake()
         {
             if (_instance != null)
             {

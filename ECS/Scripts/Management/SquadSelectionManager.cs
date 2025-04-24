@@ -7,7 +7,7 @@ using UnityEngine;
 namespace Management
 {
     /// <summary>
-    /// Quản lý việc chọn và điều khiển Squad di chuyển giữa các ô
+    /// Manages squad selection and movement commands
     /// </summary>
     public class SquadSelectionManager : MonoBehaviour
     {
@@ -22,6 +22,9 @@ namespace Management
         [SerializeField] private Color enemySquadColor = new Color(1, 0, 0, 0.3f);
         [SerializeField] private float selectionCircleHeight = 0.05f;
         [SerializeField] private float selectionCircleScale = 1.2f;
+
+        [Header("Debug")]
+        [SerializeField] private bool debugMode = false;
     
         // Currently selected squad
         private Entity selectedSquad = null;
@@ -35,6 +38,7 @@ namespace Management
     
         private void Start()
         {
+            // Get WorldManager reference
             worldManager = WorldManager.Instance;
             if (worldManager == null)
             {
@@ -43,12 +47,23 @@ namespace Management
                 return;
             }
         
-            // Create selection circle if prefab is assigned
             if (selectionCirclePrefab != null)
             {
                 selectionCircle = Instantiate(selectionCirclePrefab, Vector3.zero, Quaternion.Euler(90, 0, 0));
                 selectionCircle.transform.localScale = Vector3.one * selectionCircleScale;
                 selectionCircle.SetActive(false);
+            }
+            
+            if (selectableLayers.value == 0)
+            {
+                Debug.LogWarning("Selectable layers mask is not set! Setting to default 'Default' layer.");
+                selectableLayers = LayerMask.GetMask("Default");
+            }
+            
+            if (groundLayers.value == 0)
+            {
+                Debug.LogWarning("Ground layers mask is not set! Setting to default 'Ground' layer.");
+                groundLayers = LayerMask.GetMask("Ground");
             }
         }
     
@@ -71,10 +86,16 @@ namespace Management
         
             // Handle hotkeys
             HandleHotkeys();
+            
+            // Debug logging
+            if (debugMode && Input.GetMouseButtonDown(0))
+            {
+                DebugRaycastInfo();
+            }
         }
     
         /// <summary>
-        /// Xử lý việc chọn Squad bằng mouse
+        /// Handles selection of squads and troops with mouse click
         /// </summary>
         private void HandleSelection()
         {
@@ -84,12 +105,28 @@ namespace Management
             if (Physics.Raycast(ray, out hit, selectionDistance, selectableLayers))
             {
                 GameObject hitObject = hit.collider.gameObject;
+                
+                if (debugMode)
+                {
+                    Debug.Log($"Hit object: {hitObject.name} on layer {LayerMask.LayerToName(hitObject.layer)}");
+                }
             
-                // Try to find entity behaviour
+                // Try to find entity behaviour in hit object or its parent
                 EntityBehaviour entityBehaviour = hitObject.GetComponent<EntityBehaviour>();
+                if (entityBehaviour == null)
+                {
+                    // Try to get from parent if not found on direct hit
+                    entityBehaviour = hitObject.GetComponentInParent<EntityBehaviour>();
+                }
+                
                 if (entityBehaviour != null)
                 {
                     Entity entity = entityBehaviour.GetEntity();
+                    
+                    if (debugMode && entity != null)
+                    {
+                        Debug.Log($"Found entity with ID: {entity.Id}");
+                    }
                 
                     // Check if this is a troop entity
                     if (entity != null && entity.HasComponent<SquadMemberComponent>())
@@ -99,16 +136,7 @@ namespace Management
                         int squadId = squadMember.SquadEntityId;
                     
                         // Find the squad entity
-                        Entity squadEntity = null;
-                    
-                        foreach (var candidateEntity in worldManager.GetWorld().GetEntitiesWith<SquadStateComponent>())
-                        {
-                            if (candidateEntity.Id == squadId)
-                            {
-                                squadEntity = candidateEntity;
-                                break;
-                            }
-                        }
+                        Entity squadEntity = FindSquadById(squadId);
                     
                         if (squadEntity != null)
                         {
@@ -130,16 +158,39 @@ namespace Management
                         Debug.Log($"Selected Squad ID: {entity.Id}");
                     }
                 }
+                else if (debugMode)
+                {
+                    Debug.LogWarning("No EntityBehaviour component found on hit object or its parents");
+                }
             }
             else
             {
-                // Clicked on empty space
-                DeselectCurrentSquad();
+                // Clicked on empty space, only deselect if not hitting UI
+                if (!UnityEngine.EventSystems.EventSystem.current || 
+                    !UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject())
+                {
+                    DeselectCurrentSquad();
+                }
             }
+        }
+        
+        /// <summary>
+        /// Helper method to find a squad entity by ID
+        /// </summary>
+        private Entity FindSquadById(int squadId)
+        {
+            foreach (var candidateEntity in worldManager.GetWorld().GetEntitiesWith<SquadStateComponent>())
+            {
+                if (candidateEntity.Id == squadId)
+                {
+                    return candidateEntity;
+                }
+            }
+            return null;
         }
     
         /// <summary>
-        /// Xử lý lệnh di chuyển đến ô
+        /// Handles movement commands for the selected squad
         /// </summary>
         private void HandleMovementCommand()
         {
@@ -151,48 +202,94 @@ namespace Management
             if (Physics.Raycast(ray, out hit, selectionDistance, groundLayers))
             {
                 Vector3 targetPosition = hit.point;
+                
+                if (debugMode)
+                {
+                    Debug.Log($"Movement target: {targetPosition}");
+                }
             
                 // Check if we have a grid manager
                 if (GridManager.Instance != null)
                 {
                     // Get the cell under the cursor
                     Vector2Int cellCoordinates = GridManager.Instance.GetGridCoordinates(targetPosition);
-                
-                    // Check if cell is valid and not occupied
-                    if (GridManager.Instance.IsWithinGrid(cellCoordinates) && !GridManager.Instance.IsCellOccupied(cellCoordinates))
+                    
+                    if (debugMode)
                     {
-                        // Update target position to cell center
-                        targetPosition = GridManager.Instance.GetCellCenter(cellCoordinates);
-                    
-                        // Mark current cell as unoccupied
-                        if (selectedSquad.HasComponent<PositionComponent>())
+                        Debug.Log($"Target cell coordinates: {cellCoordinates}");
+                        Debug.Log($"Cell occupied: {GridManager.Instance.IsCellOccupied(cellCoordinates)}");
+                    }
+                
+                    // Check if cell is valid and not occupied (or is occupied by the current squad)
+                    if (GridManager.Instance.IsWithinGrid(cellCoordinates))
+                    {
+                        bool canMoveToCell = true;
+                        
+                        if (GridManager.Instance.IsCellOccupied(cellCoordinates))
                         {
-                            Vector3 currentPos = selectedSquad.GetComponent<PositionComponent>().Position;
-                            Vector2Int currentCell = GridManager.Instance.GetGridCoordinates(currentPos);
-                            GridManager.Instance.SetCellOccupied(currentCell, false);
+                            // Check if cell is occupied by current squad
+                            if (selectedSquad.HasComponent<PositionComponent>())
+                            {
+                                Vector3 currentPos = selectedSquad.GetComponent<PositionComponent>().Position;
+                                Vector2Int currentCell = GridManager.Instance.GetGridCoordinates(currentPos);
+                                
+                                // Allow movement if moving to the same cell or adjacent
+                                canMoveToCell = (currentCell == cellCoordinates) || 
+                                               (Mathf.Abs(currentCell.x - cellCoordinates.x) <= 1 && 
+                                                Mathf.Abs(currentCell.y - cellCoordinates.y) <= 1);
+                            }
+                            else
+                            {
+                                canMoveToCell = false;
+                            }
                         }
-                    
-                        // Mark target cell as occupied
-                        GridManager.Instance.SetCellOccupied(cellCoordinates, true);
-                    
-                        // Select the cell in grid
-                        GridManager.Instance.SelectCell(cellCoordinates);
+                        
+                        if (canMoveToCell)
+                        {
+                            // Update target position to cell center
+                            targetPosition = GridManager.Instance.GetCellCenter(cellCoordinates);
+                        
+                            // Mark current cell as unoccupied
+                            if (selectedSquad.HasComponent<PositionComponent>())
+                            {
+                                Vector3 currentPos = selectedSquad.GetComponent<PositionComponent>().Position;
+                                Vector2Int currentCell = GridManager.Instance.GetGridCoordinates(currentPos);
+                                
+                                if (currentCell != cellCoordinates) // Only if moving to a different cell
+                                {
+                                    GridManager.Instance.SetCellOccupied(currentCell, false);
+                                    GridManager.Instance.SetCellOccupied(cellCoordinates, true);
+                                }
+                            }
+                        
+                            // Select the cell in grid
+                            GridManager.Instance.SelectCell(cellCoordinates);
+                            
+                            // Issue movement command
+                            worldManager.CommandSquadMove(selectedSquad, targetPosition);
+                            Debug.Log($"Moving Squad {selectedSquad.Id} to {targetPosition} (Cell: {cellCoordinates})");
+                        }
+                        else
+                        {
+                            Debug.Log("Cell is occupied by another squad. Cannot move there.");
+                        }
                     }
                     else
                     {
-                        Debug.Log("Cell is occupied or invalid. Cannot move there.");
-                        return;
+                        Debug.Log($"Cell coordinates {cellCoordinates} are outside the grid. Cannot move there.");
                     }
                 }
-            
-                // Issue movement command
-                worldManager.CommandSquadMove(selectedSquad, targetPosition);
-                Debug.Log($"Moving Squad {selectedSquad.Id} to {targetPosition}");
+                else
+                {
+                    // No grid manager, just move directly to hit point
+                    worldManager.CommandSquadMove(selectedSquad, targetPosition);
+                    Debug.Log($"Moving Squad {selectedSquad.Id} to {targetPosition} (No grid)");
+                }
             }
         }
     
         /// <summary>
-        /// Xử lý các phím tắt trong game
+        /// Handles hotkeys for squad commands
         /// </summary>
         private void HandleHotkeys()
         {
@@ -209,16 +306,10 @@ namespace Management
                 worldManager.CommandSquadDefend(selectedSquad);
                 Debug.Log($"Commanding Squad {selectedSquad.Id} to defend position");
             }
-        
-            // Attack command example (would need target info)
-            // if (Input.GetKeyDown(KeyCode.A) && selectedSquad != null && targetEntity != null)
-            // {
-            //     worldManager.CommandSquadAttack(selectedSquad, targetEntity);
-            // }
         }
     
         /// <summary>
-        /// Chọn một Squad
+        /// Selects a squad and shows visual indicator
         /// </summary>
         private void SelectSquad(Entity squad)
         {
@@ -240,12 +331,10 @@ namespace Management
                 Vector2Int cellCoordinates = GridManager.Instance.GetGridCoordinates(squadPos);
                 GridManager.Instance.SelectCell(cellCoordinates);
             }
-        
-            // Additional selection visual cues could be added here
         }
     
         /// <summary>
-        /// Huỷ chọn Squad hiện tại
+        /// Deselects the current squad and hides indicators
         /// </summary>
         private void DeselectCurrentSquad()
         {
@@ -261,7 +350,7 @@ namespace Management
         }
     
         /// <summary>
-        /// Cập nhật vị trí của vòng tròn selection
+        /// Updates the position of the selection circle to follow the selected squad
         /// </summary>
         private void UpdateSelectionCircle()
         {
@@ -279,7 +368,7 @@ namespace Management
         }
     
         /// <summary>
-        /// Lấy Squad đang được chọn
+        /// Returns the currently selected squad
         /// </summary>
         public Entity GetSelectedSquad()
         {
@@ -287,7 +376,7 @@ namespace Management
         }
     
         /// <summary>
-        /// Đăng ký GameObject đại diện cho một Squad
+        /// Registers a GameObject that represents a squad
         /// </summary>
         public void RegisterSquadGameObject(int squadId, GameObject squadObject)
         {
@@ -296,7 +385,40 @@ namespace Management
                 squadGameObjects.Add(squadId, squadObject);
             }
         }
+        
+        /// <summary>
+        /// Helper method to debug raycast issues
+        /// </summary>
+        private void DebugRaycastInfo()
+        {
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            RaycastHit[] hits = Physics.RaycastAll(ray, selectionDistance);
+            
+            Debug.Log($"Raycast detected {hits.Length} objects");
+            
+            foreach (var hit in hits)
+            {
+                Debug.Log($"Hit: {hit.collider.gameObject.name} | Layer: {LayerMask.LayerToName(hit.collider.gameObject.layer)} | Distance: {hit.distance}");
+            }
+            
+            Debug.Log($"Selectable layers: {LayerMaskToString(selectableLayers)}");
+            Debug.Log($"Ground layers: {LayerMaskToString(groundLayers)}");
+        }
+        
+        /// <summary>
+        /// Helper method to convert layer mask to readable string
+        /// </summary>
+        private string LayerMaskToString(LayerMask mask)
+        {
+            var layers = "";
+            for (int i = 0; i < 32; i++)
+            {
+                if ((mask & (1 << i)) != 0)
+                {
+                    layers += LayerMask.LayerToName(i) + ", ";
+                }
+            }
+            return layers.TrimEnd(',', ' ');
+        }
     }
-
-    
 }

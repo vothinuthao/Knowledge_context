@@ -6,11 +6,10 @@ using UnityEditor;
 #endif
 
 /// <summary>
-/// Hệ thống grid tạo và quản lý các ô (tiles) trên mặt đất
+/// System to create and manage grid cells on the ground
 /// </summary>
 public class GridManager : ManualSingletonMono<GridManager>
 {
-    public static GridManager Instance { get; private set; }
     
     [Header("Grid Settings")]
     [SerializeField] private int gridWidth = 20;
@@ -26,6 +25,9 @@ public class GridManager : ManualSingletonMono<GridManager>
     [SerializeField] private Material highlightedCellMaterial;
     [SerializeField] private Material occupiedCellMaterial;
     
+    [Header("Debug")]
+    [SerializeField] private bool debugMode = false;
+    
     // Dictionary to store tile game objects
     private Dictionary<Vector2Int, GridCell> gridCells = new Dictionary<Vector2Int, GridCell>();
     
@@ -34,17 +36,54 @@ public class GridManager : ManualSingletonMono<GridManager>
     private Vector2Int? highlightedCell = null;
     private List<Vector2Int> occupiedCells = new List<Vector2Int>();
 
-    public override void Awake()
+    protected override void Awake()
     {
         base.Awake();
+        if (defaultCellMaterial == null)
+        {
+            Debug.LogWarning("Default cell material is not assigned. Creating a default material.");
+            defaultCellMaterial = new Material(Shader.Find("Standard"));
+            defaultCellMaterial.color = new Color(0.8f, 0.8f, 0.8f, 0.5f);
+        }
+        
+        if (selectedCellMaterial == null)
+        {
+            Debug.LogWarning("Selected cell material is not assigned. Creating a default material.");
+            selectedCellMaterial = new Material(Shader.Find("Standard"));
+            selectedCellMaterial.color = new Color(0.0f, 1.0f, 0.0f, 0.5f);
+        }
+        
+        if (highlightedCellMaterial == null)
+        {
+            Debug.LogWarning("Highlighted cell material is not assigned. Creating a default material.");
+            highlightedCellMaterial = new Material(Shader.Find("Standard"));
+            highlightedCellMaterial.color = new Color(0.0f, 0.7f, 1.0f, 0.5f);
+        }
+        
+        if (occupiedCellMaterial == null)
+        {
+            Debug.LogWarning("Occupied cell material is not assigned. Creating a default material.");
+            occupiedCellMaterial = new Material(Shader.Find("Standard"));
+            occupiedCellMaterial.color = new Color(1.0f, 0.5f, 0.0f, 0.5f);
+        }
+        
+        // Create grid on awake in play mode
         if (Application.isPlaying)
         {
             CreateGrid();
         }
     }
     
+    /// <summary>
+    /// Creates all grid cells
+    /// </summary>
     private void CreateGrid()
     {
+        if (debugMode)
+        {
+            Debug.Log($"Creating grid: {gridWidth}x{gridLength}, Cell size: {cellSize}");
+        }
+        
         for (int x = 0; x < gridWidth; x++)
         {
             for (int z = 0; z < gridLength; z++)
@@ -60,8 +99,13 @@ public class GridManager : ManualSingletonMono<GridManager>
                 gridCells.Add(coordinates, cell);
             }
         }
+        
+        Debug.Log($"Grid created with {gridCells.Count} cells");
     }
     
+    /// <summary>
+    /// Creates visual representation of a grid cell
+    /// </summary>
     private void CreateCellVisual(GridCell cell)
     {
         GameObject cellObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -75,7 +119,17 @@ public class GridManager : ManualSingletonMono<GridManager>
         renderer.material = defaultCellMaterial;
         
         // Set layer to ground
-        cellObject.layer = LayerMask.NameToLayer("Ground");
+        int groundLayer = LayerMask.NameToLayer("Ground");
+        if (groundLayer == -1)
+        {
+            // Create Ground layer if it doesn't exist
+            Debug.LogWarning("'Ground' layer not found. Please create it in your project settings.");
+            cellObject.layer = 0; // Default layer
+        }
+        else
+        {
+            cellObject.layer = groundLayer;
+        }
         
         // Add collider for mouse selection
         BoxCollider collider = cellObject.GetComponent<BoxCollider>();
@@ -86,7 +140,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Chuyển đổi từ tọa độ grid sang tọa độ thế giới
+    /// Converts grid coordinates to world position
     /// </summary>
     public Vector3 GetWorldPosition(Vector2Int coordinates)
     {
@@ -98,7 +152,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Chuyển đổi từ tọa độ thế giới sang tọa độ grid
+    /// Converts world position to grid coordinates
     /// </summary>
     public Vector2Int GetGridCoordinates(Vector3 worldPosition)
     {
@@ -111,7 +165,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Kiểm tra xem tọa độ có nằm trong grid không
+    /// Checks if coordinates are within the grid
     /// </summary>
     public bool IsWithinGrid(Vector2Int coordinates)
     {
@@ -120,7 +174,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Đánh dấu ô đã được chọn
+    /// Marks a cell as selected
     /// </summary>
     public void SelectCell(Vector2Int coordinates)
     {
@@ -131,7 +185,14 @@ public class GridManager : ManualSingletonMono<GridManager>
             if (previousCell.CellObject != null)
             {
                 Renderer renderer = previousCell.CellObject.GetComponent<Renderer>();
-                renderer.material = defaultCellMaterial;
+                if (occupiedCells.Contains(selectedCell.Value))
+                {
+                    renderer.material = occupiedCellMaterial;
+                }
+                else
+                {
+                    renderer.material = defaultCellMaterial;
+                }
             }
         }
         
@@ -147,10 +208,15 @@ public class GridManager : ManualSingletonMono<GridManager>
                 renderer.material = selectedCellMaterial;
             }
         }
+        
+        if (debugMode)
+        {
+            Debug.Log($"Selected cell: {coordinates}");
+        }
     }
     
     /// <summary>
-    /// Đánh dấu ô đang được hover
+    /// Marks a cell as highlighted (on hover)
     /// </summary>
     public void HighlightCell(Vector2Int coordinates)
     {
@@ -182,22 +248,43 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Đánh dấu ô đã bị chiếm
+    /// Sets a cell as occupied
     /// </summary>
     public void SetCellOccupied(Vector2Int coordinates, bool occupied)
     {
+        if (!IsWithinGrid(coordinates))
+        {
+            if (debugMode)
+            {
+                Debug.LogWarning($"Tried to set occupancy of cell {coordinates}, which is outside the grid.");
+            }
+            return;
+        }
+        
         if (occupied)
         {
             if (!occupiedCells.Contains(coordinates))
             {
                 occupiedCells.Add(coordinates);
+                if (debugMode)
+                {
+                    Debug.Log($"Cell {coordinates} marked as occupied");
+                }
             }
         }
         else
         {
-            occupiedCells.Remove(coordinates);
+            if (occupiedCells.Contains(coordinates))
+            {
+                occupiedCells.Remove(coordinates);
+                if (debugMode)
+                {
+                    Debug.Log($"Cell {coordinates} marked as unoccupied");
+                }
+            }
         }
         
+        // Update visual if necessary (not selected or highlighted)
         if (gridCells.ContainsKey(coordinates) && coordinates != selectedCell && coordinates != highlightedCell)
         {
             GridCell cell = gridCells[coordinates];
@@ -210,7 +297,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Kiểm tra xem ô có bị chiếm chưa
+    /// Checks if a cell is occupied
     /// </summary>
     public bool IsCellOccupied(Vector2Int coordinates)
     {
@@ -218,7 +305,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Tìm ô mà mouse đang trỏ vào
+    /// Tries to get the cell under the mouse cursor
     /// </summary>
     public bool TryGetCellUnderMouse(out Vector2Int coordinates)
     {
@@ -240,7 +327,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Lấy ô ở tọa độ grid
+    /// Gets a cell by grid coordinates
     /// </summary>
     public GridCell GetCell(Vector2Int coordinates)
     {
@@ -252,7 +339,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Lấy ô ở tọa độ world
+    /// Gets a cell at world position
     /// </summary>
     public GridCell GetCellAtWorldPosition(Vector3 worldPosition)
     {
@@ -261,7 +348,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Lấy trung tâm của ô
+    /// Gets the center position of a cell
     /// </summary>
     public Vector3 GetCellCenter(Vector2Int coordinates)
     {
@@ -269,7 +356,7 @@ public class GridManager : ManualSingletonMono<GridManager>
     }
     
     /// <summary>
-    /// Vẽ debug gizmos trong editor
+    /// Draws debug gizmos in editor
     /// </summary>
     private void OnDrawGizmos()
     {
@@ -294,10 +381,33 @@ public class GridManager : ManualSingletonMono<GridManager>
             );
         }
     }
+    
+    /// <summary>
+    /// Clears all occupied cell markers
+    /// </summary>
+    public void ClearAllOccupiedCells()
+    {
+        foreach (var coords in occupiedCells.ToArray())
+        {
+            SetCellOccupied(coords, false);
+        }
+        occupiedCells.Clear();
+    }
+    
+    /// <summary>
+    /// Updates occupancy based on actual squad positions 
+    /// </summary>
+    public void RefreshOccupancyFromSquads()
+    {
+        ClearAllOccupiedCells();
+        
+        // This would need to be implemented according to your game's needs
+        // For example, you could iterate over all squad entities and mark their positions
+    }
 }
 
 /// <summary>
-/// Đại diện cho một ô trong grid
+/// Represents a cell in the grid
 /// </summary>
 public class GridCell
 {
@@ -316,26 +426,3 @@ public class GridCell
         IsOccupied = false;
     }
 }
-
-#if UNITY_EDITOR
-/// <summary>
-/// Editor script để tùy chỉnh GridManager trong Inspector
-/// </summary>
-[CustomEditor(typeof(GridManager))]
-public class GridManagerEditor : Editor
-{
-    public override void OnInspectorGUI()
-    {
-        DrawDefaultInspector();
-        
-        GridManager gridManager = (GridManager)target;
-        
-        EditorGUILayout.Space();
-        if (GUILayout.Button("Preview Grid"))
-        {
-            // Force OnDrawGizmos to update
-            SceneView.RepaintAll();
-        }
-    }
-}
-#endif
