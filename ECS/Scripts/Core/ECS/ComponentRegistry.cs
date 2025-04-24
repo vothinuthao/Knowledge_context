@@ -1,4 +1,5 @@
-﻿using System;
+﻿// File: ECS/Scripts/Core/ECS/ComponentRegistry.cs (Updated)
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -95,7 +96,7 @@ namespace Core.ECS
         }
         
         /// <summary>
-        /// Get all entities with multiple component types
+        /// Get all entities with two component types
         /// </summary>
         public IEnumerable<Entity> GetEntitiesWith<T1, T2>() 
             where T1 : IComponent 
@@ -105,7 +106,7 @@ namespace Core.ECS
         }
         
         /// <summary>
-        /// Get all entities with multiple component types
+        /// Get all entities with three component types
         /// </summary>
         public IEnumerable<Entity> GetEntitiesWith<T1, T2, T3>() 
             where T1 : IComponent 
@@ -113,6 +114,18 @@ namespace Core.ECS
             where T3 : IComponent
         {
             return GetEntitiesWith<T1, T2>().Intersect(GetEntitiesWith<T3>());
+        }
+        
+        /// <summary>
+        /// Get all entities with four component types
+        /// </summary>
+        public IEnumerable<Entity> GetEntitiesWith<T1, T2, T3, T4>() 
+            where T1 : IComponent 
+            where T2 : IComponent
+            where T3 : IComponent
+            where T4 : IComponent
+        {
+            return GetEntitiesWith<T1, T2, T3>().Intersect(GetEntitiesWith<T4>());
         }
     }
 }

@@ -6,13 +6,13 @@ using UnityEngine;
 namespace Systems.Steering
 {
     /// <summary>
-    /// System that processes seek steering behavior (move toward target)
+    /// System that processes ambush move behavior (stealthy movement)
     /// </summary>
-    public class SeekSystem : ISystem
+    public class AmbushMoveSystem : ISystem
     {
         private World _world;
         
-        public int Priority => 98; // High priority
+        public int Priority => 70;
         
         public void Initialize(World world)
         {
@@ -21,14 +21,20 @@ namespace Systems.Steering
         
         public void Update(float deltaTime)
         {
-            foreach (var entity in _world.GetEntitiesWith<SeekComponent, SteeringDataComponent, PositionComponent>())
+            foreach (var entity in _world.GetEntitiesWith<AmbushMoveComponent, SteeringDataComponent, PositionComponent>())
             {
-                var seekComponent = entity.GetComponent<SeekComponent>();
+                var ambushComponent = entity.GetComponent<AmbushMoveComponent>();
                 var steeringData = entity.GetComponent<SteeringDataComponent>();
                 var positionComponent = entity.GetComponent<PositionComponent>();
                 
                 // Skip if behavior is disabled
-                if (!seekComponent.IsEnabled || !steeringData.IsEnabled)
+                if (!ambushComponent.IsEnabled || !steeringData.IsEnabled)
+                {
+                    continue;
+                }
+                
+                // Skip if in danger (ambush broken)
+                if (steeringData.IsInDanger)
                 {
                     continue;
                 }
@@ -37,6 +43,13 @@ namespace Systems.Steering
                 if (steeringData.TargetPosition == Vector3.zero)
                 {
                     continue;
+                }
+                
+                // Modify movement speed
+                if (entity.HasComponent<VelocityComponent>())
+                {
+                    var velocityComponent = entity.GetComponent<VelocityComponent>();
+                    velocityComponent.SpeedMultiplier = ambushComponent.MoveSpeedMultiplier;
                 }
                 
                 // Calculate direction to target
@@ -56,7 +69,7 @@ namespace Systems.Steering
                 }
                 else
                 {
-                    maxSpeed = 3.0f; // Default speed
+                    maxSpeed = 3.0f * ambushComponent.MoveSpeedMultiplier; // Default speed with multiplier
                 }
                 
                 Vector3 desiredVelocity = toTarget.normalized * maxSpeed;
@@ -73,7 +86,7 @@ namespace Systems.Steering
                 }
                 
                 // Apply weight
-                steeringForce *= seekComponent.Weight;
+                steeringForce *= ambushComponent.Weight;
                 
                 // Add force to steering data
                 steeringData.AddForce(steeringForce);

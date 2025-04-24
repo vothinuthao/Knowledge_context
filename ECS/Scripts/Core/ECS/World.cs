@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿// File: ECS/Scripts/Core/ECS/World.cs (Updated)
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Core.ECS
@@ -93,6 +94,18 @@ namespace Core.ECS
             where T3 : IComponent
         {
             return _registry.GetEntitiesWith<T1, T2, T3>();
+        }
+        
+        /// <summary>
+        /// Get entities with multiple component types
+        /// </summary>
+        public IEnumerable<Entity> GetEntitiesWith<T1, T2, T3, T4>() 
+            where T1 : IComponent 
+            where T2 : IComponent
+            where T3 : IComponent
+            where T4 : IComponent
+        {
+            return _registry.GetEntitiesWith<T1, T2, T3, T4>();
         }
         
         // Notification methods for component tracking

@@ -6,13 +6,13 @@ using UnityEngine;
 namespace Systems.Steering
 {
     /// <summary>
-    /// System that processes seek steering behavior (move toward target)
+    /// System that processes flee steering behavior (move away from threats)
     /// </summary>
-    public class SeekSystem : ISystem
+    public class FleeSystem : ISystem
     {
         private World _world;
         
-        public int Priority => 98; // High priority
+        public int Priority => 100; // Higher priority than most behaviors
         
         public void Initialize(World world)
         {
@@ -21,34 +21,35 @@ namespace Systems.Steering
         
         public void Update(float deltaTime)
         {
-            foreach (var entity in _world.GetEntitiesWith<SeekComponent, SteeringDataComponent, PositionComponent>())
+            foreach (var entity in _world.GetEntitiesWith<FleeComponent, SteeringDataComponent, PositionComponent>())
             {
-                var seekComponent = entity.GetComponent<SeekComponent>();
+                var fleeComponent = entity.GetComponent<FleeComponent>();
                 var steeringData = entity.GetComponent<SteeringDataComponent>();
                 var positionComponent = entity.GetComponent<PositionComponent>();
                 
                 // Skip if behavior is disabled
-                if (!seekComponent.IsEnabled || !steeringData.IsEnabled)
+                if (!fleeComponent.IsEnabled || !steeringData.IsEnabled)
                 {
                     continue;
                 }
                 
-                // Skip if no target position
-                if (steeringData.TargetPosition == Vector3.zero)
+                // Skip if no avoid position
+                if (steeringData.AvoidPosition == Vector3.zero)
                 {
                     continue;
                 }
                 
-                // Calculate direction to target
-                Vector3 toTarget = steeringData.TargetPosition - positionComponent.Position;
+                // Calculate direction from threat
+                Vector3 fromThreat = positionComponent.Position - steeringData.AvoidPosition;
+                float distance = fromThreat.magnitude;
                 
-                // Skip if already at target
-                if (toTarget.magnitude < 0.1f)
+                // Only flee if within panic distance
+                if (distance > fleeComponent.PanicDistance)
                 {
                     continue;
                 }
                 
-                // Calculate desired velocity
+                // Calculate desired velocity (away from threat)
                 float maxSpeed = 0f;
                 if (entity.HasComponent<VelocityComponent>())
                 {
@@ -59,7 +60,11 @@ namespace Systems.Steering
                     maxSpeed = 3.0f; // Default speed
                 }
                 
-                Vector3 desiredVelocity = toTarget.normalized * maxSpeed;
+                // Stronger flee force when closer to threat
+                float intensityFactor = 1.0f - (distance / fleeComponent.PanicDistance);
+                float adjustedSpeed = maxSpeed * (1.0f + intensityFactor);
+                
+                Vector3 desiredVelocity = fromThreat.normalized * adjustedSpeed;
                 
                 // Calculate steering force
                 Vector3 steeringForce = Vector3.zero;
@@ -73,7 +78,7 @@ namespace Systems.Steering
                 }
                 
                 // Apply weight
-                steeringForce *= seekComponent.Weight;
+                steeringForce *= fleeComponent.Weight;
                 
                 // Add force to steering data
                 steeringData.AddForce(steeringForce);

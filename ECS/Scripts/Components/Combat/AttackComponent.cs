@@ -1,6 +1,8 @@
-﻿namespace Combat
+﻿using Core.ECS;
+
+namespace Combat
 {
-    public class AttackComponent
+    public class AttackComponent : IComponent
     {
         
     }

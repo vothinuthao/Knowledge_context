@@ -6,13 +6,13 @@ using UnityEngine;
 namespace Systems.Steering
 {
     /// <summary>
-    /// System that processes seek steering behavior (move toward target)
+    /// System that processes arrival steering behavior (slow down when approaching target)
     /// </summary>
-    public class SeekSystem : ISystem
+    public class ArrivalSystem : ISystem
     {
         private World _world;
         
-        public int Priority => 98; // High priority
+        public int Priority => 95;
         
         public void Initialize(World world)
         {
@@ -21,14 +21,14 @@ namespace Systems.Steering
         
         public void Update(float deltaTime)
         {
-            foreach (var entity in _world.GetEntitiesWith<SeekComponent, SteeringDataComponent, PositionComponent>())
+            foreach (var entity in _world.GetEntitiesWith<ArrivalComponent, SteeringDataComponent, PositionComponent>())
             {
-                var seekComponent = entity.GetComponent<SeekComponent>();
+                var arrivalComponent = entity.GetComponent<ArrivalComponent>();
                 var steeringData = entity.GetComponent<SteeringDataComponent>();
                 var positionComponent = entity.GetComponent<PositionComponent>();
                 
                 // Skip if behavior is disabled
-                if (!seekComponent.IsEnabled || !steeringData.IsEnabled)
+                if (!arrivalComponent.IsEnabled || !steeringData.IsEnabled)
                 {
                     continue;
                 }
@@ -41,14 +41,15 @@ namespace Systems.Steering
                 
                 // Calculate direction to target
                 Vector3 toTarget = steeringData.TargetPosition - positionComponent.Position;
+                float distance = toTarget.magnitude;
                 
                 // Skip if already at target
-                if (toTarget.magnitude < 0.1f)
+                if (distance < 0.1f)
                 {
                     continue;
                 }
                 
-                // Calculate desired velocity
+                // Calculate desired velocity based on distance
                 float maxSpeed = 0f;
                 if (entity.HasComponent<VelocityComponent>())
                 {
@@ -59,7 +60,17 @@ namespace Systems.Steering
                     maxSpeed = 3.0f; // Default speed
                 }
                 
-                Vector3 desiredVelocity = toTarget.normalized * maxSpeed;
+                Vector3 desiredVelocity;
+                
+                // If within slowing distance, reduce speed based on how close we are
+                if (distance < arrivalComponent.SlowingDistance)
+                {
+                    desiredVelocity = toTarget.normalized * maxSpeed * (distance / arrivalComponent.SlowingDistance);
+                }
+                else
+                {
+                    desiredVelocity = toTarget.normalized * maxSpeed;
+                }
                 
                 // Calculate steering force
                 Vector3 steeringForce = Vector3.zero;
@@ -73,7 +84,7 @@ namespace Systems.Steering
                 }
                 
                 // Apply weight
-                steeringForce *= seekComponent.Weight;
+                steeringForce *= arrivalComponent.Weight;
                 
                 // Add force to steering data
                 steeringData.AddForce(steeringForce);

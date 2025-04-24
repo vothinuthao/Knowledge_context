@@ -1,5 +1,4 @@
-﻿using Components.Steering;
-using Core.ECS;
+﻿using Core.ECS;
 using Movement;
 using Squad;
 using Steering;
@@ -123,7 +122,7 @@ namespace Factories
                 case TroopType.Berserker:
                 case TroopType.Assassin:
                     return 4.0f;
-                case TroopType.Infantry:
+                case TroopType.Warrior:
                     return 3.5f;
                 case TroopType.Archer:
                 case TroopType.Commander:
@@ -192,7 +191,7 @@ namespace Factories
     
     public enum TroopType
     {
-        Infantry,
+        Warrior,
         HeavyInfantry,
         Berserker,
         Archer,
