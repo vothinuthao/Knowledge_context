@@ -3,8 +3,7 @@ using UnityEngine;
 using Core.ECS;
 using Components.Squad;
 using Core.Grid;
-using System.Collections.Generic;
-using Movement;
+using Components;
 
 namespace Systems.Movement
 {

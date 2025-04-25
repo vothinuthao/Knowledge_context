@@ -1,7 +1,7 @@
 ﻿using Core.ECS;
 using UnityEngine;
 
-namespace Movement
+namespace Components
 {
     /// <summary>
     /// Component for entity rotation

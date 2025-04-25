@@ -4,6 +4,7 @@ using Movement;
 using Steering;
 using UnityEngine;
 using System.Collections.Generic;
+using Components;
 using Squad;
 
 namespace Systems.Steering

@@ -1,4 +1,5 @@
-﻿using Core.ECS;
+﻿using Components;
+using Core.ECS;
 using Movement;
 using Squad;
 using Steering;
@@ -25,25 +26,15 @@ namespace Factories
         /// </summary>
         public Entity CreateTroop(Vector3 position, Quaternion rotation, TroopType troopType)
         {
-            // Create entity
             Entity entity = _world.CreateEntity();
-            
-            // Add basic components
             entity.AddComponent(new PositionComponent(position));
             entity.AddComponent(new RotationComponent(rotation, 10f));
             entity.AddComponent(new VelocityComponent(GetMoveSpeedForType(troopType)));
             entity.AddComponent(new AccelerationComponent());
-            
-            // Add steering components
             entity.AddComponent(new SteeringDataComponent());
-            
-            // Add behavior components based on troop type
             AddBehaviorsForType(entity, troopType);
-            
-            // Create GameObject and link to entity
-            GameObject troopObject = GameObject.Instantiate(_troopPrefab, position, rotation);
+            GameObject troopObject = Object.Instantiate(_troopPrefab, position, rotation);
             troopObject.name = $"Troop_{troopType}_{entity.Id}";
-            
             var entityBehaviour = troopObject.GetComponent<EntityBehaviour>();
             entityBehaviour.Initialize(entity, _world);
             
@@ -142,49 +133,6 @@ namespace Factories
             // Add common behaviors
             entity.AddComponent(new SeekComponent(1.0f));
             entity.AddComponent(new SeparationComponent(2.0f, 2.0f));
-            
-            // Add type-specific behaviors
-            // switch (troopType)
-            // {
-            //     case TroopType.Infantry:
-            //         entity.AddComponent(new CohesionComponent(1.0f, 5.0f));
-            //         entity.AddComponent(new AlignmentComponent(1.0f, 5.0f));
-            //         break;
-            //         
-            //     case TroopType.HeavyInfantry:
-            //         entity.AddComponent(new CohesionComponent(1.0f, 5.0f));
-            //         entity.AddComponent(new AlignmentComponent(1.0f, 5.0f));
-            //         entity.AddComponent(new FormationComponent(FormationType.Phalanx, 2.0f));
-            //         break;
-            //         
-            //     case TroopType.Berserker:
-            //         entity.AddComponent(new ChargeComponent(2.0f, 10.0f, 2.5f));
-            //         break;
-            //         
-            //     case TroopType.Archer:
-            //         entity.AddComponent(new CohesionComponent(1.0f, 8.0f));
-            //         entity.AddComponent(new AlignmentComponent(1.0f, 8.0f));
-            //         entity.AddComponent(new FleeComponent(1.5f, 5.0f));
-            //         break;
-            //         
-            //     case TroopType.Scout:
-            //         entity.AddComponent(new AmbushMoveComponent(1.0f, 0.5f, 0.5f));
-            //         break;
-            //         
-            //     case TroopType.Commander:
-            //         entity.AddComponent(new CohesionComponent(1.2f, 10.0f));
-            //         entity.AddComponent(new AlignmentComponent(1.2f, 10.0f));
-            //         break;
-            //         
-            //     case TroopType.Defender:
-            //         entity.AddComponent(new FormationComponent(FormationType.Testudo, 1.5f));
-            //         entity.AddComponent(new ProtectComponent(2.0f, 3.0f));
-            //         break;
-            //         
-            //     case TroopType.Assassin:
-            //         entity.AddComponent(new JumpAttackComponent(1.5f, 5.0f, 2.0f));
-            //         break;
-            // }
         }
     }
     

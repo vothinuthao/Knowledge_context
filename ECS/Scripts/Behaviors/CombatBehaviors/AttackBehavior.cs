@@ -1,4 +1,5 @@
-﻿using Components.Squad;
+﻿using Components;
+using Components.Squad;
 using Core.ECS;
 using Movement;
 using Systems.Behavior;

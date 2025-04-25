@@ -5,6 +5,7 @@ using Squad;
 using Steering;
 using UnityEngine;
 using System.Collections.Generic;
+using Components;
 
 namespace Systems.Squad
 {

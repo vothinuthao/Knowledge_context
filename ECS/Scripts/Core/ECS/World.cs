@@ -158,6 +158,36 @@ namespace Core.ECS
         }
         
         /// <summary>
+        /// Query entities with three components
+        /// </summary>
+        public IEnumerable<Entity> GetEntitiesWith<T1, T2, T3>() 
+            where T1 : IComponent 
+            where T2 : IComponent
+            where T3 : IComponent
+        {
+            var entities1 = GetEntitiesWith<T1>();
+            var entities2 = GetEntitiesWith<T2>();
+            var entities3 = GetEntitiesWith<T3>();
+            return entities1.Intersect(entities2).Intersect(entities3);
+        }
+        
+        /// <summary>
+        /// Query entities with four components
+        /// </summary>
+        public IEnumerable<Entity> GetEntitiesWith<T1, T2, T3, T4>() 
+            where T1 : IComponent 
+            where T2 : IComponent
+            where T3 : IComponent
+            where T4 : IComponent
+        {
+            var entities1 = GetEntitiesWith<T1>();
+            var entities2 = GetEntitiesWith<T2>();
+            var entities3 = GetEntitiesWith<T3>();
+            var entities4 = GetEntitiesWith<T4>();
+            return entities1.Intersect(entities2).Intersect(entities3).Intersect(entities4);
+        }
+        
+        /// <summary>
         /// Internal method to notify component addition
         /// </summary>
         internal void NotifyComponentAdded(Entity entity, IComponent component)
@@ -213,6 +243,38 @@ namespace Core.ECS
         public PerformanceReport GetPerformanceReport()
         {
             return _performanceMonitor.GetReport();
+        }
+        
+        /// <summary>
+        /// Get total number of entities
+        /// </summary>
+        public int GetEntityCount()
+        {
+            return _entities.Count;
+        }
+        
+        /// <summary>
+        /// Get number of registered systems
+        /// </summary>
+        public int GetRegisteredSystemCount()
+        {
+            return _systems.Count;
+        }
+        
+        /// <summary>
+        /// Clear all entities and reset the world
+        /// </summary>
+        public void Clear()
+        {
+            foreach (var entity in _entities.Values.ToList())
+            {
+                DestroyEntity(entity);
+            }
+            
+            _entities.Clear();
+            _componentEntities.Clear();
+            _reusableIds.Clear();
+            _nextEntityId = 0;
         }
     }
 }

@@ -1,4 +1,6 @@
 ﻿// ECS/Scripts/Systems/Steering/SeekSystem.cs
+
+using Components;
 using Core.ECS;
 using Movement;
 using Steering;

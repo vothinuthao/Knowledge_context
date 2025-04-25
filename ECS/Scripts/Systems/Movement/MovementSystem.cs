@@ -1,5 +1,6 @@
 ﻿// ECS/Scripts/Systems/Movement/MovementSystem.cs
 using System.Linq;
+using Components;
 using Core.ECS;
 using Movement;
 using Squad;

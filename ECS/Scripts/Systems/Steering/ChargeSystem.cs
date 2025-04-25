@@ -3,6 +3,7 @@ using Movement;
 using Steering;
 using UnityEngine;
 using Combat;
+using Components;
 
 namespace Systems.Steering
 {

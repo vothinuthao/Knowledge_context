@@ -1,537 +1,630 @@
-﻿using UnityEngine;
-using Core.ECS;
-using Factories;
-using Steering.Config;
+﻿// File: Managers/GameManager.cs
+using UnityEngine;
+using System;
 using System.Collections.Generic;
-using Configs;
-using Debug_Tool;
-using Management;
-using Squad;
+using System.Linq;
+using Components;
+using Core.ECS;
+using Core.Grid;
+using Data;
+using Components.Squad;
+using Core.Singleton;
+using Systems.Movement;
 
-/// <summary>
-/// GameManager integrates all game systems
-/// </summary>
-public class GameManager : MonoBehaviour
+namespace Managers
 {
-    public static GameManager Instance { get; private set; }
-    
-    [Header("References")]
-    [SerializeField] private WorldManager worldManager;
-    [SerializeField] private GridManager gridManager;
-    [SerializeField] private SquadSelectionManager selectionManager;
-    [SerializeField] private GameObject squadFlagPrefab;
-    
-    [Header("Configuration")]
-    [SerializeField] private TroopConfigSO[] troopConfigs;
-    [SerializeField] private SteeringBehaviorConfig defaultSteeringConfig;
-    
-    [Header("Debug")]
-    [SerializeField] private bool enableTroopDebugging = true;
-    [SerializeField] private bool showDebugInfo = true;
-    
-    // Tracking squad and troop entities
-    private Dictionary<int, Entity> squads = new Dictionary<int, Entity>();
-    private Dictionary<int, GameObject> squadObjects = new Dictionary<int, GameObject>();
-    private Dictionary<int, List<Entity>> troopsInSquad = new Dictionary<int, List<Entity>>();
-    
-    private void Awake()
-    {
-        if (Instance == null)
-        {
-            Instance = this;
-        }
-        else
-        {
-            Destroy(gameObject);
-        }
-        
-        // Find references if not set
-        if (worldManager == null) worldManager = FindObjectOfType<WorldManager>();
-        if (gridManager == null) gridManager = FindObjectOfType<GridManager>();
-        if (selectionManager == null) selectionManager = FindObjectOfType<SquadSelectionManager>();
-        
-        if (worldManager == null)
-        {
-            Debug.LogError("WorldManager không tìm thấy! Hãy đảm bảo đã thêm WorldManager vào scene.");
-            enabled = false;
-            return;
-        }
-    }
-    
-    private void Start()
-    {
-        // Khởi tạo game
-        StartGame();
-    }
-    
-    private void Update()
-    {
-        if (showDebugInfo)
-        {
-            DrawDebugInfo();
-        }
-        
-        // Toggle debug info với F1
-        if (Input.GetKeyDown(KeyCode.F1))
-        {
-            enableTroopDebugging = !enableTroopDebugging;
-            showDebugInfo = enableTroopDebugging;
-            ToggleTroopDebugging(enableTroopDebugging);
-        }
-        
-        // Refresh squad positions với F2
-        if (Input.GetKeyDown(KeyCode.F2) && gridManager != null)
-        {
-            RefreshSquadPositions();
-        }
-    }
-    
     /// <summary>
-    /// Khởi tạo game và tạo test squads
+    /// Main game manager that coordinates all game systems
     /// </summary>
-    private void StartGame()
+    public class GameManager : ManualSingletonMono<GameManager>
     {
-        Debug.Log("Khởi tạo game...");
+
+        #region Inspector Fields
+        [Header("Core References")]
+        [SerializeField] private WorldManager _worldManager;
+        [SerializeField] private GridManager _gridManager;
+        [SerializeField] private InputManager _inputManager;
+        [SerializeField] private UIManager _uiManager;
         
-        // Wait a frame to ensure everything is initialized
-        Invoke("CreateTestSquads", 0.1f);
-    }
-    
-    /// <summary>
-    /// Tạo các squad để test
-    /// </summary>
-    private void CreateTestSquads()
-    {
-        Debug.Log("Tạo các squad test...");
+        [Header("Configuration")]
+        [SerializeField] private GameConfig _gameConfig;
+        [SerializeField] private SquadConfig _defaultSquadConfig;
+        [SerializeField] private TroopConfig _defaultTroopConfig;
         
-        // Tạo squad đầu tiên
-        CreateSquad(new Vector3(3, 0, 3), Quaternion.identity, "Infantry", 9);
+        [Header("Debug")]
+        [SerializeField] private bool _debugMode = false;
+        [SerializeField] private bool _showPerformanceOverlay = false;
+        #endregion
+
+        #region Private Fields
+        private GameState _currentState = GameState.INITIALIZING;
+        private Dictionary<int, SquadData> _squadData = new Dictionary<int, SquadData>();
+        private List<Entity> _activeSquads = new List<Entity>();
+        private float _gameTime = 0f;
+        private bool _isPaused = false;
+        #endregion
         
-        // Tạo squad thứ hai
-        CreateSquad(new Vector3(9, 0, 9), Quaternion.identity, "Archer", 9);
-        
-        Debug.Log($"Đã tạo {squads.Count} squads");
-        
-        // Đảm bảo có layer đúng cho các đối tượng
-        EnsureCorrectLayers();
-    }
-    
-    /// <summary>
-    /// Tạo một squad mới
-    /// </summary>
-    public Entity CreateSquad(Vector3 position, Quaternion rotation, string troopType, int troopCount)
-    {
-        // Kiểm tra vị trí trong grid
-        Vector2Int gridCoords = gridManager ? gridManager.GetGridCoordinates(position) : new Vector2Int(0, 0);
-        
-        // Điều chỉnh vị trí vào grid nếu có thể
-        if (gridManager != null)
+        #region Public Fields
+        public GameState CurrentState => _currentState;
+        #endregion
+
+        #region Events
+        public event Action<GameState, GameState> OnGameStateChanged;
+        public event Action<Entity> OnSquadCreated;
+        public event Action<Entity> OnSquadDestroyed;
+        public event Action<Entity, Entity> OnCombatStarted;
+        public event Action<Entity, Entity> OnCombatEnded;
+        #endregion
+
+        #region Unity Lifecycle
+
+        protected override void Awake()
         {
-            if (!gridManager.IsWithinGrid(gridCoords))
+           base.Awake();
+            
+            ValidateReferences();
+        }
+        
+        private void Start()
+        {
+            InitializeGame();
+        }
+
+        private void Update()
+        {
+            if (_isPaused) return;
+            
+            _gameTime += Time.deltaTime;
+            UpdateGameState();
+            
+            if (_debugMode)
             {
-                Debug.LogWarning($"Vị trí squad nằm ngoài grid. Điều chỉnh lại vị trí.");
-                gridCoords = new Vector2Int(Mathf.Clamp(gridCoords.x, 0, 19), Mathf.Clamp(gridCoords.y, 0, 19));
+                HandleDebugInput();
+            }
+        }
+        #endregion
+
+        #region Initialization
+        private void ValidateReferences()
+        {
+        }
+        
+        private void InitializeGame()
+        {
+            try
+            {
+                SetGameState(GameState.INITIALIZING);
+                
+                // Initialize managers
+                InitializeManagers();
+                
+                // Load game data
+                LoadGameData();
+                
+                // Setup initial game state
+                SetupInitialState();
+                
+                SetGameState(GameState.READY);
+                
+                // Auto-start if configured
+                if (_gameConfig.AutoStartGame)
+                {
+                    StartGame();
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Game initialization failed: {e.Message}");
+                SetGameState(GameState.ERROR);
+            }
+        }
+        
+        private void InitializeManagers()
+        {
+            // Initialize world if needed
+            if (_worldManager && _worldManager.World == null)
+            {
+                _worldManager.InitializeWorld();
             }
             
-            // Kiểm tra nếu ô đã bị chiếm
-            if (gridManager.IsCellOccupied(gridCoords))
+            // Initialize grid
+            if (_gridManager)
             {
-                Debug.LogWarning($"Ô ({gridCoords.x}, {gridCoords.y}) đã bị chiếm. Tìm ô trống gần đó.");
-                gridCoords = FindNearestEmptyCell(gridCoords);
+                _gridManager.InitializeGrid();
             }
             
-            // Đánh dấu ô là đã bị chiếm
-            gridManager.SetCellOccupied(gridCoords, true);
+            // Setup input handlers
+            if (_inputManager)
+            {
+                _inputManager.OnSquadSelected += HandleSquadSelected;
+                _inputManager.OnCommandIssued += HandleCommandIssued;
+            }
+        }
+        
+        private void LoadGameData()
+        {
+            // Load configs, saved data, etc.
+            Debug.Log("Loading game data...");
+        }
+        
+        private void SetupInitialState()
+        {
+            // Create initial squads for testing
+            if (_gameConfig.CreateTestSquads)
+            {
+                CreateTestSquads();
+            }
+        }
+        #endregion
+
+        #region Game State Management
+        public void SetGameState(GameState newState)
+        {
+            if (_currentState == newState) return;
             
-            // Lấy tâm của ô
-            position = gridManager.GetCellCenter(gridCoords);
+            GameState oldState = _currentState;
+            _currentState = newState;
+            
+            Debug.Log($"Game state changed: {oldState} -> {newState}");
+            
+            OnGameStateChanged?.Invoke(oldState, newState);
+            
+            // Handle state-specific logic
+            switch (newState)
+            {
+                case GameState.PLAYING:
+                    Time.timeScale = 1f;
+                    break;
+                    
+                case GameState.PAUSED:
+                    Time.timeScale = 0f;
+                    break;
+                    
+                case GameState.GAME_OVER:
+                    HandleGameOver();
+                    break;
+            }
         }
         
-        // Tạo squad entity
-        Entity squadEntity = worldManager.CreateSquad(
-            position,
-            rotation,
-            3, // rows
-            3, // columns
-            1.5f // spacing
-        );
-        
-        // Tạo visual representation của squad
-        GameObject squadObject = new GameObject($"Squad_{squadEntity.Id}");
-        squadObject.transform.position = position;
-        
-        // Đặt layer cho squad object
-        squadObject.layer = LayerMask.NameToLayer("Squad");
-        
-        // Thêm BoxCollider cho squad object
-        BoxCollider boxCollider = squadObject.AddComponent<BoxCollider>();
-        boxCollider.size = new Vector3(5f, 0.5f, 5f);
-        boxCollider.center = new Vector3(0, 0.25f, 0);
-        boxCollider.isTrigger = true; // Đặt là trigger để không cản trở di chuyển
-        
-        var squadVisual = squadObject.AddComponent<SquadVisualController>();
-        squadVisual.Initialize(squadEntity);
-        
-        // Lưu trữ references
-        int squadId = squadEntity.Id;
-        squads[squadId] = squadEntity;
-        squadObjects[squadId] = squadObject;
-        troopsInSquad[squadId] = new List<Entity>();
-        
-        // Lấy troop config
-        TroopConfigSO config = GetTroopConfig(troopType);
-        
-        if (config == null)
+        private void UpdateGameState()
         {
-            Debug.LogError($"Không tìm thấy config cho troop type: {troopType}. Sử dụng config mặc định.");
-            config = troopConfigs.Length > 0 ? troopConfigs[0] : null;
+            switch (_currentState)
+            {
+                case GameState.PLAYING:
+                    UpdateGameplay();
+                    break;
+                    
+                case GameState.COMBAT:
+                    UpdateCombat();
+                    break;
+            }
         }
         
-        if (config == null)
+        private void UpdateGameplay()
         {
-            Debug.LogError("Không có troop config nào. Không thể tạo troop.");
+            // Update game logic
+            CheckWinConditions();
+            CheckLoseConditions();
+        }
+        
+        private void UpdateCombat()
+        {
+            // Update combat logic
+        }
+        #endregion
+
+        #region Squad Management
+        public Entity CreateSquad(SquadConfig config, Vector3 position, Faction faction = Faction.PLAYER)
+        {
+            if (!config) config = _defaultSquadConfig;
+            Entity squadEntity = _worldManager.CreateSquad(config, position);
+            
+            squadEntity.AddComponent(new FactionComponent { Faction = faction });
+            
+            var squadData = new SquadData
+            {
+                Entity = squadEntity,
+                Config = config,
+                Faction = faction,
+                CreationTime = _gameTime
+            };
+            
+            _squadData[squadEntity.Id] = squadData;
+            _activeSquads.Add(squadEntity);
+            PopulateSquad(squadEntity, config);
+            OnSquadCreated?.Invoke(squadEntity);
+            Debug.Log($"Created squad {squadEntity.Id} at {position} for faction {faction}");
+            
             return squadEntity;
         }
         
-        // Get troop type enum
-        TroopType troopTypeEnum = GetTroopTypeEnum(troopType);
-        
-        // Tạo troops
-        for (int i = 0; i < troopCount; i++)
+        private void PopulateSquad(Entity squadEntity, SquadConfig config)
         {
-            // Tạo troop tại vị trí random gần squad
-            Vector3 offset = new Vector3(Random.Range(-2f, 2f), 0, Random.Range(-2f, 2f));
+            var squadComponent = squadEntity.GetComponent<SquadComponent>();
+            var squadPosition = squadEntity.GetComponent<PositionComponent>().Position;
             
-            Entity troopEntity = worldManager.CreateTroop(
-                position + offset,
-                rotation,
-                troopTypeEnum
-            );
-            
-            // Thêm troop vào squad
-            worldManager.AddTroopToSquad(troopEntity, squadEntity);
-            
-            // Thêm debug component
-            if (enableTroopDebugging)
+            for (int i = 0; i < config.MaxTroops; i++)
             {
-                var entityBehaviour = GetEntityBehaviour(troopEntity);
-                if (entityBehaviour != null)
+                Entity troopEntity = CreateTroop(_defaultTroopConfig, squadPosition, squadEntity.Id);
+                squadComponent.AddMember(troopEntity.Id);
+                
+                // Update troop component
+                var troopComponent = troopEntity.GetComponent<TroopComponent>();
+                troopComponent.FormationIndex = i;
+            }
+            
+            // Update formation
+            squadComponent.UpdateFormation();
+        }
+        
+        public Entity CreateTroop(TroopConfig config, Vector3 position, int squadId = -1)
+        {
+            return _worldManager.CreateTroop(config, position, squadId);
+        }
+        
+        public void DestroySquad(Entity squadEntity)
+        {
+            if (!_squadData.ContainsKey(squadEntity.Id)) return;
+            
+            var squadComponent = squadEntity.GetComponent<SquadComponent>();
+            
+            // Destroy all troops first
+            foreach (int troopId in squadComponent.MemberIds.ToArray())
+            {
+                Entity troopEntity = _worldManager.World.GetEntityById(troopId);
+                if (troopEntity != null)
                 {
-                    // Đảm bảo layer đúng
-                    entityBehaviour.gameObject.layer = LayerMask.NameToLayer("Troop");
+                    _worldManager.World.DestroyEntity(troopEntity);
+                }
+            }
+            
+            // Remove from tracking
+            _squadData.Remove(squadEntity.Id);
+            _activeSquads.Remove(squadEntity);
+            
+            // Destroy squad entity
+            _worldManager.World.DestroyEntity(squadEntity);
+            
+            OnSquadDestroyed?.Invoke(squadEntity);
+        }
+        #endregion
+
+        #region Game Flow
+        public void StartGame()
+        {
+            if (_currentState != GameState.READY) return;
+            
+            SetGameState(GameState.PLAYING);
+            Debug.Log("Game started!");
+        }
+        
+        public void PauseGame()
+        {
+            if (_currentState != GameState.PLAYING) return;
+            
+            _isPaused = true;
+            SetGameState(GameState.PAUSED);
+        }
+        
+        public void ResumeGame()
+        {
+            if (_currentState != GameState.PAUSED) return;
+            
+            _isPaused = false;
+            SetGameState(GameState.PLAYING);
+        }
+        
+        public void RestartGame()
+        {
+            // Clear current game state
+            ClearGameState();
+            
+            // Reinitialize
+            InitializeGame();
+        }
+        
+        private void ClearGameState()
+        {
+            // Destroy all squads
+            foreach (var squad in _activeSquads.ToArray())
+            {
+                DestroySquad(squad);
+            }
+            
+            // Clear data
+            _squadData.Clear();
+            _activeSquads.Clear();
+            
+            // Reset world
+            if (_worldManager != null && _worldManager.World != null)
+            {
+                _worldManager.World.Clear();
+            }
+            
+            // Reset grid
+            // if (_gridManager != null)
+            // {
+            //     _gridManager.ResetGrid();
+            // }
+            
+            _gameTime = 0f;
+        }
+        #endregion
+
+        #region Input Handling
+        private void HandleSquadSelected(Entity squad)
+        {
+            if (_currentState != GameState.PLAYING) return;
+            
+            // Handle squad selection logic
+            Debug.Log($"Squad {squad.Id} selected");
+        }
+        
+        private void HandleCommandIssued(Command command)
+        {
+            if (_currentState != GameState.PLAYING) return;
+            
+            switch (command.Type)
+            {
+                case CommandType.MOVE:
+                    HandleMoveCommand(command);
+                    break;
                     
-                    // Thêm CapsuleCollider nếu chưa có
-                    Collider troopCollider = entityBehaviour.gameObject.GetComponent<Collider>();
-                    if (troopCollider == null)
-                    {
-                        CapsuleCollider capsuleCollider = entityBehaviour.gameObject.AddComponent<CapsuleCollider>();
-                        capsuleCollider.height = 2.0f;
-                        capsuleCollider.radius = 0.5f;
-                        capsuleCollider.center = new Vector3(0, 1.0f, 0);
-                    }
-                    // Đăng ký troop visual với squad
-                    squadVisual.RegisterTroopVisual(entityBehaviour.transform);
+                case CommandType.ATTACK:
+                    HandleAttackCommand(command);
+                    break;
+                    
+                case CommandType.DEFEND:
+                    HandleDefendCommand(command);
+                    break;
+                    
+                case CommandType.FORMATION_CHANGE:
+                    HandleFormationCommand(command);
+                    break;
+            }
+        }
+        
+        private void HandleMoveCommand(Command command)
+        {
+            if (command.TargetSquad == null) return;
+            
+            var movementSystem = _worldManager.World.GetSystem<GridSquadMovementSystem>();
+            if (movementSystem != null)
+            {
+                movementSystem.CommandMove(command.TargetSquad, command.TargetPosition);
+            }
+        }
+        
+        private void HandleAttackCommand(Command command)
+        {
+            if (command.TargetSquad == null || command.TargetEntity == null) return;
+            
+            var squadComponent = command.TargetSquad.GetComponent<SquadComponent>();
+            squadComponent.State = SquadState.COMBAT;
+            squadComponent.TargetSquadId = command.TargetEntity.Id;
+            
+            OnCombatStarted?.Invoke(command.TargetSquad, command.TargetEntity);
+        }
+        
+        private void HandleDefendCommand(Command command)
+        {
+            if (command.TargetSquad == null) return;
+            
+            var squadComponent = command.TargetSquad.GetComponent<SquadComponent>();
+            squadComponent.State = SquadState.IDLE;
+            squadComponent.Formation = FormationType.TESTUDO; // Defensive formation
+        }
+        
+        private void HandleFormationCommand(Command command)
+        {
+            if (command.TargetSquad == null) return;
+            
+            var squadComponent = command.TargetSquad.GetComponent<SquadComponent>();
+            squadComponent.Formation = command.Formation;
+            squadComponent.UpdateFormation();
+        }
+        #endregion
+
+        #region Win/Lose Conditions
+        private void CheckWinConditions()
+        {
+            // Check if player has won
+            bool allEnemiesDefeated = true;
+            
+            foreach (var squadData in _squadData.Values)
+            {
+                if (squadData.Faction == Faction.ENEMY && squadData.Entity != null)
+                {
+                    allEnemiesDefeated = false;
+                    break;
                 }
             }
             
-            // Apply steering config
-            SteeringConfigFactory.ApplyConfig(troopEntity, config.SteeringConfig ?? defaultSteeringConfig);
-            
-            // Lưu trữ reference
-            troopsInSquad[squadId].Add(troopEntity);
+            if (allEnemiesDefeated && _gameConfig.VictoryCondition == VictoryCondition.DEFEAT_ALL_ENEMIES)
+            {
+                HandleVictory();
+            }
         }
         
-        Debug.Log($"Tạo squad {squadId} với {troopCount} {troopType} troops tại {position}");
-        
-        return squadEntity;
-    }
-    
-    /// <summary>
-    /// Tìm ô trống gần nhất
-    /// </summary>
-    private Vector2Int FindNearestEmptyCell(Vector2Int startCoords)
-    {
-        if (gridManager == null)
-            return startCoords;
-            
-        // Spiral search pattern
-        int dx = 0;
-        int dy = 0;
-        int stepSize = 1;
-        int stepCount = 0;
-        int directionIndex = 0;
-        
-        // Directions: right, down, left, up
-        int[] dirX = { 1, 0, -1, 0 };
-        int[] dirY = { 0, 1, 0, -1 };
-        
-        Vector2Int currentCoords = startCoords;
-        
-        for (int i = 0; i < 100; i++) // Giới hạn số lần lặp
+        private void CheckLoseConditions()
         {
-            // Kiểm tra ô hiện tại
-            if (gridManager.IsWithinGrid(currentCoords) && !gridManager.IsCellOccupied(currentCoords))
+            // Check if player has lost
+            bool allPlayerSquadsDefeated = true;
+            
+            foreach (var squadData in _squadData.Values)
             {
-                return currentCoords;
+                if (squadData.Faction == Faction.PLAYER && squadData.Entity != null)
+                {
+                    allPlayerSquadsDefeated = false;
+                    break;
+                }
             }
             
-            // Di chuyển đến ô tiếp theo theo mẫu spiral
-            dx += dirX[directionIndex];
-            dy += dirY[directionIndex];
-            
-            currentCoords = new Vector2Int(startCoords.x + dx, startCoords.y + dy);
-            
-            stepCount++;
-            
-            // Đổi hướng nếu cần
-            if (stepCount == stepSize)
+            if (allPlayerSquadsDefeated)
             {
-                stepCount = 0;
-                directionIndex = (directionIndex + 1) % 4;
+                HandleDefeat();
+            }
+        }
+        
+        private void HandleVictory()
+        {
+            SetGameState(GameState.VICTORY);
+            Debug.Log("Victory!");
+            
+            // Show victory UI
+            if (_uiManager != null)
+            {
+                _uiManager.ShowVictoryScreen();
+            }
+        }
+        
+        private void HandleDefeat()
+        {
+            SetGameState(GameState.DEFEAT);
+            Debug.Log("Defeat!");
+            
+            // Show defeat UI
+            if (_uiManager != null)
+            {
+                _uiManager.ShowDefeatScreen();
+            }
+        }
+        
+        private void HandleGameOver()
+        {
+            // Game over logic
+            Debug.Log("Game Over");
+        }
+        #endregion
+
+        #region Debug
+        private void HandleDebugInput()
+        {
+            // F1 - Toggle performance overlay
+            if (Input.GetKeyDown(KeyCode.F1))
+            {
+                _showPerformanceOverlay = !_showPerformanceOverlay;
+            }
+            
+            // F2 - Spawn test squad
+            if (Input.GetKeyDown(KeyCode.F2))
+            {
+                SpawnTestSquad();
+            }
+            
+            // F3 - Spawn enemy squad
+            if (Input.GetKeyDown(KeyCode.F3))
+            {
+                SpawnEnemySquad();
+            }
+            
+            // F4 - Toggle debug mode
+            if (Input.GetKeyDown(KeyCode.F4))
+            {
+                _debugMode = !_debugMode;
+                Debug.Log($"Debug mode: {_debugMode}");
+            }
+            
+            // F5 - Quick restart
+            if (Input.GetKeyDown(KeyCode.F5))
+            {
+                RestartGame();
+            }
+        }
+        
+        private void CreateTestSquads()
+        {
+            // Create player squad
+            Vector3 playerPos = _gridManager.GetCellCenter(new Vector2Int(10, 10));
+            CreateSquad(_defaultSquadConfig, playerPos, Faction.PLAYER);
+            
+            // Create enemy squad
+            Vector3 enemyPos = _gridManager.GetCellCenter(new Vector2Int(15, 15));
+            CreateSquad(_defaultSquadConfig, enemyPos, Faction.ENEMY);
+        }
+        
+        private void SpawnTestSquad()
+        {
+            // Vector3 spawnPos = _gridManager.GetRandomEmptyCellPosition();
+            // CreateSquad(_defaultSquadConfig, spawnPos, Faction.PLAYER);
+        }
+        
+        private void SpawnEnemySquad()
+        {
+            // Vector3 spawnPos = _gridManager.GetRandomEmptyCellPosition();
+            // CreateSquad(_defaultSquadConfig, spawnPos, Faction.ENEMY);
+        }
+        
+        private void OnGUI()
+        {
+            if (!_showPerformanceOverlay) return;
+            
+            // Draw performance overlay
+            GUI.Box(new Rect(10, 10, 200, 150), "Performance");
+            GUI.Label(new Rect(20, 30, 180, 20), $"FPS: {1.0f / Time.deltaTime:F0}");
+            GUI.Label(new Rect(20, 50, 180, 20), $"Entities: {_worldManager.World.GetEntityCount()}");
+            GUI.Label(new Rect(20, 70, 180, 20), $"Active Squads: {_activeSquads.Count}");
+            GUI.Label(new Rect(20, 90, 180, 20), $"Game Time: {_gameTime:F1}s");
+            GUI.Label(new Rect(20, 110, 180, 20), $"State: {_currentState}");
+            
+            // Draw current state info
+            GUI.Box(new Rect(10, 170, 200, 100), "Game State");
+            GUI.Label(new Rect(20, 190, 180, 20), $"Player Squads: {GetSquadCountByFaction(Faction.PLAYER)}");
+            GUI.Label(new Rect(20, 210, 180, 20), $"Enemy Squads: {GetSquadCountByFaction(Faction.ENEMY)}");
+            GUI.Label(new Rect(20, 230, 180, 20), $"Neutral Squads: {GetSquadCountByFaction(Faction.NEUTRAL)}");
+            
+            // Performance report
+            if (_worldManager != null && _worldManager.World != null)
+            {
+                var report = _worldManager.World.GetPerformanceReport();
+                GUI.Box(new Rect(10, 280, 200, 200), "System Performance");
                 
-                // Tăng kích thước bước sau khi hoàn thành nửa spiral
-                if (directionIndex % 2 == 0)
+                int y = 300;
+                foreach (var timing in report.AverageTimings.OrderByDescending(x => x.Value))
                 {
-                    stepSize++;
+                    GUI.Label(new Rect(20, y, 180, 20), $"{timing.Key}: {timing.Value:F2}ms");
+                    y += 20;
+                    if (y > 460) break;
                 }
             }
         }
-        
-        // Fallback to original position if nothing found
-        return startCoords;
-    }
-    
-    /// <summary>
-    /// Lấy config cho loại troop
-    /// </summary>
-    private TroopConfigSO GetTroopConfig(string troopName)
-    {
-        foreach (var config in troopConfigs)
+        #endregion
+
+        #region Utility Methods
+        public List<Entity> GetSquadsByFaction(Faction faction)
         {
-            if (config.TroopName == troopName)
-                return config;
-        }
-        return null;
-    }
-    
-    /// <summary>
-    /// Chuyển đổi từ string sang enum TroopType
-    /// </summary>
-    private TroopType GetTroopTypeEnum(string troopType)
-    {
-        switch (troopType.ToLower())
-        {
-            case "infantry": return TroopType.Warrior;
-            case "heavyinfantry": return TroopType.HeavyInfantry;
-            case "berserker": return TroopType.Berserker;
-            case "archer": return TroopType.Archer;
-            case "scout": return TroopType.Scout;
-            case "commander": return TroopType.Commander;
-            case "defender": return TroopType.Defender;
-            case "assassin": return TroopType.Assassin;
-            default: return TroopType.Warrior;
-        }
-    }
-    
-    /// <summary>
-    /// Lấy EntityBehaviour cho entity
-    /// </summary>
-    private EntityBehaviour GetEntityBehaviour(Entity entity)
-    {
-        if (entity == null)
-            return null;
+            var result = new List<Entity>();
             
-        EntityBehaviour[] allEntityBehaviours = FindObjectsOfType<EntityBehaviour>();
-        
-        foreach (var behaviour in allEntityBehaviours)
-        {
-            if (behaviour.GetEntity()?.Id == entity.Id)
+            foreach (var squadData in _squadData.Values)
             {
-                return behaviour;
-            }
-        }
-        
-        return null;
-    }
-    
-    /// <summary>
-    /// Hiển thị thông tin debug trên màn hình
-    /// </summary>
-    private void DrawDebugInfo()
-    {
-        GUIStyle style = new GUIStyle();
-        style.normal.textColor = Color.white;
-        style.fontSize = 14;
-        style.padding = new RectOffset(10, 10, 10, 10);
-        
-        string info = $"Squads: {squads.Count}\n";
-        
-        int selectedSquadId = -1;
-        var selectedSquad = selectionManager != null ? selectionManager.GetSelectedSquad() : null;
-        
-        if (selectedSquad != null)
-        {
-            selectedSquadId = selectedSquad.Id;
-            info += $"Selected: Squad {selectedSquadId}\n";
-            
-            if (selectedSquad.HasComponent<SquadStateComponent>())
-            {
-                var state = selectedSquad.GetComponent<SquadStateComponent>();
-                info += $"State: {state.CurrentState}\n";
-                info += $"Target: {state.TargetPosition}\n";
-            }
-            
-            if (troopsInSquad.ContainsKey(selectedSquadId))
-            {
-                info += $"Troops: {troopsInSquad[selectedSquadId].Count}\n";
-            }
-        }
-        else
-        {
-            info += "No squad selected\n";
-        }
-        
-        // Hiển thị layer debug
-        info += "\nLayer Debug:\n";
-        info += $"- Ground layer: {LayerMask.NameToLayer("Ground")}\n";
-        info += $"- Troop layer: {LayerMask.NameToLayer("Troop")}\n";
-        info += $"- Squad layer: {LayerMask.NameToLayer("Squad")}\n";
-        
-        // Draw info box
-        GUI.Box(new Rect(10, 10, 250, 200), "");
-        GUI.Label(new Rect(10, 10, 250, 200), info, style);
-    }
-    
-    /// <summary>
-    /// Đảm bảo layer được thiết lập đúng cho tất cả đối tượng
-    /// </summary>
-    private void EnsureCorrectLayers()
-    {
-        // Kiểm tra các layer
-        int groundLayer = LayerMask.NameToLayer("Ground");
-        int troopLayer = LayerMask.NameToLayer("Troop");
-        int squadLayer = LayerMask.NameToLayer("Squad");
-        
-        if (groundLayer == -1 || troopLayer == -1 || squadLayer == -1)
-        {
-            Debug.LogError("Không tìm thấy một hoặc nhiều layer cần thiết (Ground, Troop, Squad). " +
-                        "Vui lòng tạo các layer này trong Project Settings.");
-            return;
-        }
-        
-        // Thiết lập layer cho Squad và GameObject của chúng
-        foreach (var kvp in squadObjects)
-        {
-            int squadId = kvp.Key;
-            GameObject squadObject = kvp.Value;
-            
-            // Thiết lập layer cho Squad GameObject
-            squadObject.layer = squadLayer;
-            
-            // Thêm BoxCollider nếu chưa có
-            Collider squadCollider = squadObject.GetComponent<Collider>();
-            if (squadCollider == null)
-            {
-                BoxCollider boxCollider = squadObject.AddComponent<BoxCollider>();
-                boxCollider.size = new Vector3(5f, 0.5f, 5f);
-                boxCollider.center = new Vector3(0, 0.25f, 0);
-                boxCollider.isTrigger = true;
-            }
-            
-            // Thiết lập layer cho các Troop của Squad này
-            if (troopsInSquad.ContainsKey(squadId))
-            {
-                foreach (var troopEntity in troopsInSquad[squadId])
+                if (squadData.Faction == faction && squadData.Entity != null)
                 {
-                    var entityBehaviour = GetEntityBehaviour(troopEntity);
-                    if (entityBehaviour != null)
-                    {
-                        // Thiết lập layer cho Troop GameObject
-                        entityBehaviour.gameObject.layer = troopLayer;
-                        
-                        // Thêm CapsuleCollider nếu chưa có
-                        Collider troopCollider = entityBehaviour.gameObject.GetComponent<Collider>();
-                        if (troopCollider == null)
-                        {
-                            CapsuleCollider capsuleCollider = entityBehaviour.gameObject.AddComponent<CapsuleCollider>();
-                            capsuleCollider.height = 2.0f;
-                            capsuleCollider.radius = 0.5f;
-                            capsuleCollider.center = new Vector3(0, 1.0f, 0);
-                        }
-                    }
+                    result.Add(squadData.Entity);
                 }
             }
+            
+            return result;
         }
         
-        // Thiết lập layer cho các ô grid
-        if (gridManager != null)
+        public int GetSquadCountByFaction(Faction faction)
         {
-            // Khi grid được tạo, đảm bảo các cell có layer Ground
-            // Tạo script giúp đỡ để thay đổi layer
-            GameObject helperObject = new GameObject("LayerFixHelper");
-            var layerSetupHelper = helperObject.AddComponent<LayerSetupHelper>();
-            layerSetupHelper.AssignLayersToObjects();
+            int count = 0;
             
-            Debug.Log("Đã thiết lập layer cho tất cả đối tượng");
-            
-            // Xóa helper object sau khi hoàn thành
-            Destroy(helperObject, 1f);
-        }
-    }
-    
-    /// <summary>
-    /// Bật/tắt debug visualization cho tất cả troop
-    /// </summary>
-    private void ToggleTroopDebugging(bool enabled)
-    {
-        enableTroopDebugging = enabled;
-        
-        foreach (var kvp in troopsInSquad)
-        {
-            foreach (var troopEntity in kvp.Value)
+            foreach (var squadData in _squadData.Values)
             {
-                var entityBehaviour = GetEntityBehaviour(troopEntity);
-                if (entityBehaviour != null)
+                if (squadData.Faction == faction && squadData.Entity != null)
                 {
-                    var debugVisualizer = entityBehaviour.GetComponent<TroopDebugVisualizer>();
-                    if (debugVisualizer != null)
-                    {
-                        debugVisualizer.enabled = enabled;
-                    }
+                    count++;
                 }
             }
-        }
-        
-        Debug.Log($"Debug visualization: {(enabled ? "ON" : "OFF")}");
-    }
-    
-    /// <summary>
-    /// Cập nhật vị trí của tất cả squad trên grid
-    /// </summary>
-    private void RefreshSquadPositions()
-    {
-        if (gridManager == null) return;
-        
-        // Xóa tất cả ô đã bị chiếm
-        gridManager.ClearAllOccupiedCells();
-        
-        // Đánh dấu lại các ô có squad
-        foreach (var kvp in squads)
-        {
-            Entity squadEntity = kvp.Value;
             
-            if (squadEntity.HasComponent<Movement.PositionComponent>())
-            {
-                Vector3 position = squadEntity.GetComponent<Movement.PositionComponent>().Position;
-                Vector2Int cellCoords = gridManager.GetGridCoordinates(position);
-                
-                if (gridManager.IsWithinGrid(cellCoords))
-                {
-                    gridManager.SetCellOccupied(cellCoords, true);
-                }
-            }
+            return count;
         }
         
-        Debug.Log("Đã cập nhật vị trí của tất cả squad trên grid");
+        public SquadData GetSquadData(Entity squadEntity)
+        {
+            return _squadData.TryGetValue(squadEntity.Id, out var data) ? data : null;
+        }
+        #endregion
     }
 }

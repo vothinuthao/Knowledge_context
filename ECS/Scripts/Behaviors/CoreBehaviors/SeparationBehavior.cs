@@ -1,5 +1,6 @@
 ﻿// File: Behaviors/CoreBehaviors/SeparationBehavior.cs
 
+using Components;
 using Movement;
 using Systems.Behavior;
 using UnityEngine;

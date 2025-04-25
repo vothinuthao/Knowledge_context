@@ -1,11 +1,8 @@
-﻿using Core.ECS;
-using UnityEngine;
-
-namespace Movement
+﻿namespace Components
 {
-    /// <summary>
-    /// Component for entity position
-    /// </summary>
+    using Core.ECS;
+    using UnityEngine;
+
     public class PositionComponent : IComponent
     {
         public Vector3 Position { get; set; }
@@ -17,17 +14,11 @@ namespace Movement
             LastPosition = position;
         }
         
-        /// <summary>
-        /// Updates the last position to the current position
-        /// </summary>
         public void UpdateLastPosition()
         {
             LastPosition = Position;
         }
         
-        /// <summary>
-        /// Check if the entity has moved since last update
-        /// </summary>
         public bool HasMoved(float threshold = 0.001f)
         {
             return Vector3.Distance(Position, LastPosition) > threshold;

@@ -1,11 +1,8 @@
 ﻿using Core.ECS;
 using UnityEngine;
 
-namespace Movement
+namespace Components
 {
-    /// <summary>
-    /// Component for entity velocity
-    /// </summary>
     public class VelocityComponent : IComponent
     {
         public Vector3 Velocity { get; set; }
@@ -18,17 +15,11 @@ namespace Movement
             MaxSpeed = maxSpeed;
         }
         
-        /// <summary>
-        /// Get the current effective max speed
-        /// </summary>
         public float GetEffectiveMaxSpeed()
         {
             return MaxSpeed * SpeedMultiplier;
         }
         
-        /// <summary>
-        /// Limit velocity to max speed
-        /// </summary>
         public void LimitVelocity()
         {
             float maxSpeed = GetEffectiveMaxSpeed();

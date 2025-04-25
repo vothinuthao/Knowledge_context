@@ -1,7 +1,4 @@
-﻿// File: Behaviors/CoreBehaviors/FormationKeepBehavior.cs
-
-using Core.ECS;
-using Movement;
+﻿using Components.Squad;
 using UnityEngine;
 using Systems.Behavior;
 

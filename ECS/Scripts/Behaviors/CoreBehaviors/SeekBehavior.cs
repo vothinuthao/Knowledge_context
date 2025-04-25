@@ -1,4 +1,5 @@
-﻿using Components.Squad;
+﻿using Components;
+using Components.Squad;
 using Movement;
 using Systems.Behavior;
 using UnityEngine;

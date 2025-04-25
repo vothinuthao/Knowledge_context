@@ -1,4 +1,5 @@
-﻿using Core.ECS;
+﻿using Components;
+using Core.ECS;
 using Movement;
 using UnityEngine;
 

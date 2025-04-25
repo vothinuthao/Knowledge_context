@@ -1,4 +1,6 @@
 ﻿// ECS/Scripts/Debug_Tool/EnhancedTroopDebugVisualizer.cs
+
+using Components;
 using Core.ECS;
 using Movement;
 using Squad;

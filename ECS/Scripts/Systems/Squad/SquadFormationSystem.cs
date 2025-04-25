@@ -1,4 +1,6 @@
 ﻿// ECS/Scripts/Systems/Squad/SquadFormationSystem.cs
+
+using Components;
 using Core.ECS;
 using Movement;
 using Squad;
