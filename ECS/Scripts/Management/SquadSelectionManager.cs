@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿// ECS/Scripts/Management/SquadSelectionManager.cs
+using System.Collections.Generic;
 using Core.ECS;
 using Debug_Tool;
 using Movement;
@@ -33,13 +34,24 @@ namespace Management
     
         // Reference to world manager
         private WorldManager worldManager;
+        
+        // Reference to grid manager
+        private GridManager gridManager;
     
         // Squad GameObject references (for selection)
         private Dictionary<int, GameObject> squadGameObjects = new Dictionary<int, GameObject>();
+        
+        // Track previously highlighted cell
+        private Vector2Int? previousHighlightedCell = null;
+        
+        // FIX: Thêm biến để theo dõi vị trí target thực sự của squad
+        private Vector3 currentTargetPosition = Vector3.zero;
     
         private void Start()
         {
             worldManager = WorldManager.Instance;
+            gridManager = GridManager.Instance;
+            
             if (worldManager == null)
             {
                 Debug.LogError("WorldManager không tìm thấy!");
@@ -52,6 +64,17 @@ namespace Management
             {
                 selectionCircle = Instantiate(selectionCirclePrefab, Vector3.zero, Quaternion.Euler(90, 0, 0));
                 selectionCircle.transform.localScale = Vector3.one * selectionCircleScale;
+                
+                // FIX: Đảm bảo selection circle có layer riêng và không ảnh hưởng đến logic game
+                selectionCircle.layer = LayerMask.NameToLayer("UI");
+                
+                // FIX: Đảm bảo selection circle không có collider
+                Collider[] colliders = selectionCircle.GetComponents<Collider>();
+                foreach (var collider in colliders)
+                {
+                    Destroy(collider);
+                }
+                
                 selectionCircle.SetActive(false);
             }
             
@@ -89,9 +112,37 @@ namespace Management
         
             // Cập nhật vị trí selection circle
             UpdateSelectionCircle();
+            
+            // Xử lý highlight cell dưới chuột
+            HandleCellHighlighting();
         
             // Xử lý phím tắt
             HandleHotkeys();
+        }
+        
+        /// <summary>
+        /// Highlights cell under mouse cursor
+        /// </summary>
+        private void HandleCellHighlighting()
+        {
+            if (gridManager == null)
+                return;
+                
+            Vector2Int cellCoords;
+            if (gridManager.TryGetCellUnderMouse(out cellCoords))
+            {
+                // Only update highlight if it's a different cell
+                if (!previousHighlightedCell.HasValue || previousHighlightedCell.Value != cellCoords)
+                {
+                    gridManager.HighlightCell(cellCoords);
+                    previousHighlightedCell = cellCoords;
+                }
+            }
+            else if (previousHighlightedCell.HasValue)
+            {
+                // Clear previous highlight when mouse is not over any cell
+                previousHighlightedCell = null;
+            }
         }
     
         /// <summary>
@@ -215,29 +266,29 @@ namespace Management
                 }
             
                 // Kiểm tra nếu có GridManager
-                if (GridManager.Instance != null)
+                if (gridManager != null)
                 {
                     // Lấy tọa độ ô dưới con trỏ
-                    Vector2Int cellCoordinates = GridManager.Instance.GetGridCoordinates(targetPosition);
+                    Vector2Int cellCoordinates = gridManager.GetGridCoordinates(targetPosition);
                     
                     if (debugMode)
                     {
                         Debug.Log($"Cell coordinates: {cellCoordinates}");
-                        Debug.Log($"Cell occupied: {GridManager.Instance.IsCellOccupied(cellCoordinates)}");
+                        Debug.Log($"Cell occupied: {gridManager.IsCellOccupied(cellCoordinates)}");
                     }
                 
                     // Kiểm tra ô có hợp lệ và không bị chiếm
-                    if (GridManager.Instance.IsWithinGrid(cellCoordinates))
+                    if (gridManager.IsWithinGrid(cellCoordinates))
                     {
                         bool canMoveToCell = true;
                         
-                        if (GridManager.Instance.IsCellOccupied(cellCoordinates))
+                        if (gridManager.IsCellOccupied(cellCoordinates))
                         {
                             // Kiểm tra xem ô có bị chiếm bởi squad hiện tại không
                             if (selectedSquad.HasComponent<PositionComponent>())
                             {
                                 Vector3 currentPos = selectedSquad.GetComponent<PositionComponent>().Position;
-                                Vector2Int currentCell = GridManager.Instance.GetGridCoordinates(currentPos);
+                                Vector2Int currentCell = gridManager.GetGridCoordinates(currentPos);
                                 
                                 // Cho phép di chuyển nếu đang ở chính ô đó hoặc ô liền kề
                                 canMoveToCell = (currentCell == cellCoordinates) || 
@@ -253,23 +304,26 @@ namespace Management
                         if (canMoveToCell)
                         {
                             // Cập nhật vị trí đích thành tâm của ô
-                            targetPosition = GridManager.Instance.GetCellCenter(cellCoordinates);
+                            targetPosition = gridManager.GetCellCenter(cellCoordinates);
+                            
+                            // FIX: Lưu lại target position thực sự
+                            currentTargetPosition = targetPosition;
                         
                             // Đánh dấu ô hiện tại là không bị chiếm
                             if (selectedSquad.HasComponent<PositionComponent>())
                             {
                                 Vector3 currentPos = selectedSquad.GetComponent<PositionComponent>().Position;
-                                Vector2Int currentCell = GridManager.Instance.GetGridCoordinates(currentPos);
+                                Vector2Int currentCell = gridManager.GetGridCoordinates(currentPos);
                                 
                                 if (currentCell != cellCoordinates) // Chỉ khi di chuyển đến ô khác
                                 {
-                                    GridManager.Instance.SetCellOccupied(currentCell, false);
-                                    GridManager.Instance.SetCellOccupied(cellCoordinates, true);
+                                    gridManager.SetCellOccupied(currentCell, false);
+                                    gridManager.SetCellOccupied(cellCoordinates, true);
                                 }
                             }
                         
                             // Chọn ô trong grid
-                            GridManager.Instance.SelectCell(cellCoordinates);
+                            gridManager.SelectCell(cellCoordinates);
                             
                             // Ra lệnh di chuyển
                             worldManager.CommandSquadMove(selectedSquad, targetPosition);
@@ -288,6 +342,9 @@ namespace Management
                 else
                 {
                     // Không có GridManager, di chuyển trực tiếp đến hit point
+                    // FIX: Lưu lại target position thực sự
+                    currentTargetPosition = targetPosition;
+                    
                     worldManager.CommandSquadMove(selectedSquad, targetPosition);
                     Debug.Log($"Di chuyển Squad {selectedSquad.Id} đến {targetPosition} (Không có grid)");
                 }
@@ -327,6 +384,13 @@ namespace Management
                     viz.enabled = debugMode;
                 }
             }
+            
+            // Thêm phím tắt F5 để refresh grid
+            if (Input.GetKeyDown(KeyCode.F5) && gridManager != null)
+            {
+                gridManager.RefreshAllCellVisuals();
+                Debug.Log("Refresh all grid cells");
+            }
         }
     
         /// <summary>
@@ -346,11 +410,33 @@ namespace Management
             UpdateSelectionCircle();
         
             // Nếu có GridManager, cũng chọn ô
-            if (GridManager.Instance != null && squad.HasComponent<PositionComponent>())
+            if (gridManager != null && squad.HasComponent<PositionComponent>())
             {
                 Vector3 squadPos = squad.GetComponent<PositionComponent>().Position;
-                Vector2Int cellCoordinates = GridManager.Instance.GetGridCoordinates(squadPos);
-                GridManager.Instance.SelectCell(cellCoordinates);
+                Vector2Int cellCoordinates = gridManager.GetGridCoordinates(squadPos);
+                // Check if coordinates are valid before selecting
+                if (gridManager.IsWithinGrid(cellCoordinates))
+                {
+                    gridManager.SelectCell(cellCoordinates);
+                }
+            }
+            
+            // FIX: Lấy vị trí mục tiêu của squad nếu có
+            if (squad.HasComponent<SquadStateComponent>())
+            {
+                SquadStateComponent stateComponent = squad.GetComponent<SquadStateComponent>();
+                if (stateComponent.CurrentState == SquadState.Moving)
+                {
+                    currentTargetPosition = stateComponent.TargetPosition;
+                }
+                else
+                {
+                    // Nếu squad không di chuyển, set target position là vị trí hiện tại
+                    if (squad.HasComponent<PositionComponent>())
+                    {
+                        currentTargetPosition = squad.GetComponent<PositionComponent>().Position;
+                    }
+                }
             }
         }
     
@@ -368,6 +454,15 @@ namespace Management
             {
                 selectionCircle.SetActive(false);
             }
+            
+            // Clear cell selection in grid
+            if (gridManager != null)
+            {
+                gridManager.ClearCellSelections();
+            }
+            
+            // FIX: Reset current target position
+            currentTargetPosition = Vector3.zero;
         }
     
         /// <summary>
@@ -379,6 +474,7 @@ namespace Management
         
             if (selectedSquad.HasComponent<PositionComponent>())
             {
+                // FIX: Đảm bảo selection circle luôn ở vị trí của squad, không phải ở vị trí mục tiêu
                 Vector3 squadPos = selectedSquad.GetComponent<PositionComponent>().Position;
                 selectionCircle.transform.position = new Vector3(
                     squadPos.x,
@@ -394,6 +490,14 @@ namespace Management
         public Entity GetSelectedSquad()
         {
             return selectedSquad;
+        }
+        
+        /// <summary>
+        /// Lấy vị trí mục tiêu thực sự của squad đã chọn
+        /// </summary>
+        public Vector3 GetTargetPosition()
+        {
+            return currentTargetPosition;
         }
     
         /// <summary>

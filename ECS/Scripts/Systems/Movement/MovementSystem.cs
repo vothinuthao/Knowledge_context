@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿// ECS/Scripts/Systems/Movement/MovementSystem.cs
+using System.Linq;
 using Core.ECS;
 using Movement;
 using Squad;
@@ -47,7 +48,10 @@ namespace Systems.Movement
                         var squadState = squadEntity.GetComponent<SquadStateComponent>();
                         
                         // Lock position if squad is idle and member should lock
-                        isLocked = squadState.ShouldLockTroops && squadMember.LockPositionWhenIdle;
+                        // FIX: Only lock if squad is ACTUALLY idle, not just when ShouldLockTroops is true
+                        isLocked = squadState.CurrentState == SquadState.Idle && 
+                                  squadState.ShouldLockTroops && 
+                                  squadMember.LockPositionWhenIdle;
                     }
                 }
                 
@@ -68,6 +72,12 @@ namespace Systems.Movement
                 // Limit velocity to max speed
                 velocityComponent.LimitVelocity();
                 
+                // FIX: Check if velocity is too small, to prevent jittering
+                if (velocityComponent.Velocity.magnitude < 0.01f)
+                {
+                    velocityComponent.Velocity = Vector3.zero;
+                }
+                
                 // Update position based on velocity
                 positionComponent.Position += velocityComponent.Velocity * deltaTime;
                 
@@ -76,6 +86,12 @@ namespace Systems.Movement
                 
                 // Reset acceleration
                 accelerationComponent.Acceleration = Vector3.zero;
+                
+                // Debug velocity - helps identify if unit is moving
+                if (velocityComponent.Velocity.magnitude > 0.01f)
+                {
+                    // Debug.Log($"Entity {entity.Id} velocity: {velocityComponent.Velocity.magnitude} in direction {velocityComponent.Velocity.normalized}");
+                }
             }
         }
         

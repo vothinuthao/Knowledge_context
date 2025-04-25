@@ -1,4 +1,5 @@
-﻿using Core.ECS;
+﻿// ECS/Scripts/Systems/Squad/SquadFormationSystem.cs
+using Core.ECS;
 using Movement;
 using Squad;
 using Steering;
@@ -29,8 +30,23 @@ namespace Systems.Squad
                 var positionComponent = squadEntity.GetComponent<PositionComponent>();
                 var rotationComponent = squadEntity.GetComponent<RotationComponent>();
                 
-                // Only update if the squad has moved since last frame
+                // FIX: Always update formation while squad is moving
+                bool shouldUpdate = false;
+                
+                // Check if the squad has moved
                 if (positionComponent.HasMoved(0.01f))
+                {
+                    shouldUpdate = true;
+                }
+                
+                // FIX: Also update if squad is in moving state
+                if (squadEntity.HasComponent<SquadStateComponent>() && 
+                    squadEntity.GetComponent<SquadStateComponent>().CurrentState == SquadState.Moving)
+                {
+                    shouldUpdate = true;
+                }
+                
+                if (shouldUpdate)
                 {
                     // Update formation world positions
                     formationComponent.UpdateWorldPositions(
@@ -40,6 +56,9 @@ namespace Systems.Squad
                     
                     // Update all members of this squad
                     UpdateSquadMembers(squadEntity.Id, formationComponent);
+                    
+                    // FIX: Debug log
+                    // Debug.Log($"Updated formation for Squad {squadEntity.Id} at position {positionComponent.Position}");
                 }
             }
         }
@@ -67,6 +86,7 @@ namespace Systems.Squad
                 // Skip if invalid position
                 if (row < 0 || row >= formation.Rows || col < 0 || col >= formation.Columns)
                 {
+                    Debug.LogWarning($"Squad member {memberEntity.Id} has invalid grid position: ({row}, {col})");
                     continue;
                 }
                 
@@ -79,6 +99,22 @@ namespace Systems.Squad
                 {
                     var steeringData = memberEntity.GetComponent<SteeringDataComponent>();
                     steeringData.TargetPosition = desiredPosition;
+                    
+                    // FIX: Debug log for target position changes
+                    // Debug.Log($"Updated target position for member {memberEntity.Id} to {desiredPosition}");
+                }
+                
+                // FIX: Calculate distance to desired position
+                if (memberEntity.HasComponent<PositionComponent>())
+                {
+                    var positionComponent = memberEntity.GetComponent<PositionComponent>();
+                    float distance = Vector3.Distance(positionComponent.Position, desiredPosition);
+                    
+                    // Debug log if too far from desired position
+                    if (distance > 3.0f)
+                    {
+                        // Debug.LogWarning($"Squad member {memberEntity.Id} is {distance:F2} units from desired position");
+                    }
                 }
             }
         }

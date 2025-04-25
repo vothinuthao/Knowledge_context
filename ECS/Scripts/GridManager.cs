@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿// ECS/Scripts/GridManager.cs
+using UnityEngine;
 using System.Collections.Generic;
 using Core.Singleton;
 #if UNITY_EDITOR
@@ -178,6 +179,13 @@ public class GridManager : ManualSingletonMono<GridManager>
     /// </summary>
     public void SelectCell(Vector2Int coordinates)
     {
+        // FIX: Double check if coordinates are valid
+        if (!IsWithinGrid(coordinates))
+        {
+            Debug.LogWarning($"Attempted to select cell outside grid: {coordinates}");
+            return;
+        }
+        
         // Deselect previous cell
         if (selectedCell.HasValue && gridCells.ContainsKey(selectedCell.Value))
         {
@@ -220,6 +228,18 @@ public class GridManager : ManualSingletonMono<GridManager>
     /// </summary>
     public void HighlightCell(Vector2Int coordinates)
     {
+        // FIX: Check if coordinates are valid
+        if (!IsWithinGrid(coordinates))
+        {
+            return;
+        }
+        
+        // Check if this is the same as current highlight
+        if (highlightedCell.HasValue && highlightedCell.Value == coordinates)
+        {
+            return; // Already highlighted
+        }
+        
         // Remove highlight from previous cell
         if (highlightedCell.HasValue && gridCells.ContainsKey(highlightedCell.Value) 
             && highlightedCell.Value != selectedCell)
@@ -228,8 +248,14 @@ public class GridManager : ManualSingletonMono<GridManager>
             if (previousCell.CellObject != null)
             {
                 Renderer renderer = previousCell.CellObject.GetComponent<Renderer>();
-                renderer.material = occupiedCells.Contains(highlightedCell.Value) ? 
-                    occupiedCellMaterial : defaultCellMaterial;
+                if (occupiedCells.Contains(highlightedCell.Value))
+                {
+                    renderer.material = occupiedCellMaterial;
+                }
+                else
+                {
+                    renderer.material = defaultCellMaterial;
+                }
             }
         }
         
@@ -284,15 +310,34 @@ public class GridManager : ManualSingletonMono<GridManager>
             }
         }
         
-        // Update visual if necessary (not selected or highlighted)
-        if (gridCells.ContainsKey(coordinates) && coordinates != selectedCell && coordinates != highlightedCell)
+        // FIX: Update visual based on current selection/highlight state
+        if (gridCells.ContainsKey(coordinates))
         {
             GridCell cell = gridCells[coordinates];
             if (cell.CellObject != null)
             {
                 Renderer renderer = cell.CellObject.GetComponent<Renderer>();
-                renderer.material = occupied ? occupiedCellMaterial : defaultCellMaterial;
+                
+                // Apply correct material based on cell state
+                if (selectedCell.HasValue && selectedCell.Value == coordinates)
+                {
+                    renderer.material = selectedCellMaterial;
+                }
+                else if (highlightedCell.HasValue && highlightedCell.Value == coordinates)
+                {
+                    renderer.material = highlightedCellMaterial;
+                }
+                else
+                {
+                    renderer.material = occupied ? occupiedCellMaterial : defaultCellMaterial;
+                }
             }
+        }
+        
+        // FIX: Update the cell's IsOccupied property
+        if (gridCells.ContainsKey(coordinates))
+        {
+            gridCells[coordinates].IsOccupied = occupied;
         }
     }
     
@@ -355,6 +400,56 @@ public class GridManager : ManualSingletonMono<GridManager>
         return GetWorldPosition(coordinates) + new Vector3(cellSize / 2, 0, cellSize / 2);
     }
     
+    // FIX: Added method to clear cell selection and highlighting
+    /// <summary>
+    /// Clears all current cell selections and highlights
+    /// </summary>
+    public void ClearCellSelections()
+    {
+        // Clear highlighted cell
+        if (highlightedCell.HasValue && gridCells.ContainsKey(highlightedCell.Value))
+        {
+            GridCell cell = gridCells[highlightedCell.Value];
+            if (cell.CellObject != null)
+            {
+                Renderer renderer = cell.CellObject.GetComponent<Renderer>();
+                if (occupiedCells.Contains(highlightedCell.Value))
+                {
+                    renderer.material = occupiedCellMaterial;
+                }
+                else
+                {
+                    renderer.material = defaultCellMaterial;
+                }
+            }
+            highlightedCell = null;
+        }
+        
+        // Clear selected cell
+        if (selectedCell.HasValue && gridCells.ContainsKey(selectedCell.Value))
+        {
+            GridCell cell = gridCells[selectedCell.Value];
+            if (cell.CellObject != null)
+            {
+                Renderer renderer = cell.CellObject.GetComponent<Renderer>();
+                if (occupiedCells.Contains(selectedCell.Value))
+                {
+                    renderer.material = occupiedCellMaterial;
+                }
+                else
+                {
+                    renderer.material = defaultCellMaterial;
+                }
+            }
+            selectedCell = null;
+        }
+        
+        if (debugMode)
+        {
+            Debug.Log("Cleared all cell selections");
+        }
+    }
+    
     /// <summary>
     /// Draws debug gizmos in editor
     /// </summary>
@@ -392,6 +487,27 @@ public class GridManager : ManualSingletonMono<GridManager>
             SetCellOccupied(coords, false);
         }
         occupiedCells.Clear();
+        
+        // FIX: Reset all cells' IsOccupied property
+        foreach (var cell in gridCells.Values)
+        {
+            cell.IsOccupied = false;
+            
+            // Reset material to default
+            if (cell.CellObject != null)
+            {
+                Renderer renderer = cell.CellObject.GetComponent<Renderer>();
+                
+                // Don't reset if it's selected or highlighted
+                if ((selectedCell.HasValue && selectedCell.Value == cell.Coordinates) ||
+                    (highlightedCell.HasValue && highlightedCell.Value == cell.Coordinates))
+                {
+                    continue;
+                }
+                
+                renderer.material = defaultCellMaterial;
+            }
+        }
     }
     
     /// <summary>
@@ -403,6 +519,47 @@ public class GridManager : ManualSingletonMono<GridManager>
         
         // This would need to be implemented according to your game's needs
         // For example, you could iterate over all squad entities and mark their positions
+    }
+    
+    // FIX: Added method to refresh all cell visuals
+    /// <summary>
+    /// Refreshes the visual state of all cells
+    /// </summary>
+    public void RefreshAllCellVisuals()
+    {
+        foreach (var kvp in gridCells)
+        {
+            Vector2Int coordinates = kvp.Key;
+            GridCell cell = kvp.Value;
+            
+            if (cell.CellObject != null)
+            {
+                Renderer renderer = cell.CellObject.GetComponent<Renderer>();
+                
+                // Determine which material to use based on cell state
+                if (selectedCell.HasValue && selectedCell.Value == coordinates)
+                {
+                    renderer.material = selectedCellMaterial;
+                }
+                else if (highlightedCell.HasValue && highlightedCell.Value == coordinates)
+                {
+                    renderer.material = highlightedCellMaterial;
+                }
+                else if (cell.IsOccupied || occupiedCells.Contains(coordinates))
+                {
+                    renderer.material = occupiedCellMaterial;
+                }
+                else
+                {
+                    renderer.material = defaultCellMaterial;
+                }
+            }
+        }
+        
+        if (debugMode)
+        {
+            Debug.Log("Refreshed all cell visuals");
+        }
     }
 }
 

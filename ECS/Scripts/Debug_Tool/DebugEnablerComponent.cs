@@ -65,7 +65,7 @@ namespace Debug_Tool
         
             foreach (var visualizer in troopVisualizers)
             {
-                visualizer.EnableDebugVisualization();
+                // visualizer.EnableDebugVisualization();
                 visualizer.enabled = true;
             }
         

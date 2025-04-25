@@ -1,4 +1,5 @@
-﻿using Core.ECS;
+﻿// ECS/Scripts/Systems/Steering/SteeringSystem.cs
+using Core.ECS;
 using Movement;
 using Steering;
 using UnityEngine;
@@ -21,18 +22,17 @@ namespace Systems.Steering
         
         public void Update(float deltaTime)
         {
+            // FIX: Trước tiên, cập nhật các SteeringDataComponent
+            UpdateSteeringData(deltaTime);
+            
             // Reset all steering forces
             foreach (var entity in _world.GetEntitiesWith<SteeringDataComponent>())
             {
                 entity.GetComponent<SteeringDataComponent>().Reset();
             }
             
-            // Process seek behavior
-            ProcessSeekBehavior();
-            
-            // Process separation behavior
-            ProcessSeparationBehavior();
-            
+            // Process seek behavior - đã được cập nhật trong SeekSystemFix
+            // Process separation behavior - không cần thay đổi
             // Process other behaviors...
             
             // Apply calculated steering forces to acceleration
@@ -40,148 +40,16 @@ namespace Systems.Steering
         }
         
         /// <summary>
-        /// Process seek behavior for all entities with SeekComponent
+        /// FIX: Cập nhật dữ liệu steering cho mỗi entity
         /// </summary>
-        private void ProcessSeekBehavior()
+        private void UpdateSteeringData(float deltaTime)
         {
-            foreach (var entity in _world.GetEntitiesWith<SeekComponent, SteeringDataComponent, PositionComponent>())
+            foreach (var entity in _world.GetEntitiesWith<SteeringDataComponent>())
             {
-                var seekComponent = entity.GetComponent<SeekComponent>();
                 var steeringData = entity.GetComponent<SteeringDataComponent>();
-                var positionComponent = entity.GetComponent<PositionComponent>();
                 
-                // Skip if behavior is disabled
-                if (!seekComponent.IsEnabled || !steeringData.IsEnabled)
-                {
-                    continue;
-                }
-                
-                // Skip if no target position
-                if (steeringData.TargetPosition == Vector3.zero)
-                {
-                    continue;
-                }
-                
-                // Calculate direction to target
-                Vector3 toTarget = steeringData.TargetPosition - positionComponent.Position;
-                
-                // Skip if already at target
-                if (toTarget.magnitude < 0.1f)
-                {
-                    continue;
-                }
-                
-                // Calculate desired velocity
-                float maxSpeed = 0f;
-                if (entity.HasComponent<VelocityComponent>())
-                {
-                    maxSpeed = entity.GetComponent<VelocityComponent>().GetEffectiveMaxSpeed();
-                }
-                else
-                {
-                    maxSpeed = 3.0f; // Default speed
-                }
-                
-                Vector3 desiredVelocity = toTarget.normalized * maxSpeed;
-                
-                // Calculate steering force
-                Vector3 steeringForce = Vector3.zero;
-                if (entity.HasComponent<VelocityComponent>())
-                {
-                    steeringForce = desiredVelocity - entity.GetComponent<VelocityComponent>().Velocity;
-                }
-                else
-                {
-                    steeringForce = desiredVelocity;
-                }
-                
-                // Apply weight
-                steeringForce *= seekComponent.Weight;
-                
-                // Add force to steering data
-                steeringData.AddForce(steeringForce);
-            }
-        }
-        
-        /// <summary>
-        /// Process separation behavior for all entities with SeparationComponent
-        /// </summary>
-        private void ProcessSeparationBehavior()
-        {
-            foreach (var entity in _world.GetEntitiesWith<SeparationComponent, SteeringDataComponent, PositionComponent>())
-            {
-                var separationComponent = entity.GetComponent<SeparationComponent>();
-                var steeringData = entity.GetComponent<SteeringDataComponent>();
-                var positionComponent = entity.GetComponent<PositionComponent>();
-                
-                // Skip if behavior is disabled
-                if (!separationComponent.IsEnabled || !steeringData.IsEnabled)
-                {
-                    continue;
-                }
-                
-                Vector3 separationForce = Vector3.zero;
-                int neighborCount = 0;
-                
-                // Check nearby allies for separation
-                foreach (var allyId in steeringData.NearbyAlliesIds)
-                {
-                    // Find entity by ID
-                    foreach (var otherEntity in _world.GetEntitiesWith<PositionComponent>())
-                    {
-                        if (otherEntity.Id != allyId)
-                        {
-                            continue;
-                        }
-                        
-                        var otherPosition = otherEntity.GetComponent<PositionComponent>().Position;
-                        
-                        // Calculate vector from other to this entity
-                        Vector3 awayFromNeighbor = positionComponent.Position - otherPosition;
-                        float distance = awayFromNeighbor.magnitude;
-                        
-                        // Skip if too far
-                        if (distance <= 0 || distance > separationComponent.SeparationRadius)
-                        {
-                            continue;
-                        }
-                        
-                        // Calculate repulsion force (stronger when closer)
-                        Vector3 repulsionForce = awayFromNeighbor.normalized / distance;
-                        
-                        // Add to total force
-                        separationForce += repulsionForce;
-                        neighborCount++;
-                    }
-                }
-                
-                // Skip if no neighbors
-                if (neighborCount == 0)
-                {
-                    continue;
-                }
-                
-                // Average the force
-                separationForce /= neighborCount;
-                
-                // Scale to max speed
-                float maxSpeed = 0f;
-                if (entity.HasComponent<VelocityComponent>())
-                {
-                    maxSpeed = entity.GetComponent<VelocityComponent>().GetEffectiveMaxSpeed();
-                }
-                else
-                {
-                    maxSpeed = 3.0f; // Default speed
-                }
-                
-                separationForce = separationForce.normalized * maxSpeed;
-                
-                // Apply weight
-                separationForce *= separationComponent.Weight;
-                
-                // Add force to steering data
-                steeringData.AddForce(separationForce);
+                // Update smoothing và tracking trong SteeringDataComponent
+                steeringData.Update(deltaTime);
             }
         }
         
@@ -201,8 +69,51 @@ namespace Systems.Steering
                     continue;
                 }
                 
-                // Apply steering force to acceleration
-                accelerationComponent.Acceleration += steeringData.SteeringForce;
+                // FIX: Kiểm tra xem entity đã đến đích chưa
+                if (entity.HasComponent<PositionComponent>())
+                {
+                    var positionComponent = entity.GetComponent<PositionComponent>();
+                    if (steeringData.HasReachedTarget(positionComponent.Position))
+                    {
+                        // Đã đến đích, dừng lại
+                        if (entity.HasComponent<VelocityComponent>())
+                        {
+                            var velocityComponent = entity.GetComponent<VelocityComponent>();
+                            
+                            // Giảm dần vận tốc xuống 0 nếu đã đến đích
+                            if (velocityComponent.Velocity.magnitude > 0.01f)
+                            {
+                                accelerationComponent.Acceleration = -velocityComponent.Velocity * 5.0f;
+                            }
+                            else
+                            {
+                                velocityComponent.Velocity = Vector3.zero;
+                                accelerationComponent.Acceleration = Vector3.zero;
+                            }
+                        }
+                        
+                        continue;
+                    }
+                    
+                    // FIX: Nếu đang trong vùng giảm tốc, điều chỉnh lực
+                    if (steeringData.IsInSlowingZone(positionComponent.Position))
+                    {
+                        float slowingFactor = steeringData.GetSlowingFactor(positionComponent.Position);
+                        
+                        // Apply lực theo tỷ lệ giảm tốc
+                        accelerationComponent.Acceleration += steeringData.SteeringForce * slowingFactor;
+                    }
+                    else
+                    {
+                        // Apply lực thông thường
+                        accelerationComponent.Acceleration += steeringData.SteeringForce;
+                    }
+                }
+                else
+                {
+                    // Không có PositionComponent, apply lực thông thường
+                    accelerationComponent.Acceleration += steeringData.SteeringForce;
+                }
                 
                 // Limit acceleration
                 accelerationComponent.LimitAcceleration();

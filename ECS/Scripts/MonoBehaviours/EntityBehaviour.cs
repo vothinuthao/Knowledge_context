@@ -29,6 +29,10 @@ public class EntityBehaviour : MonoBehaviour
     {
         return _entity;
     }
+    public World GetWorld()
+    {
+        return _world;
+    }
         
     private void Update()
     {

@@ -1,4 +1,4 @@
-﻿// ECS/Scripts/Debug_Tool/TroopDebugVisualizer.cs
+﻿// ECS/Scripts/Debug_Tool/EnhancedTroopDebugVisualizer.cs
 using Core.ECS;
 using Movement;
 using Squad;
@@ -8,9 +8,9 @@ using UnityEngine;
 namespace Debug_Tool
 {
     /// <summary>
-    /// Tool to visualize debug information for troops in the scene
+    /// Enhanced tool to visualize debug information for troops in the scene
     /// </summary>
-    public class TroopDebugVisualizer : MonoBehaviour
+    public class EnhancedTroopDebugVisualizer : MonoBehaviour
     {
         private EntityBehaviour _entityBehaviour;
         private Entity _entity;
@@ -18,16 +18,21 @@ namespace Debug_Tool
         [Header("Visualization Settings")]
         [SerializeField] private bool showVelocity = true;
         [SerializeField] private bool showTargetPosition = true;
+        [SerializeField] private bool showSmoothedTargetPosition = true; // FIX: Thêm hiển thị smoothed target
         [SerializeField] private bool showDesiredPosition = true;
         [SerializeField] private bool showSteeringForce = true;
         [SerializeField] private bool showEntityId = true;
+        [SerializeField] private bool showStateDiagnostics = true; // FIX: Thêm hiển thị thông tin chẩn đoán
         
         [Header("Line Settings")]
         [SerializeField] private Color velocityColor = Color.blue;
         [SerializeField] private Color targetPositionColor = Color.green;
+        [SerializeField] private Color smoothedTargetColor = Color.cyan; // FIX: Màu cho smoothed target
         [SerializeField] private Color desiredPositionColor = Color.yellow;
         [SerializeField] private Color steeringForceColor = Color.red;
         [SerializeField] private float lineWidth = 0.05f;
+        [SerializeField] private float velocityLineScale = 1.0f; // FIX: Scale cho velocity line
+        [SerializeField] private float steeringForceScale = 0.5f; // FIX: Scale cho steering force line
         
         // References to components
         private PositionComponent _positionComponent;
@@ -38,11 +43,17 @@ namespace Debug_Tool
         // Line renderers
         private LineRenderer _velocityLine;
         private LineRenderer _targetLine;
+        private LineRenderer _smoothedTargetLine; // FIX: Line cho smoothed target
         private LineRenderer _desiredLine;
         private LineRenderer _steeringLine;
         
-        // Text mesh for entity ID
+        // Text mesh for entity ID and diagnostics
         private TextMesh _idText;
+        private TextMesh _diagnosticText; // FIX: Thêm text cho diagnostics
+        
+        // FIX: Target indicators
+        private GameObject _targetIndicator;
+        private GameObject _smoothedTargetIndicator;
         
         private void Start()
         {
@@ -97,6 +108,18 @@ namespace Debug_Tool
             if (showTargetPosition)
             {
                 _targetLine = CreateLineRenderer("TargetLine", targetPositionColor);
+                
+                // FIX: Create target indicator (sphere)
+                _targetIndicator = CreateSphereIndicator("TargetIndicator", targetPositionColor, 0.2f);
+            }
+            
+            // FIX: Create smoothed target position line
+            if (showSmoothedTargetPosition && _steeringDataComponent != null)
+            {
+                _smoothedTargetLine = CreateLineRenderer("SmoothedTargetLine", smoothedTargetColor);
+                
+                // Create smoothed target indicator (sphere)
+                _smoothedTargetIndicator = CreateSphereIndicator("SmoothedTargetIndicator", smoothedTargetColor, 0.15f);
             }
             
             // Create desired position line
@@ -125,6 +148,21 @@ namespace Debug_Tool
                 _idText.characterSize = 0.1f;
                 _idText.color = Color.white;
             }
+            
+            // FIX: Create diagnostic text
+            if (showStateDiagnostics)
+            {
+                GameObject diagObj = new GameObject("DiagnosticText");
+                diagObj.transform.parent = transform;
+                diagObj.transform.localPosition = new Vector3(0, 1.7f, 0); // Below the ID text
+                _diagnosticText = diagObj.AddComponent<TextMesh>();
+                _diagnosticText.text = "";
+                _diagnosticText.alignment = TextAlignment.Center;
+                _diagnosticText.anchor = TextAnchor.MiddleCenter;
+                _diagnosticText.fontSize = 20;
+                _diagnosticText.characterSize = 0.08f;
+                _diagnosticText.color = Color.yellow;
+            }
         }
         
         private LineRenderer CreateLineRenderer(string name, Color color)
@@ -142,6 +180,28 @@ namespace Debug_Tool
             line.positionCount = 2;
             
             return line;
+        }
+        
+        // FIX: Create sphere indicator
+        private GameObject CreateSphereIndicator(string name, Color color, float radius)
+        {
+            GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.name = name;
+            sphere.transform.parent = transform;
+            sphere.transform.localScale = new Vector3(radius * 2, radius * 2, radius * 2);
+            
+            // Set material and color
+            Renderer renderer = sphere.GetComponent<Renderer>();
+            renderer.material = new Material(Shader.Find("Standard"));
+            renderer.material.color = color;
+            
+            // Remove collider
+            Destroy(sphere.GetComponent<Collider>());
+            
+            // Hide initially
+            sphere.SetActive(false);
+            
+            return sphere;
         }
         
         private void Update()
@@ -163,7 +223,7 @@ namespace Debug_Tool
             {
                 Vector3 velocity = _velocityComponent.Velocity;
                 _velocityLine.SetPosition(0, position);
-                _velocityLine.SetPosition(1, position + velocity);
+                _velocityLine.SetPosition(1, position + velocity * velocityLineScale);
             }
             
             // Update target position line
@@ -175,12 +235,54 @@ namespace Debug_Tool
                     targetPosition.y = position.y; // Keep same height
                     _targetLine.SetPosition(0, position);
                     _targetLine.SetPosition(1, targetPosition);
+                    
+                    // FIX: Update target indicator
+                    if (_targetIndicator != null)
+                    {
+                        _targetIndicator.SetActive(true);
+                        _targetIndicator.transform.position = targetPosition;
+                    }
                 }
                 else
                 {
                     // Hide line if no target
                     _targetLine.SetPosition(0, position);
                     _targetLine.SetPosition(1, position);
+                    
+                    if (_targetIndicator != null)
+                    {
+                        _targetIndicator.SetActive(false);
+                    }
+                }
+            }
+            
+            // FIX: Update smoothed target position line
+            if (_smoothedTargetLine != null && _steeringDataComponent != null)
+            {
+                Vector3 smoothedTarget = _steeringDataComponent.SmoothedTargetPosition;
+                if (smoothedTarget != Vector3.zero)
+                {
+                    smoothedTarget.y = position.y; // Keep same height
+                    _smoothedTargetLine.SetPosition(0, position);
+                    _smoothedTargetLine.SetPosition(1, smoothedTarget);
+                    
+                    // Update smoothed target indicator
+                    if (_smoothedTargetIndicator != null)
+                    {
+                        _smoothedTargetIndicator.SetActive(true);
+                        _smoothedTargetIndicator.transform.position = smoothedTarget;
+                    }
+                }
+                else
+                {
+                    // Hide line if no target
+                    _smoothedTargetLine.SetPosition(0, position);
+                    _smoothedTargetLine.SetPosition(1, position);
+                    
+                    if (_smoothedTargetIndicator != null)
+                    {
+                        _smoothedTargetIndicator.SetActive(false);
+                    }
                 }
             }
             
@@ -207,7 +309,7 @@ namespace Debug_Tool
             {
                 Vector3 steeringForce = _steeringDataComponent.SteeringForce;
                 _steeringLine.SetPosition(0, position);
-                _steeringLine.SetPosition(1, position + steeringForce);
+                _steeringLine.SetPosition(1, position + steeringForce * steeringForceScale);
             }
             
             // Update text position
@@ -222,7 +324,7 @@ namespace Debug_Tool
                 // Add state info
                 string stateInfo = "";
                 
-                if (_squadMemberComponent != null && _entity.HasComponent<SquadStateComponent>())
+                if (_squadMemberComponent != null)
                 {
                     var squadState = FindSquadState(_squadMemberComponent.SquadEntityId);
                     if (squadState != null)
@@ -238,6 +340,35 @@ namespace Debug_Tool
                 }
                 
                 _idText.text = $"ID: {_entity.Id}{stateInfo}";
+            }
+            
+            // FIX: Update diagnostic text
+            if (_diagnosticText != null && _steeringDataComponent != null)
+            {
+                string diagnosticInfo = "";
+                
+                // Show target change status
+                diagnosticInfo += $"Target Changed: {(_steeringDataComponent.TargetPositionChanged ? "Yes" : "No")}";
+                
+                // Add arrival info
+                if (_positionComponent != null)
+                {
+                    bool inSlowingZone = _steeringDataComponent.IsInSlowingZone(position);
+                    float slowingFactor = _steeringDataComponent.GetSlowingFactor(position);
+                    
+                    diagnosticInfo += $"\nSlowing: {(inSlowingZone ? "Yes" : "No")} ({slowingFactor:F2})";
+                }
+                
+                // Add steering force info
+                diagnosticInfo += $"\nForce: {_steeringDataComponent.SteeringForce.magnitude:F2}";
+                
+                _diagnosticText.text = diagnosticInfo;
+                
+                // Make text face camera
+                if (Camera.main != null)
+                {
+                    _diagnosticText.transform.rotation = Camera.main.transform.rotation;
+                }
             }
         }
         
@@ -275,9 +406,13 @@ namespace Debug_Tool
         {
             if (_velocityLine != null) _velocityLine.gameObject.SetActive(active);
             if (_targetLine != null) _targetLine.gameObject.SetActive(active);
+            if (_smoothedTargetLine != null) _smoothedTargetLine.gameObject.SetActive(active);
             if (_desiredLine != null) _desiredLine.gameObject.SetActive(active);
             if (_steeringLine != null) _steeringLine.gameObject.SetActive(active);
             if (_idText != null) _idText.gameObject.SetActive(active);
+            if (_diagnosticText != null) _diagnosticText.gameObject.SetActive(active);
+            if (_targetIndicator != null) _targetIndicator.SetActive(active && _steeringDataComponent?.TargetPosition != Vector3.zero);
+            if (_smoothedTargetIndicator != null) _smoothedTargetIndicator.SetActive(active && _steeringDataComponent?.SmoothedTargetPosition != Vector3.zero);
         }
     }
 }
