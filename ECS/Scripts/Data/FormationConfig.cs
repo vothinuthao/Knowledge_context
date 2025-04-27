@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using Components.Squad;
-using Data;
+using Factories;
 using UnityEngine;
 
 [CreateAssetMenu(fileName = "NewFormationConfig", menuName = "Viking Raven/Formation Config")]

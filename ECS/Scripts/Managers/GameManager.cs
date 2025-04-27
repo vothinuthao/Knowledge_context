@@ -5,7 +5,6 @@ using System.Linq;
 using Components;
 using Core.ECS;
 using Core.Grid;
-using Data;
 using Components.Squad;
 using Core.Singleton;
 using Squad;
@@ -47,6 +46,7 @@ namespace Managers
         
         #region Public Fields
         public GameState CurrentState => _currentState;
+        public WorldManager WorldManager => _worldManager;
         #endregion
 
         #region Events
@@ -98,19 +98,10 @@ namespace Managers
             try
             {
                 SetGameState(GameState.INITIALIZING);
-                
-                // Initialize managers
                 InitializeManagers();
-                
-                // Load game data
                 LoadGameData();
-                
-                // Setup initial game state
                 SetupInitialState();
-                
                 SetGameState(GameState.READY);
-                
-                // Auto-start if configured
                 if (_gameConfig.AutoStartGame)
                 {
                     StartGame();
@@ -242,29 +233,74 @@ namespace Managers
             return squadEntity;
         }
         
+        // private void PopulateSquad(Entity squadEntity, SquadConfig config)
+        // {
+        //     var squadComponent = squadEntity.GetComponent<SquadComponent>();
+        //     var squadPosition = squadEntity.GetComponent<PositionComponent>().Position;
+        //
+        //     // Tạo SquadFormationComponent nếu chưa có
+        //     if (!squadEntity.HasComponent<SquadFormationComponent>())
+        //     {
+        //         squadEntity.AddComponent(new SquadFormationComponent(3, 3, 1.5f));
+        //     }
+        //
+        //     for (int i = 0; i < config.MaxTroops; i++)
+        //     {
+        //         Entity troopEntity = CreateTroop(_defaultTroopConfig, squadPosition, squadEntity.Id);
+        //         squadComponent.AddMember(troopEntity.Id);
+        //
+        //         // Update troop component
+        //         var troopComponent = troopEntity.GetComponent<TroopComponent>();
+        //         troopComponent.FormationIndex = i;
+        //     }
+        //
+        //     // Update formation
+        //     squadComponent.UpdateFormation();
+        // }
         private void PopulateSquad(Entity squadEntity, SquadConfig config)
         {
             var squadComponent = squadEntity.GetComponent<SquadComponent>();
             var squadPosition = squadEntity.GetComponent<PositionComponent>().Position;
     
-            // Tạo SquadFormationComponent nếu chưa có
+            // Ensure SquadFormationComponent exists
             if (!squadEntity.HasComponent<SquadFormationComponent>())
             {
                 squadEntity.AddComponent(new SquadFormationComponent(3, 3, 1.5f));
             }
     
+            var formationComponent = squadEntity.GetComponent<SquadFormationComponent>();
+    
             for (int i = 0; i < config.MaxTroops; i++)
             {
-                Entity troopEntity = CreateTroop(_defaultTroopConfig, squadPosition, squadEntity.Id);
-                squadComponent.AddMember(troopEntity.Id);
+                // Calculate position for troop in formation
+                int row = i / 3;
+                int col = i % 3;
+                Vector3 localPosition = formationComponent.CalculateLocalPosition(row, col);
+                Vector3 worldPosition = squadPosition + localPosition;
         
-                // Update troop component
-                var troopComponent = troopEntity.GetComponent<TroopComponent>();
-                troopComponent.FormationIndex = i;
+                // Create troop with GameObject
+                Entity troopEntity = CreateTroop(_defaultTroopConfig, worldPosition, squadEntity.Id);
+        
+                if (troopEntity != null)
+                {
+                    squadComponent.AddMember(troopEntity.Id);
+            
+                    // Update troop component
+                    var troopComponent = troopEntity.GetComponent<TroopComponent>();
+                    troopComponent.FormationIndex = i;
+            
+                    // Set squad member component
+                    if (!troopEntity.HasComponent<SquadMemberComponent>())
+                    {
+                        troopEntity.AddComponent(new SquadMemberComponent(squadEntity.Id, new Vector2Int(row, col)));
+                    }
+                }
             }
     
             // Update formation
             squadComponent.UpdateFormation();
+    
+            Debug.Log($"Populated squad {squadEntity.Id} with {squadComponent.MemberIds.Count} troops");
         }
         
         public Entity CreateTroop(TroopConfig config, Vector3 position, int squadId = -1)

@@ -2,19 +2,22 @@
 using Components.Combat;
 using Components.Squad;
 using Core.ECS;
-using Data;
+using Factories;
 using Systems.Behavior;
 using Systems.Movement;
 using Systems.Squad;
 using Systems.Steering;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace Managers
 {
-    public partial class WorldManager : MonoBehaviour
+    public class WorldManager : MonoBehaviour
     {
-        [SerializeField] private GameConfig _gameConfig;
-        
+        [SerializeField] private GameConfig gameConfig;
+        [SerializeField] private GameObject _troopPrefab; // Add this field
+        private TroopFactory _troopFactory;
+
         public World World { get; private set; }
         
         private void Awake()
@@ -24,18 +27,13 @@ namespace Managers
         
         public void InitializeWorld()
         {
-            // World = new World();
-            // World.RegisterSystem(new GridSquadMovementSystem());
-            // World.RegisterSystem(new BehaviorSystem());
-            // World.RegisterSystem(new SquadCommandSystem());
-            // Debug.Log($"World initialized with {World.GetRegisteredSystemCount()} systems");
             World = new World();
-    
-            // Squad systems
+            if (_troopPrefab)
+                _troopFactory = new TroopFactory(World, _troopPrefab);
+            
             World.RegisterSystem(new SquadCommandSystem());
             World.RegisterSystem(new SquadFormationSystem());
     
-            // Movement systems
             World.RegisterSystem(new GridSquadMovementSystem());
             World.RegisterSystem(new MovementSystem());
             World.RegisterSystem(new RotationSystem());
@@ -77,14 +75,19 @@ namespace Managers
         
         public Entity CreateTroop(TroopConfig config, Vector3 position, int squadId = -1)
         {
-            Entity troopEntity = World.CreateEntity();
-            
-            troopEntity.AddComponent(new TroopComponent(squadId, -1));
-            troopEntity.AddComponent(new PositionComponent(position));
-            troopEntity.AddComponent(new VelocityComponent(config.MoveSpeed));
-            troopEntity.AddComponent(new HealthComponent(config.Health));
-            troopEntity.AddComponent(new CombatComponent(config.AttackPower, config.AttackRange, config.AttackCooldown));
-            
+            Entity troopEntity = _troopFactory?.CreateTroop(position, Quaternion.identity, TroopType.Warrior);
+            if (troopEntity != null)
+            {
+                troopEntity.AddComponent(new TroopComponent(squadId, -1));
+                if (config)
+                {
+                    troopEntity.AddComponent(new TroopComponent(squadId, -1));
+                    troopEntity.AddComponent(new PositionComponent(position));
+                    troopEntity.AddComponent(new VelocityComponent(config.MoveSpeed));
+                    troopEntity.AddComponent(new HealthComponent(config.Health));
+                    troopEntity.AddComponent(new CombatComponent(config.AttackPower, config.AttackRange, config.AttackCooldown));
+                }
+            }
             return troopEntity;
         }
     }
