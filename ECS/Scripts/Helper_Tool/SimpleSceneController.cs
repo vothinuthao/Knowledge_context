@@ -219,7 +219,7 @@ public class SimpleSceneController : MonoBehaviour
             float minDistance = float.MaxValue;
             Entity closestSquad = null;
             
-            foreach (var squad in _worldManager.World.GetEntitiesWith<SquadStateComponent, PositionComponent>())
+            foreach (var squad in _worldManager.World.GetEntitiesWith<SquadComponent, PositionComponent>())
             {
                 var pos = squad.GetComponent<PositionComponent>().Position;
                 float distance = Vector3.Distance(hit.point, pos);

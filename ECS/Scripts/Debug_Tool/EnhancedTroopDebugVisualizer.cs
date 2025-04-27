@@ -383,11 +383,11 @@ namespace Debug_Tool
             var world = _entityBehaviour.GetWorld();
             if (world == null) return null;
             
-            foreach (var entity in world.GetEntitiesWith<SquadStateComponent>())
+            foreach (var entity in world.GetEntitiesWith<SquadComponent>())
             {
                 if (entity.Id == squadId)
                 {
-                    return entity.GetComponent<SquadStateComponent>().CurrentState;
+                    return entity.GetComponent<SquadComponent>().CurrentState;
                 }
             }
             

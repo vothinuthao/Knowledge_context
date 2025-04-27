@@ -5,13 +5,13 @@ using Core.ECS;
 
 namespace Components.Squad
 {
-    // public enum SquadState
-    // {
-    //     IDLE,
-    //     MOVING,
-    //     COMBAT,
-    //     RETREATING
-    // }
+    public enum SquadState
+    {
+        IDLE,
+        MOVING,
+        ATTACKING,
+        DEFENDING
+    }
 
     public enum FormationType
     {
@@ -30,6 +30,8 @@ namespace Components.Squad
         public SquadState State { get; set; } = SquadState.IDLE;
         public FormationType Formation { get; set; } = FormationType.BASIC;
         
+        public Vector3 TargetPosition { get; set; }
+        public int TargetEntityId { get; set; } = -1;
         // Grid position
         public Vector2Int GridPosition { get; set; }
         public Vector2Int TargetGridPosition { get; set; }
@@ -51,13 +53,19 @@ namespace Components.Squad
         public float MoraleValue { get; set; } = 1.0f;
         public int TargetSquadId { get; set; } = -1;
         public float CombatRange { get; set; } = 1.5f;
+        public float TimeInCurrentState { get; set; } = 0f;
         
         // Movement
         public float MovementSpeed { get; set; } = 3.0f;
         public float RotationSpeed { get; set; } = 5.0f;
+        public Vector3 PreviousPosition { get; set; } = Vector3.zero;
+        public Vector3 MovementDirection { get; set; } = Vector3.forward;
         
         // Formation management
         private bool _formationNeedsUpdate = false;
+        public bool IsMoving => State == SquadState.MOVING;
+        public bool ShouldLockTroops => State == SquadState.IDLE;
+        public SquadState CurrentState => State;
         
         /// <summary>
         /// Initialize squad with default values
@@ -215,5 +223,32 @@ namespace Components.Squad
                 return MemberOffsets[index];
             return Vector3.zero;
         }
+        public void UpdateTime(float deltaTime)
+        {
+            TimeInCurrentState += deltaTime;
+        }
+    
+        public void ChangeState(SquadState newState)
+        {
+            if (State != newState)
+            {
+                State = newState;
+                TimeInCurrentState = 0f;
+            }
+        }
+        public void UpdateMovementInfo(Vector3 currentPosition)
+         {
+             if (PreviousPosition == Vector3.zero)
+             {
+                 PreviousPosition = currentPosition;
+                 return;
+             }
+             Vector3 movementVector = currentPosition - PreviousPosition;
+             if (movementVector.magnitude > 0.1f)
+             {
+                 MovementDirection = movementVector.normalized;
+             }
+             PreviousPosition = currentPosition;
+         }
     }
 }

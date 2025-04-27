@@ -5,6 +5,8 @@ using Core.ECS;
 using Data;
 using Systems.Behavior;
 using Systems.Movement;
+using Systems.Squad;
+using Systems.Steering;
 using UnityEngine;
 
 namespace Managers
@@ -22,9 +24,30 @@ namespace Managers
         
         public void InitializeWorld()
         {
+            // World = new World();
+            // World.RegisterSystem(new GridSquadMovementSystem());
+            // World.RegisterSystem(new BehaviorSystem());
+            // World.RegisterSystem(new SquadCommandSystem());
+            // Debug.Log($"World initialized with {World.GetRegisteredSystemCount()} systems");
             World = new World();
+    
+            // Squad systems
+            World.RegisterSystem(new SquadCommandSystem());
+            World.RegisterSystem(new SquadFormationSystem());
+    
+            // Movement systems
             World.RegisterSystem(new GridSquadMovementSystem());
+            World.RegisterSystem(new MovementSystem());
+            World.RegisterSystem(new RotationSystem());
+    
+            // Behavior & Steering
             World.RegisterSystem(new BehaviorSystem());
+            World.RegisterSystem(new EntityDetectionSystem());
+            World.RegisterSystem(new SteeringSystem());
+            World.RegisterSystem(new SeekSystem());
+            World.RegisterSystem(new SeparationSystem());
+            World.RegisterSystem(new ArrivalSystem());
+    
             Debug.Log($"World initialized with {World.GetRegisteredSystemCount()} systems");
         }
         

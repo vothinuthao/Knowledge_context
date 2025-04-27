@@ -166,9 +166,9 @@ namespace Managers
             GUI.Label(new Rect(infoX + 10, infoY + 25, infoWidth - 20, 20), 
                 $"Squad ID: {_selectedSquad.Id}");
             
-            if (_selectedSquad.HasComponent<SquadStateComponent>())
+            if (_selectedSquad.HasComponent<SquadComponent>())
             {
-                var state = _selectedSquad.GetComponent<SquadStateComponent>();
+                var state = _selectedSquad.GetComponent<SquadComponent>();
                 GUI.Label(new Rect(infoX + 10, infoY + 45, infoWidth - 20, 20), 
                     $"State: {state.CurrentState}");
                     

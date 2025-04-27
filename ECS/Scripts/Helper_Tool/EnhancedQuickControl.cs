@@ -143,9 +143,6 @@ namespace Helper_Tool
                 Debug.Log("Registered SquadCommandSystem");
             }
             
-            // Add other essential systems here
-            // ... (SquadFormationSystem, SeekSystem, etc.)
-            
             Debug.Log($"Total systems registered: {world.GetRegisteredSystemCount()}");
         }
         
@@ -202,10 +199,14 @@ namespace Helper_Tool
         
         private void DrawMainPanel()
         {
+            if (_panelStyle == null)
+            {
+                InitializeStyles();
+            }
             float panelHeight = _showMenu ? 500f : 50f;
             Rect panelRect = new Rect(_panelPosition.x, _panelPosition.y, _panelWidth, panelHeight);
             
-            GUI.Box(panelRect, "", _panelStyle);
+            GUI.Box(panelRect, "", _panelStyle ?? GUI.skin.box);
             
             // Toggle button
             if (GUI.Button(new Rect(panelRect.x + 10, panelRect.y + 10, panelRect.width - 20, 30),
@@ -536,7 +537,7 @@ namespace Helper_Tool
                 if (entityBehaviour != null)
                 {
                     var entity = entityBehaviour.GetEntity();
-                    if (entity != null && entity.HasComponent<SquadStateComponent>())
+                    if (entity != null && entity.HasComponent<SquadComponent>())
                     {
                         _selectedSquad = entity;
                         _statusMessage = $"Selected Squad {entity.Id}";

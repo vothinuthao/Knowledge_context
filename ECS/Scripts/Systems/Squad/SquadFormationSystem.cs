@@ -34,18 +34,9 @@ namespace Systems.Squad
                 var positionComponent = squadEntity.GetComponent<PositionComponent>();
                 var rotationComponent = squadEntity.GetComponent<RotationComponent>();
                 
-                // FIX: Always update formation while squad is moving
-                bool shouldUpdate = false;
-                
-                // Check if the squad has moved
-                if (positionComponent.HasMoved(0.01f))
-                {
-                    shouldUpdate = true;
-                }
-                
-                // FIX: Also update if squad is in moving state
-                if (squadEntity.HasComponent<SquadStateComponent>() && 
-                    squadEntity.GetComponent<SquadStateComponent>().CurrentState == SquadState.MOVING)
+                bool shouldUpdate = positionComponent.HasMoved(0.01f);
+                if (squadEntity.HasComponent<SquadComponent>() && 
+                    squadEntity.GetComponent<SquadComponent>().CurrentState == SquadState.MOVING)
                 {
                     shouldUpdate = true;
                 }

@@ -8,6 +8,7 @@ using Core.Grid;
 using Data;
 using Components.Squad;
 using Core.Singleton;
+using Squad;
 using Systems.Movement;
 using Systems.Squad;
 
@@ -245,17 +246,23 @@ namespace Managers
         {
             var squadComponent = squadEntity.GetComponent<SquadComponent>();
             var squadPosition = squadEntity.GetComponent<PositionComponent>().Position;
-            
+    
+            // Tạo SquadFormationComponent nếu chưa có
+            if (!squadEntity.HasComponent<SquadFormationComponent>())
+            {
+                squadEntity.AddComponent(new SquadFormationComponent(3, 3, 1.5f));
+            }
+    
             for (int i = 0; i < config.MaxTroops; i++)
             {
                 Entity troopEntity = CreateTroop(_defaultTroopConfig, squadPosition, squadEntity.Id);
                 squadComponent.AddMember(troopEntity.Id);
-                
+        
                 // Update troop component
                 var troopComponent = troopEntity.GetComponent<TroopComponent>();
                 troopComponent.FormationIndex = i;
             }
-            
+    
             // Update formation
             squadComponent.UpdateFormation();
         }

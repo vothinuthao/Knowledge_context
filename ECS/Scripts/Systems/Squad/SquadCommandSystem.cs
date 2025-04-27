@@ -35,9 +35,9 @@ namespace Systems.Squad
         public void Update(float deltaTime)
         {
             // Process all squads with state components
-            foreach (var squadEntity in _world.GetEntitiesWith<SquadStateComponent, PositionComponent>())
+            foreach (var squadEntity in _world.GetEntitiesWith<SquadComponent, PositionComponent>())
             {
-                var stateComponent = squadEntity.GetComponent<SquadStateComponent>();
+                var stateComponent = squadEntity.GetComponent<SquadComponent>();
                 var positionComponent = squadEntity.GetComponent<PositionComponent>();
                 
                 // FIX: Update timer for squad
@@ -82,7 +82,7 @@ namespace Systems.Squad
         /// <summary>
         /// Update a squad in the moving state
         /// </summary>
-        private void UpdateMovingSquad(Entity squadEntity, SquadStateComponent stateComponent, 
+        private void UpdateMovingSquad(Entity squadEntity, SquadComponent stateComponent, 
             PositionComponent positionComponent, float deltaTime)
         {
             int squadId = squadEntity.Id;
@@ -92,8 +92,7 @@ namespace Systems.Squad
             
             if (distanceToTarget < 1.0f)
             {
-                // Reached destination, transition to idle
-                stateComponent.CurrentState = SquadState.IDLE;
+                stateComponent.ChangeState(SquadState.IDLE);
                 
                 // FIX: Remove target when arrived
                 if (_squadTargets.ContainsKey(squadId))
@@ -240,18 +239,18 @@ namespace Systems.Squad
         /// </summary>
         public void CommandMove(Entity squadEntity, Vector3 targetPosition)
         {
-            if (!squadEntity.HasComponent<SquadStateComponent>())
+            if (!squadEntity.HasComponent<SquadComponent>())
             {
                 return;
             }
             
-            var stateComponent = squadEntity.GetComponent<SquadStateComponent>();
+            var stateComponent = squadEntity.GetComponent<SquadComponent>();
             
             // Log the command being executed
             Debug.Log($"Commanding Squad {squadEntity.Id} to move to {targetPosition}");
             
             // Change state to Moving
-            stateComponent.CurrentState = SquadState.MOVING;
+            stateComponent.ChangeState(SquadState.MOVING);
             stateComponent.TargetPosition = targetPosition;
             stateComponent.TargetEntityId = -1;
             
@@ -284,12 +283,12 @@ namespace Systems.Squad
         }
         
         // Other command methods remain the same...
-        private void UpdateAttackingSquad(Entity squadEntity, SquadStateComponent stateComponent, float deltaTime)
+        private void UpdateAttackingSquad(Entity squadEntity, SquadComponent stateComponent, float deltaTime)
         {
             // Similar to existing implementation
         }
         
-        private void UpdateDefendingSquad(Entity squadEntity, SquadStateComponent stateComponent, float deltaTime)
+        private void UpdateDefendingSquad(Entity squadEntity, SquadComponent stateComponent, float deltaTime)
         {
             // Similar to existing implementation
         }

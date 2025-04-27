@@ -226,7 +226,7 @@ namespace Debug_Tool
                 // Add state info
                 string stateInfo = "";
                 
-                if (_squadMemberComponent != null && _entity.HasComponent<SquadStateComponent>())
+                if (_squadMemberComponent != null && _entity.HasComponent<SquadComponent>())
                 {
                     var squadState = FindSquadState(_squadMemberComponent.SquadEntityId);
                     if (squadState != null)
@@ -252,11 +252,11 @@ namespace Debug_Tool
             var world = _entityBehaviour.GetWorld();
             if (world == null) return null;
             
-            foreach (var entity in world.GetEntitiesWith<SquadStateComponent>())
+            foreach (var entity in world.GetEntitiesWith<SquadComponent>())
             {
                 if (entity.Id == squadId)
                 {
-                    return entity.GetComponent<SquadStateComponent>().CurrentState;
+                    return entity.GetComponent<SquadComponent>().CurrentState;
                 }
             }
             

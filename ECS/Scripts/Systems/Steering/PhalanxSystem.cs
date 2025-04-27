@@ -66,7 +66,7 @@ namespace Systems.Steering
                 
                 // Get squad entity
                 Entity squadEntity = null;
-                foreach (var entity in _world.GetEntitiesWith<SquadStateComponent>())
+                foreach (var entity in _world.GetEntitiesWith<SquadComponent>())
                 {
                     if (entity.Id == squadId)
                     {
@@ -81,7 +81,7 @@ namespace Systems.Steering
                 }
                 
                 // Get squad state and determine movement direction
-                var squadState = squadEntity.GetComponent<SquadStateComponent>();
+                var squadState = squadEntity.GetComponent<SquadComponent>();
                 Vector3 squadCenter = CalculateSquadCenter(squadMembers);
                 Vector3 moveDirection = DetermineMovementDirection(squadMembers, squadState);
                 
@@ -157,7 +157,7 @@ namespace Systems.Steering
             return center;
         }
         
-        private Vector3 DetermineMovementDirection(List<Entity> squadMembers, SquadStateComponent squadState)
+        private Vector3 DetermineMovementDirection(List<Entity> squadMembers, SquadComponent squadState)
         {
             // If squad is moving, use direction to target
             if (squadState.IsMoving && squadState.TargetPosition != Vector3.zero)

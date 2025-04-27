@@ -218,7 +218,7 @@ namespace Debug_Tool
                     LogSuccess($"Squad spawned successfully - ID: {squad.Id}");
                     
                     // Check components
-                    if (squad.HasComponent<SquadStateComponent>())
+                    if (squad.HasComponent<SquadComponent>())
                     {
                         LogSuccess("Squad has StateComponent");
                     }

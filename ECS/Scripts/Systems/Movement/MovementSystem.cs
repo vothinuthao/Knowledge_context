@@ -41,13 +41,13 @@ namespace Systems.Movement
                     var squadMember = entity.GetComponent<SquadMemberComponent>();
                     
                     // Find the squad entity
-                    var squadEntities = _world.GetEntitiesWith<SquadStateComponent>()
+                    var squadEntities = _world.GetEntitiesWith<SquadComponent>()
                         .Where(e => e.Id == squadMember.SquadEntityId);
                     
                     if (squadEntities.Any())
                     {
                         var squadEntity = squadEntities.First();
-                        var squadState = squadEntity.GetComponent<SquadStateComponent>();
+                        var squadState = squadEntity.GetComponent<SquadComponent>();
                         
                         // Lock position if squad is idle and member should lock
                         // FIX: Only lock if squad is ACTUALLY idle, not just when ShouldLockTroops is true
