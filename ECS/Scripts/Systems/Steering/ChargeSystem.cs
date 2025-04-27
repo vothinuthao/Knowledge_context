@@ -4,6 +4,7 @@ using Steering;
 using UnityEngine;
 using Combat;
 using Components;
+using Components.Steering;
 
 namespace Systems.Steering
 {

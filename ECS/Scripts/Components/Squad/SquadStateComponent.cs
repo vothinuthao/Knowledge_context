@@ -1,18 +1,19 @@
 ﻿// ECS/Scripts/Components/Squad/SquadStateComponent.cs
+
 using Core.ECS;
 using UnityEngine;
 
-namespace Squad
+namespace Components.Squad
 {
     /// <summary>
     /// Enum for squad states
     /// </summary>
     public enum SquadState
     {
-        Idle,
-        Moving,
-        Attacking,
-        Defending
+        IDLE,
+        MOVING,
+        ATTACKING,
+        DEFENDING
     }
     
     /// <summary>
@@ -21,7 +22,7 @@ namespace Squad
     public class SquadStateComponent : IComponent
     {
         // Current state of the squad
-        private SquadState _currentState = SquadState.Idle;
+        private SquadState _currentState = SquadState.IDLE;
         
         // FIX: Thêm event/delegate để thông báo khi state thay đổi
         public delegate void StateChangedHandler(SquadState oldState, SquadState newState);
@@ -54,10 +55,10 @@ namespace Squad
         public int TargetEntityId { get; set; } = -1;
         
         // Whether the squad is currently moving
-        public bool IsMoving => CurrentState == SquadState.Moving;
+        public bool IsMoving => CurrentState == SquadState.MOVING;
         
         // Whether troops should be locked in position
-        public bool ShouldLockTroops => CurrentState == SquadState.Idle;
+        public bool ShouldLockTroops => CurrentState == SquadState.IDLE;
         
         // FIX: Thêm tracking thời gian ở state hiện tại
         public float TimeInCurrentState { get; set; } = 0f;
@@ -78,10 +79,10 @@ namespace Squad
             {
                 switch (CurrentState)
                 {
-                    case SquadState.Moving: return 1.0f;
-                    case SquadState.Attacking: return 1.2f; // Nhanh hơn khi tấn công
-                    case SquadState.Defending: return 0.5f; // Chậm hơn khi phòng thủ
-                    case SquadState.Idle:
+                    case SquadState.MOVING: return 1.0f;
+                    case SquadState.ATTACKING: return 1.2f; // Nhanh hơn khi tấn công
+                    case SquadState.DEFENDING: return 0.5f; // Chậm hơn khi phòng thủ
+                    case SquadState.IDLE:
                     default: return 0.8f;
                 }
             }
@@ -132,12 +133,12 @@ namespace Squad
         {
             switch (CurrentState)
             {
-                case SquadState.Moving:
+                case SquadState.MOVING:
                     return MovingFormationSpacing;
-                case SquadState.Defending:
+                case SquadState.DEFENDING:
                     return DefendingFormationSpacing;
-                case SquadState.Idle:
-                case SquadState.Attacking:
+                case SquadState.IDLE:
+                case SquadState.ATTACKING:
                 default:
                     return FormationSpacing;
             }

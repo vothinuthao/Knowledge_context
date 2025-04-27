@@ -4,6 +4,7 @@ using Steering;
 using Steering.Config;
 using Movement;
 using Combat;
+using Components.Steering;
 
 namespace Factories
 {

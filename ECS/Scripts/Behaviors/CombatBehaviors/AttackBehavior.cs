@@ -20,7 +20,7 @@ namespace Behaviors
         public bool IsActive(BehaviorContext context)
         {
             // Active when in combat state and enemies nearby
-            return context.SquadState == SquadState.COMBAT && 
+            return context.SquadState == SquadState.ATTACKING && 
                    context.NearbyEnemies.Count > 0;
         }
         

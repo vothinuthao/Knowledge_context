@@ -1,10 +1,11 @@
-﻿// File: Managers/InputManager.cs
+﻿// InputManager.cs
 using UnityEngine;
 using System;
 using Components;
 using Core.ECS;
 using Components.Squad;
 using Core.Grid;
+using Managers;
 
 namespace Managers
 {
@@ -32,6 +33,12 @@ namespace Managers
         private bool _isDragging;
         private GameManager _gameManager;
         private GridManager _gridManager;
+        
+        // UI State
+        private bool _showSpawnMenu = false;
+        private bool _showDebugMenu = false;
+        private Vector2 _spawnMenuPosition = new Vector2(10, 10);
+        private Vector2 _debugMenuPosition = new Vector2(Screen.width - 210, 10);
         #endregion
         
         private void Start()
@@ -50,6 +57,204 @@ namespace Managers
             
             HandleMouseInput();
             HandleKeyboardInput();
+        }
+        
+        private void OnGUI()
+        {
+            DrawSpawnMenu();
+            DrawDebugMenu();
+            DrawSelectedSquadInfo();
+        }
+        
+        private void DrawSpawnMenu()
+        {
+            // Spawn Menu Button
+            if (GUI.Button(new Rect(_spawnMenuPosition.x, _spawnMenuPosition.y, 100, 30), "Spawn Squad"))
+            {
+                _showSpawnMenu = !_showSpawnMenu;
+            }
+            
+            // Spawn Menu Window
+            if (_showSpawnMenu)
+            {
+                float menuWidth = 200;
+                float menuHeight = 250;
+                
+                GUI.Box(new Rect(_spawnMenuPosition.x, _spawnMenuPosition.y + 35, menuWidth, menuHeight), "Squad Spawn Menu");
+                
+                // Player Squad Buttons
+                if (GUI.Button(new Rect(_spawnMenuPosition.x + 10, _spawnMenuPosition.y + 60, menuWidth - 20, 30), "Spawn Player Squad"))
+                {
+                    SpawnSquadAtMousePosition(Faction.PLAYER);
+                }
+                
+                if (GUI.Button(new Rect(_spawnMenuPosition.x + 10, _spawnMenuPosition.y + 95, menuWidth - 20, 30), "Spawn Enemy Squad"))
+                {
+                    SpawnSquadAtMousePosition(Faction.ENEMY);
+                }
+                
+                if (GUI.Button(new Rect(_spawnMenuPosition.x + 10, _spawnMenuPosition.y + 130, menuWidth - 20, 30), "Spawn at Center"))
+                {
+                    SpawnSquadAtCenter(Faction.PLAYER);
+                }
+                
+                if (GUI.Button(new Rect(_spawnMenuPosition.x + 10, _spawnMenuPosition.y + 165, menuWidth - 20, 30), "Spawn Multiple"))
+                {
+                    SpawnMultipleSquads();
+                }
+                
+                // Close button
+                if (GUI.Button(new Rect(_spawnMenuPosition.x + 10, _spawnMenuPosition.y + 240, menuWidth - 20, 25), "Close"))
+                {
+                    _showSpawnMenu = false;
+                }
+            }
+        }
+        
+        private void DrawDebugMenu()
+        {
+            // Debug Menu Button
+            if (GUI.Button(new Rect(_debugMenuPosition.x, _debugMenuPosition.y, 100, 30), "Debug Menu"))
+            {
+                _showDebugMenu = !_showDebugMenu;
+            }
+            
+            // Debug Menu Window
+            if (_showDebugMenu)
+            {
+                float menuWidth = 200;
+                float menuHeight = 200;
+                
+                GUI.Box(new Rect(_debugMenuPosition.x, _debugMenuPosition.y + 35, menuWidth, menuHeight), "Debug Info");
+                
+                // Debug information
+                GUI.Label(new Rect(_debugMenuPosition.x + 10, _debugMenuPosition.y + 60, menuWidth - 20, 20), 
+                    $"FPS: {1.0f / Time.deltaTime:F0}");
+                    
+                GUI.Label(new Rect(_debugMenuPosition.x + 10, _debugMenuPosition.y + 80, menuWidth - 20, 20), 
+                    $"Active Squads: {_gameManager.GetSquadCountByFaction(Faction.PLAYER)}");
+                    
+                GUI.Label(new Rect(_debugMenuPosition.x + 10, _debugMenuPosition.y + 100, menuWidth - 20, 20), 
+                    $"Enemy Squads: {_gameManager.GetSquadCountByFaction(Faction.ENEMY)}");
+                
+                // Debug actions
+                if (GUI.Button(new Rect(_debugMenuPosition.x + 10, _debugMenuPosition.y + 130, menuWidth - 20, 25), 
+                    "Clear All Squads"))
+                {
+                    ClearAllSquads();
+                }
+                
+                if (GUI.Button(new Rect(_debugMenuPosition.x + 10, _debugMenuPosition.y + 160, menuWidth - 20, 25), 
+                    "Toggle Grid Visual"))
+                {
+                    ToggleGridVisual();
+                }
+            }
+        }
+        
+        private void DrawSelectedSquadInfo()
+        {
+            if (_selectedSquad == null) return;
+            
+            float infoWidth = 200;
+            float infoHeight = 120;
+            float infoX = Screen.width / 2 - infoWidth / 2;
+            float infoY = Screen.height - infoHeight - 10;
+            
+            GUI.Box(new Rect(infoX, infoY, infoWidth, infoHeight), "Selected Squad");
+            
+            GUI.Label(new Rect(infoX + 10, infoY + 25, infoWidth - 20, 20), 
+                $"Squad ID: {_selectedSquad.Id}");
+            
+            if (_selectedSquad.HasComponent<SquadStateComponent>())
+            {
+                var state = _selectedSquad.GetComponent<SquadStateComponent>();
+                GUI.Label(new Rect(infoX + 10, infoY + 45, infoWidth - 20, 20), 
+                    $"State: {state.CurrentState}");
+                    
+                if (state.CurrentState == SquadState.MOVING)
+                {
+                    GUI.Label(new Rect(infoX + 10, infoY + 65, infoWidth - 20, 20), 
+                        $"Target: {state.TargetPosition}");
+                }
+            }
+            
+            // Action buttons
+            if (GUI.Button(new Rect(infoX + 10, infoY + 90, 85, 25), "Stop"))
+            {
+                IssueStopCommand();
+            }
+            
+            if (GUI.Button(new Rect(infoX + 105, infoY + 90, 85, 25), "Defend"))
+            {
+                IssueDefendCommand();
+            }
+        }
+        
+        private void SpawnSquadAtMousePosition(Faction faction)
+        {
+            Ray ray = _mainCamera.ScreenPointToRay(Input.mousePosition);
+            RaycastHit hit;
+            
+            if (Physics.Raycast(ray, out hit, Mathf.Infinity, _groundLayer))
+            {
+                Vector2Int gridPos = _gridManager.GetGridCoordinates(hit.point);
+                Vector3 spawnPos = _gridManager.GetCellCenter(gridPos);
+                
+                var squad = _gameManager.CreateSquad(null, spawnPos, faction);
+                Debug.Log($"Spawned {faction} squad at {spawnPos}");
+                
+                // Auto-select the newly spawned squad if it's a player squad
+                if (faction == Faction.PLAYER)
+                {
+                    SelectSquad(squad);
+                }
+            }
+        }
+        
+        private void SpawnSquadAtCenter(Faction faction)
+        {
+            Vector2Int centerGrid = new Vector2Int(10, 10); // Center of 20x20 grid
+            Vector3 spawnPos = _gridManager.GetCellCenter(centerGrid);
+            
+            var squad = _gameManager.CreateSquad(null, spawnPos, faction);
+            Debug.Log($"Spawned {faction} squad at center {spawnPos}");
+            
+            if (faction == Faction.PLAYER)
+            {
+                SelectSquad(squad);
+            }
+        }
+        
+        private void SpawnMultipleSquads()
+        {
+            int squadCount = 3;
+            float radius = 6.0f;
+            
+            for (int i = 0; i < squadCount; i++)
+            {
+                float angle = i * (360f / squadCount) * Mathf.Deg2Rad;
+                Vector3 offset = new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * radius;
+                Vector3 spawnPos = _gridManager.GetCellCenter(new Vector2Int(10, 10)) + offset;
+                
+                _gameManager.CreateSquad(null, spawnPos, Faction.PLAYER);
+            }
+            
+            Debug.Log($"Spawned {squadCount} squads in formation");
+        }
+        
+        private void ClearAllSquads()
+        {
+            // Implementation to clear all squads
+            // This would need to be implemented in GameManager
+            Debug.Log("Clear all squads requested");
+        }
+        
+        private void ToggleGridVisual()
+        {
+            // Implementation to toggle grid visualization
+            // This would need to be implemented in GridManager
+            Debug.Log("Toggle grid visual requested");
         }
         
         private void HandleMouseInput()
@@ -85,6 +290,64 @@ namespace Managers
             if (scroll != 0)
             {
                 HandleMouseScroll(scroll);
+            }
+        }
+        
+        private void HandleKeyboardInput()
+        {
+            // ESC - pause game
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                if (_gameManager.CurrentState == GameState.PLAYING)
+                    _gameManager.PauseGame();
+                else if (_gameManager.CurrentState == GameState.PAUSED)
+                    _gameManager.ResumeGame();
+            }
+            
+            // Tab - cycle through squads
+            if (Input.GetKeyDown(KeyCode.Tab))
+            {
+                CycleSquadSelection();
+            }
+            
+            // Quick spawn shortcuts
+            if (Input.GetKeyDown(KeyCode.F2))
+            {
+                SpawnSquadAtMousePosition(Faction.PLAYER);
+            }
+            
+            if (Input.GetKeyDown(KeyCode.F3))
+            {
+                SpawnSquadAtMousePosition(Faction.ENEMY);
+            }
+            
+            if (Input.GetKeyDown(KeyCode.F4))
+            {
+                SpawnSquadAtCenter(Faction.PLAYER);
+            }
+            
+            // Formation shortcuts
+            if (_selectedSquad != null)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                    ChangeFormation(FormationType.BASIC);
+                else if (Input.GetKeyDown(KeyCode.Alpha2))
+                    ChangeFormation(FormationType.PHALANX);
+                else if (Input.GetKeyDown(KeyCode.Alpha3))
+                    ChangeFormation(FormationType.TESTUDO);
+                else if (Input.GetKeyDown(KeyCode.Alpha4))
+                    ChangeFormation(FormationType.WEDGE);
+            }
+            
+            // Special commands
+            if (_selectedSquad != null)
+            {
+                if (Input.GetKeyDown(KeyCode.S)) // Stop
+                    IssueStopCommand();
+                else if (Input.GetKeyDown(KeyCode.D)) // Defend
+                    IssueDefendCommand();
+                else if (Input.GetKeyDown(KeyCode.R)) // Retreat
+                    IssueRetreatCommand();
             }
         }
         
@@ -171,48 +434,6 @@ namespace Managers
                 // Move command
                 Vector2Int gridPosition = _gridManager.GetGridCoordinates(hit.point);
                 IssueMoveCommand(gridPosition);
-            }
-        }
-        
-        private void HandleKeyboardInput()
-        {
-            // ESC - pause game
-            if (Input.GetKeyDown(KeyCode.Escape))
-            {
-                if (_gameManager.CurrentState == GameState.PLAYING)
-                    _gameManager.PauseGame();
-                else if (_gameManager.CurrentState == GameState.PAUSED)
-                    _gameManager.ResumeGame();
-            }
-            
-            // Tab - cycle through squads
-            if (Input.GetKeyDown(KeyCode.Tab))
-            {
-                CycleSquadSelection();
-            }
-            
-            // Formation shortcuts
-            if (_selectedSquad != null)
-            {
-                if (Input.GetKeyDown(KeyCode.Alpha1))
-                    ChangeFormation(FormationType.BASIC);
-                else if (Input.GetKeyDown(KeyCode.Alpha2))
-                    ChangeFormation(FormationType.PHALANX);
-                else if (Input.GetKeyDown(KeyCode.Alpha3))
-                    ChangeFormation(FormationType.TESTUDO);
-                else if (Input.GetKeyDown(KeyCode.Alpha4))
-                    ChangeFormation(FormationType.WEDGE);
-            }
-            
-            // Special commands
-            if (_selectedSquad != null)
-            {
-                if (Input.GetKeyDown(KeyCode.S)) // Stop
-                    IssueStopCommand();
-                else if (Input.GetKeyDown(KeyCode.D)) // Defend
-                    IssueDefendCommand();
-                else if (Input.GetKeyDown(KeyCode.R)) // Retreat
-                    IssueRetreatCommand();
             }
         }
         

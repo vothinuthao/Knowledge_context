@@ -5,13 +5,13 @@ using Core.ECS;
 
 namespace Components.Squad
 {
-    public enum SquadState
-    {
-        IDLE,
-        MOVING,
-        COMBAT,
-        RETREATING
-    }
+    // public enum SquadState
+    // {
+    //     IDLE,
+    //     MOVING,
+    //     COMBAT,
+    //     RETREATING
+    // }
 
     public enum FormationType
     {

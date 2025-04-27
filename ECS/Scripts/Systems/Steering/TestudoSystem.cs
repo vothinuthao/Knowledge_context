@@ -5,6 +5,8 @@ using UnityEngine;
 using System.Linq;
 using System.Collections.Generic;
 using Components;
+using Components.Squad;
+using Components.Steering;
 using Squad;
 
 namespace Systems.Steering

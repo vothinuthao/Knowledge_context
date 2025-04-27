@@ -1,6 +1,8 @@
 ﻿// ECS/Scripts/Debug_Tool/EnhancedTroopDebugVisualizer.cs
 
 using Components;
+using Components.Squad;
+using Components.Steering;
 using Core.ECS;
 using Movement;
 using Squad;

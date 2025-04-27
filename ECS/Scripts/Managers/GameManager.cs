@@ -1,5 +1,4 @@
-﻿// File: Managers/GameManager.cs
-using UnityEngine;
+﻿using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,6 +9,7 @@ using Data;
 using Components.Squad;
 using Core.Singleton;
 using Systems.Movement;
+using Systems.Squad;
 
 namespace Managers
 {
@@ -61,13 +61,16 @@ namespace Managers
         protected override void Awake()
         {
            base.Awake();
-            
             ValidateReferences();
         }
         
         private void Start()
         {
-            InitializeGame();
+            if (_currentState == GameState.INITIALIZING)
+            {
+                InitializeGame();
+            }
+            Invoke(nameof(VerifySystems), 0.5f);
         }
 
         private void Update()
@@ -363,21 +366,21 @@ namespace Managers
         private void HandleCommandIssued(Command command)
         {
             if (_currentState != GameState.PLAYING) return;
-            
+        
             switch (command.Type)
             {
                 case CommandType.MOVE:
                     HandleMoveCommand(command);
                     break;
-                    
+                
                 case CommandType.ATTACK:
                     HandleAttackCommand(command);
                     break;
-                    
+                
                 case CommandType.DEFEND:
                     HandleDefendCommand(command);
                     break;
-                    
+                
                 case CommandType.FORMATION_CHANGE:
                     HandleFormationCommand(command);
                     break;
@@ -387,12 +390,51 @@ namespace Managers
         private void HandleMoveCommand(Command command)
         {
             if (command.TargetSquad == null) return;
-            
+        
+            // FIX: Direct implementation if MovementSystem is not found
             var movementSystem = _worldManager.World.GetSystem<GridSquadMovementSystem>();
             if (movementSystem != null)
             {
                 movementSystem.CommandMove(command.TargetSquad, command.TargetPosition);
             }
+            else
+            {
+                // Alternative: Use SquadCommandSystem
+                var commandSystem = _worldManager.World.GetSystem<SquadCommandSystem>();
+                if (commandSystem != null)
+                {
+                    Vector3 worldPosition = _gridManager.GetCellCenter(command.TargetPosition);
+                    commandSystem.CommandMove(command.TargetSquad, worldPosition);
+                    Debug.Log($"Moving squad {command.TargetSquad.Id} to {worldPosition}");
+                }
+            }
+        }
+        public void VerifySystems()
+        {
+            if (_worldManager == null || _worldManager.World == null)
+            {
+                Debug.LogError("WorldManager or World is null!");
+                return;
+            }
+        
+            var world = _worldManager.World;
+        
+            // Check if essential systems are registered
+            var commandSystem = world.GetSystem<SquadCommandSystem>();
+            if (commandSystem == null)
+            {
+                Debug.LogWarning("SquadCommandSystem not found! Registering now...");
+                world.RegisterSystem(new SquadCommandSystem());
+            }
+        
+            var movementSystem = world.GetSystem<MovementSystem>();
+            if (movementSystem == null)
+            {
+                Debug.LogWarning("MovementSystem not found! Registering now...");
+                world.RegisterSystem(new MovementSystem());
+            }
+        
+            Debug.Log($"Systems verified. Total systems: {world.GetRegisteredSystemCount()}");
         }
         
         private void HandleAttackCommand(Command command)
@@ -400,7 +442,7 @@ namespace Managers
             if (command.TargetSquad == null || command.TargetEntity == null) return;
             
             var squadComponent = command.TargetSquad.GetComponent<SquadComponent>();
-            squadComponent.State = SquadState.COMBAT;
+            squadComponent.State = SquadState.ATTACKING;
             squadComponent.TargetSquadId = command.TargetEntity.Id;
             
             OnCombatStarted?.Invoke(command.TargetSquad, command.TargetEntity);

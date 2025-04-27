@@ -17,7 +17,7 @@ namespace Behaviors.CoreBehaviors
         {
             // Active when squad is moving or in combat
             return context.SquadState == SquadState.MOVING || 
-                   context.SquadState == SquadState.COMBAT;
+                   context.SquadState == SquadState.ATTACKING;
         }
         
         public Vector3 CalculateForce(BehaviorContext context)

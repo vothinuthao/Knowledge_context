@@ -1,6 +1,6 @@
 ﻿// ECS/Scripts/Systems/Steering/SteeringSystem.cs
-
 using Components;
+using Components.Steering;
 using Core.ECS;
 using Movement;
 using Steering;
@@ -24,7 +24,7 @@ namespace Systems.Steering
         
         public void Update(float deltaTime)
         {
-            // FIX: Trước tiên, cập nhật các SteeringDataComponent
+            // FIX: First, update all SteeringDataComponents
             UpdateSteeringData(deltaTime);
             
             // Reset all steering forces
@@ -33,16 +33,12 @@ namespace Systems.Steering
                 entity.GetComponent<SteeringDataComponent>().Reset();
             }
             
-            // Process seek behavior - đã được cập nhật trong SeekSystemFix
-            // Process separation behavior - không cần thay đổi
-            // Process other behaviors...
-            
             // Apply calculated steering forces to acceleration
             ApplySteeringForces();
         }
         
         /// <summary>
-        /// FIX: Cập nhật dữ liệu steering cho mỗi entity
+        /// FIX: Update steering data for each entity
         /// </summary>
         private void UpdateSteeringData(float deltaTime)
         {
@@ -50,7 +46,7 @@ namespace Systems.Steering
             {
                 var steeringData = entity.GetComponent<SteeringDataComponent>();
                 
-                // Update smoothing và tracking trong SteeringDataComponent
+                // Update smoothing and tracking in SteeringDataComponent
                 steeringData.Update(deltaTime);
             }
         }
@@ -71,24 +67,33 @@ namespace Systems.Steering
                     continue;
                 }
                 
-                // FIX: Kiểm tra xem entity đã đến đích chưa
+                // FIX: Check if entity has reached target
                 if (entity.HasComponent<PositionComponent>())
                 {
                     var positionComponent = entity.GetComponent<PositionComponent>();
+                    
                     if (steeringData.HasReachedTarget(positionComponent.Position))
                     {
-                        // Đã đến đích, dừng lại
+                        // Entity has arrived, apply braking force
                         if (entity.HasComponent<VelocityComponent>())
                         {
                             var velocityComponent = entity.GetComponent<VelocityComponent>();
                             
-                            // Giảm dần vận tốc xuống 0 nếu đã đến đích
+                            // Gradually reduce velocity to zero
                             if (velocityComponent.Velocity.magnitude > 0.01f)
                             {
-                                accelerationComponent.Acceleration = -velocityComponent.Velocity * 5.0f;
+                                // Stronger braking force when very close to target
+                                float brakingFactor = 5.0f;
+                                if (Vector3.Distance(positionComponent.Position, steeringData.TargetPosition) < 0.1f)
+                                {
+                                    brakingFactor = 10.0f;
+                                }
+                                
+                                accelerationComponent.Acceleration = -velocityComponent.Velocity * brakingFactor;
                             }
                             else
                             {
+                                // Stop completely
                                 velocityComponent.Velocity = Vector3.zero;
                                 accelerationComponent.Acceleration = Vector3.zero;
                             }
@@ -97,23 +102,23 @@ namespace Systems.Steering
                         continue;
                     }
                     
-                    // FIX: Nếu đang trong vùng giảm tốc, điều chỉnh lực
+                    // FIX: Apply slowing factor if in slowing zone
                     if (steeringData.IsInSlowingZone(positionComponent.Position))
                     {
                         float slowingFactor = steeringData.GetSlowingFactor(positionComponent.Position);
                         
-                        // Apply lực theo tỷ lệ giảm tốc
+                        // Apply force with slowing factor
                         accelerationComponent.Acceleration += steeringData.SteeringForce * slowingFactor;
                     }
                     else
                     {
-                        // Apply lực thông thường
+                        // Apply normal force
                         accelerationComponent.Acceleration += steeringData.SteeringForce;
                     }
                 }
                 else
                 {
-                    // Không có PositionComponent, apply lực thông thường
+                    // No PositionComponent, apply force normally
                     accelerationComponent.Acceleration += steeringData.SteeringForce;
                 }
                 

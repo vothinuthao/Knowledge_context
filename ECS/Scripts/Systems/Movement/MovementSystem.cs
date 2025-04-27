@@ -1,6 +1,7 @@
 ﻿// ECS/Scripts/Systems/Movement/MovementSystem.cs
 using System.Linq;
 using Components;
+using Components.Squad;
 using Core.ECS;
 using Movement;
 using Squad;
@@ -50,7 +51,7 @@ namespace Systems.Movement
                         
                         // Lock position if squad is idle and member should lock
                         // FIX: Only lock if squad is ACTUALLY idle, not just when ShouldLockTroops is true
-                        isLocked = squadState.CurrentState == SquadState.Idle && 
+                        isLocked = squadState.CurrentState == SquadState.IDLE && 
                                   squadState.ShouldLockTroops && 
                                   squadMember.LockPositionWhenIdle;
                     }

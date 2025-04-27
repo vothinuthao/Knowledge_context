@@ -21,8 +21,8 @@ namespace Systems.Movement
         public void Initialize(World world)
         {
             _world = world;
-            _gridManager = GridManager.Instance;
-            _pathfinder = new AStarPathfinder(_gridManager);
+            // _gridManager = GridManager.Instance;
+            // _pathfinder = new AStarPathfinder(GridManager.Instance);
         }
         
         public void Update(float deltaTime)
@@ -43,7 +43,7 @@ namespace Systems.Movement
                         HandleMovingSquad(entity, squadComponent, positionComponent, deltaTime);
                         break;
                     
-                    case SquadState.COMBAT:
+                    case SquadState.ATTACKING:
                         HandleCombatSquad(entity, squadComponent, positionComponent);
                         break;
                 }
@@ -59,7 +59,7 @@ namespace Systems.Movement
         private void HandleIdleSquad(Entity entity, SquadComponent squad, PositionComponent position)
         {
             // Ensure squad is centered in current cell
-            Vector3 cellCenter = _gridManager.GetCellCenter(squad.GridPosition);
+            Vector3 cellCenter = GridManager.Instance.GetCellCenter(squad.GridPosition);
             if (Vector3.Distance(position.Position, cellCenter) > 0.1f)
             {
                 position.Position = Vector3.Lerp(position.Position, cellCenter, Time.deltaTime * 5.0f);
@@ -74,6 +74,7 @@ namespace Systems.Movement
             // Check if path needs calculation
             if (squad.CurrentPath.Count == 0 && squad.GridPosition != squad.TargetGridPosition)
             {
+                _pathfinder ??= new AStarPathfinder(GridManager.Instance);
                 squad.CurrentPath = _pathfinder.FindPath(squad.GridPosition, squad.TargetGridPosition);
                 squad.PathIndex = 0;
             }
@@ -82,7 +83,7 @@ namespace Systems.Movement
             if (squad.CurrentPath.Count > 0 && squad.PathIndex < squad.CurrentPath.Count)
             {
                 Vector2Int nextCell = squad.CurrentPath[squad.PathIndex];
-                Vector3 targetPosition = _gridManager.GetCellCenter(nextCell);
+                Vector3 targetPosition = GridManager.Instance.GetCellCenter(nextCell);
                 
                 // Move toward next cell
                 Vector3 direction = (targetPosition - position.Position).normalized;
@@ -92,9 +93,9 @@ namespace Systems.Movement
                 if (Vector3.Distance(position.Position, targetPosition) < 0.1f)
                 {
                     // Update grid position
-                    _gridManager.SetCellOccupied(squad.GridPosition, false);
+                    GridManager.Instance.SetCellOccupied(squad.GridPosition, false);
                     squad.GridPosition = nextCell;
-                    _gridManager.SetCellOccupied(squad.GridPosition, true);
+                    GridManager.Instance.SetCellOccupied(squad.GridPosition, true);
                     
                     // Move to next cell in path
                     squad.PathIndex++;
@@ -148,7 +149,7 @@ namespace Systems.Movement
             if (distance > squad.CombatRange * 1.5f)
             {
                 // Move closer
-                Vector2Int targetCell = _gridManager.GetGridCoordinates(targetPosition);
+                Vector2Int targetCell = GridManager.Instance.GetGridCoordinates(targetPosition);
                 if (targetCell != squad.TargetGridPosition)
                 {
                     squad.TargetGridPosition = targetCell;
@@ -199,7 +200,7 @@ namespace Systems.Movement
             if (squad == null) return;
             
             // Check if target cell is valid and not occupied
-            if (!_gridManager.IsValidCell(targetCell) || _gridManager.IsCellOccupied(targetCell))
+            if (!GridManager.Instance.IsValidCell(targetCell) || GridManager.Instance.IsCellOccupied(targetCell))
                 return;
             
             squad.TargetGridPosition = targetCell;
@@ -217,7 +218,7 @@ namespace Systems.Movement
             if (squad == null) return;
             
             squad.TargetSquadId = targetEntity.Id;
-            squad.State = SquadState.COMBAT;
+            squad.State = SquadState.ATTACKING;
         }
         
         /// <summary>

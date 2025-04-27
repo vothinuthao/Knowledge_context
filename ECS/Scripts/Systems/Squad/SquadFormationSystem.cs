@@ -1,6 +1,8 @@
 ﻿// ECS/Scripts/Systems/Squad/SquadFormationSystem.cs
 
 using Components;
+using Components.Squad;
+using Components.Steering;
 using Core.ECS;
 using Movement;
 using Squad;
@@ -43,7 +45,7 @@ namespace Systems.Squad
                 
                 // FIX: Also update if squad is in moving state
                 if (squadEntity.HasComponent<SquadStateComponent>() && 
-                    squadEntity.GetComponent<SquadStateComponent>().CurrentState == SquadState.Moving)
+                    squadEntity.GetComponent<SquadStateComponent>().CurrentState == SquadState.MOVING)
                 {
                     shouldUpdate = true;
                 }

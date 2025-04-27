@@ -5,6 +5,7 @@ using Steering;
 using UnityEngine;
 using System.Collections.Generic;
 using Components;
+using Components.Steering;
 
 namespace Systems.Steering
 {

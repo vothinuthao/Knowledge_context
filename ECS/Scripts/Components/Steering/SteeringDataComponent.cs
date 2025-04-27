@@ -1,41 +1,38 @@
 ﻿// ECS/Scripts/Components/Steering/SteeringDataComponent.cs
+
 using System.Collections.Generic;
 using Core.ECS;
 using UnityEngine;
 
-namespace Steering
+namespace Components.Steering
 {
     /// <summary>
     /// Component for steering behavior data
     /// </summary>
     public class SteeringDataComponent : IComponent
     {
-        // Final steering force calculated from all behaviors
         public Vector3 SteeringForce { get; set; } = Vector3.zero;
         
         // Target position for steering
         private Vector3 _targetPosition = Vector3.zero;
         
-        // FIX: Thêm target smooth để tránh thay đổi đột ngột
         private Vector3 _smoothedTargetPosition = Vector3.zero;
         
-        // FIX: Thêm tracking thay đổi target
         public bool TargetPositionChanged { get; private set; } = false;
         public float TimeAtCurrentTarget { get; private set; } = 0f;
         
-        // FIX: Property với logic bổ sung khi set target position
         public Vector3 TargetPosition 
         { 
             get { return _targetPosition; }
             set 
             {
-                // Kiểm tra xem target có thay đổi đáng kể không
+                // Check if target has changed significantly
                 if (Vector3.Distance(_targetPosition, value) > 0.1f)
                 {
                     TargetPositionChanged = true;
                     TimeAtCurrentTarget = 0f;
                     
-                    // Lưu vị trí cũ trước khi cập nhật
+                    // Save old position before updating
                     PreviousTargetPosition = _targetPosition;
                 }
                 
@@ -43,7 +40,7 @@ namespace Steering
             }
         }
         
-        // FIX: Thêm truy cập đến target position đã được làm mịn
+        // FIX: Add access to smoothed target position
         public Vector3 SmoothedTargetPosition 
         { 
             get { return _smoothedTargetPosition; }
@@ -52,7 +49,7 @@ namespace Steering
         // Position to avoid
         public Vector3 AvoidPosition { get; set; } = Vector3.zero;
         
-        // FIX: Thêm tracking target position trước đó
+        // FIX: Add tracking target position trước đó
         public Vector3 PreviousTargetPosition { get; private set; } = Vector3.zero;
         
         // Nearby entities for flocking behaviors
@@ -68,7 +65,7 @@ namespace Steering
         // Whether entity is in danger
         public bool IsInDanger { get; set; } = false;
         
-        // FIX: Thêm các tham số steering behavior
+        // FIX: Add steering behavior parameters
         public float ArrivalDistance { get; set; } = 0.5f;
         public float SlowingDistance { get; set; } = 2.0f;
         public float SmoothingFactor { get; set; } = 0.2f; // Hệ số làm mịn (0-1)
@@ -99,23 +96,23 @@ namespace Steering
         }
         
         /// <summary>
-        /// FIX: Cập nhật logic tracking và làm mịn target
+        /// FIX: Update tracking and smoothing target
         /// </summary>
         public void Update(float deltaTime)
         {
-            // Cập nhật thời gian tại target hiện tại
+            // Update time at current target
             TimeAtCurrentTarget += deltaTime;
             
-            // Sau một thời gian, reset flag thay đổi target
+            // After a while, reset target changed flag
             if (TargetPositionChanged && TimeAtCurrentTarget > 0.5f)
             {
                 TargetPositionChanged = false;
             }
             
-            // Làm mịn target position để tránh thay đổi đột ngột
+            // Smooth target position to avoid sudden changes
             _smoothedTargetPosition = Vector3.Lerp(_smoothedTargetPosition, _targetPosition, SmoothingFactor);
             
-            // Nếu smoothed gần với target thực tế, set luôn bằng target để tránh sai số nhỏ
+            // If smoothed is close enough to actual target, set it exactly
             if (Vector3.Distance(_smoothedTargetPosition, _targetPosition) < 0.05f)
             {
                 _smoothedTargetPosition = _targetPosition;
@@ -123,7 +120,7 @@ namespace Steering
         }
         
         /// <summary>
-        /// FIX: Kiểm tra xem đã đến đủ gần target chưa
+        /// FIX: Check if reached target
         /// </summary>
         public bool HasReachedTarget(Vector3 currentPosition)
         {
@@ -132,7 +129,7 @@ namespace Steering
         }
         
         /// <summary>
-        /// FIX: Kiểm tra xem có đang trong vùng giảm tốc không
+        /// FIX: Check if in slowing zone
         /// </summary>
         public bool IsInSlowingZone(Vector3 currentPosition)
         {
@@ -141,18 +138,18 @@ namespace Steering
         }
         
         /// <summary>
-        /// FIX: Tính hệ số giảm tốc dựa trên khoảng cách đến target
+        /// FIX: Calculate slowing factor based on distance to target
         /// </summary>
         public float GetSlowingFactor(Vector3 currentPosition)
         {
             if (!IsInSlowingZone(currentPosition))
             {
-                return 1.0f; // Không giảm tốc
+                return 1.0f; // No slowing
             }
             
             float distance = Vector3.Distance(currentPosition, _targetPosition);
             
-            // Interpolate giữa 0.1 và 1.0 dựa trên khoảng cách
+            // Interpolate between 0.1 and 1.0 based on distance
             return Mathf.Lerp(0.1f, 1.0f, distance / SlowingDistance);
         }
     }
