@@ -83,52 +83,10 @@ namespace Helper_Tool
         
         private void AutoInitializeManagers()
         {
-            Debug.Log("=== Auto Initializing Managers ===");
-            
-            // GameManager
-            if (_gameManager == null)
-            {
-                _gameManager = GameManager.Instance;
-                if (_gameManager == null)
-                {
-                    GameObject go = new GameObject("GameManager");
-                    _gameManager = go.AddComponent<GameManager>();
-                    Debug.LogWarning("Created new GameManager instance");
-                }
-            }
-            
-            // WorldManager
-            if (_worldManager == null)
-            {
-                _worldManager = FindObjectOfType<WorldManager>();
-                if (_worldManager == null)
-                {
-                    GameObject go = new GameObject("WorldManager");
-                    _worldManager = go.AddComponent<WorldManager>();
-                    _worldManager.InitializeWorld();
-                    Debug.LogWarning("Created new WorldManager instance");
-                }
-            }
-            
-            // GridManager
-            if (_gridManager == null)
-            {
-                _gridManager = GridManager.Instance;
-                if (_gridManager == null)
-                {
-                    GameObject go = new GameObject("GridManager");
-                    _gridManager = go.AddComponent<GridManager>();
-                    _gridManager.InitializeGrid();
-                    Debug.LogWarning("Created new GridManager instance");
-                }
-            }
-            
-            // Register essential systems
             if (_worldManager != null && _worldManager.World != null)
             {
                 RegisterEssentialSystems();
             }
-            
             _isInitialized = true;
         }
         
