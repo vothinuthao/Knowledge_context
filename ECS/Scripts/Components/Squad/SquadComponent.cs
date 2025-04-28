@@ -82,15 +82,22 @@ namespace Components.Squad
         public bool AddMember(int entityId)
         {
             if (MemberIds.Count >= MemberOffsets.Length)
+            {
+                Debug.LogWarning($"Squad {LeaderId} is full! Cannot add more members.");
                 return false;
-                
+            }
+    
+            if (MemberIds.Contains(entityId))
+            {
+                Debug.LogWarning($"Entity {entityId} is already a member of squad {LeaderId}");
+                return false;
+            }
             MemberIds.Add(entityId);
-            
-            // Set as leader if first member
             if (LeaderId == -1)
                 LeaderId = entityId;
-                
+            
             _formationNeedsUpdate = true;
+            Debug.Log($"Added member {entityId} to squad. Total members: {MemberIds.Count}");
             return true;
         }
         

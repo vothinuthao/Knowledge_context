@@ -8,6 +8,19 @@ using UnityEngine;
 
 namespace Factories
 {
+    
+    
+    public enum TroopType
+    {
+        Warrior,
+        HeavyInfantry,
+        Berserker,
+        Archer,
+        Scout,
+        Commander,
+        Defender,
+        Assassin
+    }
     /// <summary>
     /// Factory for creating troop entities
     /// </summary>
@@ -21,24 +34,34 @@ namespace Factories
             _world = world;
             _troopPrefab = troopPrefab;
         }
-        
-        /// <summary>
-        /// Create a troop entity
-        /// </summary>
         public Entity CreateTroop(Vector3 position, Quaternion rotation, TroopType troopType)
         {
+            if (!_troopPrefab)
+            {
+                Debug.LogError("TroopFactory: troopPrefab is null!");
+                return null;
+            }
             Entity entity = _world.CreateEntity();
-            entity.AddComponent(new PositionComponent(position));
-            entity.AddComponent(new RotationComponent(rotation, 10f));
-            entity.AddComponent(new VelocityComponent(GetMoveSpeedForType(troopType)));
-            entity.AddComponent(new AccelerationComponent());
-            entity.AddComponent(new SteeringDataComponent());
+            AddComponentSafely(entity,new PositionComponent(position));
+            AddComponentSafely(entity,new RotationComponent(rotation, 10f));
+            AddComponentSafely(entity,new VelocityComponent(GetMoveSpeedForType(troopType)));
+            AddComponentSafely(entity,new AccelerationComponent());
+            AddComponentSafely(entity,new SteeringDataComponent());
+        
             AddBehaviorsForType(entity, troopType);
             GameObject troopObject = Object.Instantiate(_troopPrefab, position, rotation);
+            if (!troopObject)
+            {
+                Debug.LogError("Failed to instantiate troop prefab!");
+                _world.DestroyEntity(entity);
+                return null;
+            }
+        
             troopObject.name = $"Troop_{troopType}_{entity.Id}";
-            var entityBehaviour = troopObject.GetComponent<EntityBehaviour>();
+            EntityBehaviour entityBehaviour = troopObject.GetComponent<EntityBehaviour>();
             entityBehaviour.Initialize(entity, _world);
-            
+            Debug.Log($"Created troop {entity.Id} at position {position}");
+        
             return entity;
         }
         
@@ -100,10 +123,18 @@ namespace Factories
                 troopEntity.GetComponent<SteeringDataComponent>().TargetPosition = desiredPosition;
             }
         }
+        private void AddComponentSafely<T>(Entity entity, T component) where T : IComponent
+        {
+            if (entity.HasComponent<T>())
+            {
+                Debug.LogWarning($"Entity {entity.Id} already has component of type {typeof(T).Name}. Skipping.");
+                return;
+            }
+            
+            entity.AddComponent(component);
+        }
         
-        /// <summary>
-        /// Get move speed for troop type
-        /// </summary>
+        
         private float GetMoveSpeedForType(TroopType troopType)
         {
             switch (troopType)
@@ -131,21 +162,10 @@ namespace Factories
         /// </summary>
         private void AddBehaviorsForType(Entity entity, TroopType troopType)
         {
-            // Add common behaviors
             entity.AddComponent(new SeekComponent(1.0f));
             entity.AddComponent(new SeparationComponent(2.0f, 2.0f));
+            entity.AddComponent(new ArrivalComponent(1.0f, 2.0f));
         }
-    }
-    
-    public enum TroopType
-    {
-        Warrior,
-        HeavyInfantry,
-        Berserker,
-        Archer,
-        Scout,
-        Commander,
-        Defender,
-        Assassin
+        
     }
 }

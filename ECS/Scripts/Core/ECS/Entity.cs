@@ -29,12 +29,11 @@ namespace Core.ECS
         public T AddComponent<T>(T component) where T : IComponent
         {
             Type type = typeof(T);
-            if (_components.ContainsKey(type))
+            if (!_components.TryAdd(type, component))
             {
                 throw new InvalidOperationException($"Entity {Id} already has component of type {type.Name}");
             }
-            
-            _components[type] = component;
+
             _world.NotifyComponentAdded(this, component);
             return component;
         }
