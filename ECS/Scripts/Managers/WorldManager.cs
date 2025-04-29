@@ -26,14 +26,26 @@ namespace Managers
         
         {
             base.Awake();
-            InitializeWorld();
+            // InitializeWorld();
+        }
+        public void SetWorld(World world)
+        {
+            if (world != null)
+            {
+                this.World = world;
+                InitializeWorld();
+                Debug.Log("WorldManager: World set externally and systems registered");
+            }
         }
         
         public void InitializeWorld()
         {
-            World = new World();
+            // World = new World();
             if (_troopPrefab)
                 _troopFactory = new TroopFactory(World, _troopPrefab);
+            
+            World.RegisterSystem(new Systems.GridSystem());
+            World.RegisterSystem(new Systems.SelectionSystem());
             
             World.RegisterSystem(new SquadCommandSystem());
             World.RegisterSystem(new SquadFormationSystem());
@@ -42,7 +54,6 @@ namespace Managers
             World.RegisterSystem(new MovementSystem());
             World.RegisterSystem(new RotationSystem());
     
-            // Behavior & Steering
             World.RegisterSystem(new BehaviorSystem());
             World.RegisterSystem(new EntityDetectionSystem());
             World.RegisterSystem(new SteeringSystem());

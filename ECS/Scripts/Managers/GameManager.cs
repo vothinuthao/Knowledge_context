@@ -570,10 +570,7 @@ namespace Managers
         
         public void RestartGame()
         {
-            // Clear current game state
             ClearGameState();
-            
-            // Reinitialize
             InitializeGame();
         }
         
