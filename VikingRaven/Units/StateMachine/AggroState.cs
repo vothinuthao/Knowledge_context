@@ -56,6 +56,8 @@ namespace VikingRaven.Units.StateMachine
             }
         }
 
+        public IState IdleState { get; set; }
+
         public override void Exit()
         {
             Debug.Log($"Entity {Entity.Id} exited Aggro state");

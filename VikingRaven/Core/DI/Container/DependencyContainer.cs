@@ -2,28 +2,29 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Core.Utils;
 using UnityEngine;
 
 namespace VikingRaven.Core.DI
 {
-    public class DependencyContainer : MonoBehaviour
+    public class DependencyContainer : Singleton<DependencyContainer>
     {
         private readonly Dictionary<Type, object> _dependencies = new Dictionary<Type, object>();
-        private static DependencyContainer _instance;
-
-        public static DependencyContainer Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    var containerObject = new GameObject("DependencyContainer");
-                    _instance = containerObject.AddComponent<DependencyContainer>();
-                    DontDestroyOnLoad(containerObject);
-                }
-                return _instance;
-            }
-        }
+        // private static DependencyContainer _instance;
+        //
+        // public static DependencyContainer Instance
+        // {
+        //     get
+        //     {
+        //         if (_instance == null)
+        //         {
+        //             var containerObject = new GameObject("DependencyContainer");
+        //             _instance = containerObject.AddComponent<DependencyContainer>();
+        //             DontDestroyOnLoad(containerObject);
+        //         }
+        //         return _instance;
+        //     }
+        // }
 
         public void Register<T>(T instance)
         {

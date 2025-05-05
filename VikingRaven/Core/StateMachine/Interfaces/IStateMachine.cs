@@ -8,5 +8,6 @@
         void ChangeState(IState newState);
         void RevertToPreviousState();
         void Update();
+        void ChangeState<T>() where T : class, IState;
     }
 }

@@ -14,15 +14,14 @@ namespace VikingRaven.Units.StateMachine
         public override void Enter()
         {
             Debug.Log($"Entity {Entity.Id} entered Idle state");
-            
-            // Set animation if available
             var animationComponent = Entity.GetComponent<AnimationComponent>();
-            if (animationComponent != null)
+            if (animationComponent)
             {
                 animationComponent.PlayAnimation("Idle");
             }
         }
 
+        // ReSharper disable Unity.PerformanceAnalysis
         public override void Execute()
         {
             var aggroDetectionComponent = Entity.GetComponent<AggroDetectionComponent>();
@@ -32,6 +31,8 @@ namespace VikingRaven.Units.StateMachine
                 return;
             }
         }
+
+        public IState AggroState { get; set; }
 
         public override void Exit()
         {

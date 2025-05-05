@@ -210,17 +210,15 @@ namespace VikingRaven.Units.Components
                             entityHealth.TakeDamage(chargeDamage, _entity);
                         }
                         
-                        // Apply knockback
                         Vector3 knockbackDirection = (entityTransform.Position - transformComponent.Position).normalized;
                         
                         var stateComponent = entity.GetComponent<StateComponent>();
-                        if (stateComponent != null && stateComponent.StateMachine != null)
+                        if (stateComponent != null && stateComponent.StateMachineInGame != null)
                         {
-                            var knockbackState = stateComponent.StateMachine.GetState<KnockbackState>() as KnockbackState;
-                            if (knockbackState != null)
+                            if (stateComponent.StateMachineInGame.CurrentState is KnockbackState knockbackState)
                             {
                                 knockbackState.SetKnockbackParams(knockbackDirection, 8.0f, 0.5f);
-                                stateComponent.StateMachine.ChangeState(knockbackState);
+                                stateComponent.StateMachineInGame.ChangeState(knockbackState);
                             }
                         }
                         

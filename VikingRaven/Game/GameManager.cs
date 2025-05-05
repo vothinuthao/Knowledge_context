@@ -26,8 +26,9 @@ namespace VikingRaven.Game
         [SerializeField] private SquadCoordinationSystem _squadCoordinationSystem;
         [SerializeField] private TacticalAnalysisSystem _tacticalAnalysisSystem;
         [SerializeField] private WeightedBehaviorSystem _weightedBehaviorSystem;
-        
+        [SerializeField]
         private DependencyInstaller _dependencyInstaller;
+        [SerializeField]
         private GameBootstrapper _gameBootstrapper;
 
         private void Awake()

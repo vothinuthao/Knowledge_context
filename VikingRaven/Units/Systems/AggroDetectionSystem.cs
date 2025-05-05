@@ -21,14 +21,13 @@ namespace VikingRaven.Units.Systems
                 // Aggro detection is handled in the component's Update method
                 
                 // However, we can handle state transitions here
-                if (stateComponent != null && stateComponent.StateMachine != null)
+                if (stateComponent != null && stateComponent.StateMachineInGame != null)
                 {
                     // Check if we detected an enemy and are currently in Idle state
                     if (aggroDetectionComponent.HasEnemyInRange() && 
                         stateComponent.CurrentState is IdleState)
                     {
-                        // Transition to Aggro state
-                        stateComponent.StateMachine.ChangeState<AggroState>();
+                        stateComponent.StateMachineInGame.ChangeState<AggroState>();
                     }
                     
                     // Check if we lost all enemies and are currently in Aggro state
@@ -36,7 +35,7 @@ namespace VikingRaven.Units.Systems
                              stateComponent.CurrentState is AggroState)
                     {
                         // Transition back to Idle state
-                        stateComponent.StateMachine.ChangeState<IdleState>();
+                        stateComponent.StateMachineInGame.ChangeState<IdleState>();
                     }
                 }
             }

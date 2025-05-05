@@ -8,7 +8,7 @@ namespace VikingRaven.Core.DI
         [SerializeField] private DependencyInstaller _dependencyInstaller;
         [SerializeField] private SystemRegistry _systemRegistry;
         
-        private void Start()
+        private void Awake()
         {
             // Initialize all systems after dependencies are injected
             _systemRegistry.InitializeAllSystems();
