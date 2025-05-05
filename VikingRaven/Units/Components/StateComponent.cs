@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.StateMachine;
+using VikingRaven.Units.StateMachine;
 
 namespace VikingRaven.Units.Components
 {
