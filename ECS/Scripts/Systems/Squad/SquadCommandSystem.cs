@@ -1,5 +1,4 @@
-﻿// ECS/Scripts/Systems/Squad/SquadCommandSystem.cs
-using Core.ECS;
+﻿using Core.ECS;
 using Movement;
 using Squad;
 using Steering;
@@ -8,17 +7,19 @@ using System.Collections.Generic;
 using Components;
 using Components.Squad;
 using Components.Steering;
+using Core.Grid;
 
 namespace Systems.Squad
 {
     /// <summary>
     /// System that handles squad commands and state changes
+    /// Enhanced with grid movement support
     /// </summary>
     public class SquadCommandSystem : ISystem
     {
         private World _world;
-        
-        public int Priority => 120; // Very high priority
+        private GridSystem _gridSystem;
+        private SelectionSystem _selectionSystem;
         
         // FIX: Dictionary to store squad target positions
         private Dictionary<int, Vector3> _squadTargets = new Dictionary<int, Vector3>();
@@ -27,9 +28,22 @@ namespace Systems.Squad
         private Dictionary<int, float> _squadUpdateTimers = new Dictionary<int, float>();
         private const float UPDATE_INTERVAL = 0.2f; // Update every 0.2 seconds
         
+        public int Priority => 120; // Very high priority
+        
         public void Initialize(World world)
         {
             _world = world;
+            
+            // Get reference to GridSystem and SelectionSystem
+            _gridSystem = _world.GetSystem<GridSystem>();
+            _selectionSystem = _world.GetSystem<SelectionSystem>();
+            
+            // Register for selection events if available
+            if (_selectionSystem != null)
+            {
+                _selectionSystem.OnEntitySelected += HandleEntitySelected;
+                _selectionSystem.OnEntityDeselected += HandleEntityDeselected;
+            }
         }
         
         public void Update(float deltaTime)
@@ -76,6 +90,76 @@ namespace Systems.Squad
                         }
                         break;
                 }
+                
+                // Update grid position if GridSystem is available
+                if (_gridSystem != null)
+                {
+                    UpdateSquadGridPosition(squadEntity, positionComponent);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Update squad's grid position in the GridSystem
+        /// </summary>
+        private void UpdateSquadGridPosition(Entity squadEntity, PositionComponent positionComponent)
+        {
+            if (_gridSystem == null)
+                return;
+                
+            // Get current grid position
+            Vector2Int gridPos = _gridSystem.WorldToGrid(positionComponent.Position);
+            
+            // Get the tile at this position
+            Entity tileEntity = _gridSystem.GetTileAt(gridPos.x, gridPos.y);
+            if (tileEntity != null && tileEntity.HasComponent<GridTileComponent>())
+            {
+                var tileComponent = tileEntity.GetComponent<GridTileComponent>();
+                
+                // If the tile isn't already occupied by this squad
+                if (!tileComponent.IsOccupied || tileComponent.OccupyingEntityId != squadEntity.Id)
+                {
+                    // Check for previous tile
+                    foreach (var entity in _world.GetEntitiesWith<GridTileComponent>())
+                    {
+                        var otherTileComponent = entity.GetComponent<GridTileComponent>();
+                        if (otherTileComponent.IsOccupied && otherTileComponent.OccupyingEntityId == squadEntity.Id)
+                        {
+                            // Clear old tile
+                            otherTileComponent.ClearOccupied();
+                        }
+                    }
+                    
+                    // Set new tile as occupied
+                    tileComponent.SetOccupied(squadEntity.Id);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Handle when an entity is selected
+        /// </summary>
+        private void HandleEntitySelected(Entity entity)
+        {
+            if (entity == null || !entity.HasComponent<SquadComponent>())
+                return;
+                
+            // If GridSystem is available, show movement options
+            if (_gridSystem != null)
+            {
+                _gridSystem.HighlightMovementOptions(entity);
+            }
+        }
+        
+        /// <summary>
+        /// Handle when an entity is deselected
+        /// </summary>
+        private void HandleEntityDeselected()
+        {
+            // Clear movement highlights
+            if (_gridSystem != null)
+            {
+                _gridSystem.ClearAllHighlights();
             }
         }
         
@@ -140,6 +224,86 @@ namespace Systems.Squad
                     UpdateSquadMembersTargets(squadEntity);
                 }
             }
+        }
+        
+        /// <summary>
+        /// Command a squad to move to a position
+        /// </summary>
+        public void CommandMove(Entity squadEntity, Vector3 targetPosition)
+        {
+            if (!squadEntity.HasComponent<SquadComponent>())
+            {
+                return;
+            }
+            
+            var stateComponent = squadEntity.GetComponent<SquadComponent>();
+            
+            // Log the command being executed
+            Debug.Log($"Commanding Squad {squadEntity.Id} to move to {targetPosition}");
+            
+            // Change state to Moving
+            stateComponent.ChangeState(SquadState.MOVING);
+            stateComponent.TargetPosition = targetPosition;
+            stateComponent.TargetEntityId = -1;
+            
+            // Store target in dictionary
+            _squadTargets[squadEntity.Id] = targetPosition;
+            
+            // FIX: Reset update timer to update immediately
+            _squadUpdateTimers[squadEntity.Id] = UPDATE_INTERVAL;
+            
+            // Configure steering parameters for moving state
+            foreach (var memberEntity in _world.GetEntitiesWith<SquadMemberComponent, SteeringDataComponent>())
+            {
+                var memberComponent = memberEntity.GetComponent<SquadMemberComponent>();
+                
+                if (memberComponent.SquadEntityId != squadEntity.Id)
+                {
+                    continue;
+                }
+                
+                var steeringData = memberEntity.GetComponent<SteeringDataComponent>();
+                
+                // Looser parameters for moving state
+                steeringData.ArrivalDistance = 0.5f;
+                steeringData.SlowingDistance = 2.0f;
+                steeringData.SmoothingFactor = 0.2f; // Smoother movement when moving
+            }
+            
+            // Immediately update squad members' targets
+            UpdateSquadMembersTargets(squadEntity);
+        }
+        
+        /// <summary>
+        /// Command a squad to move to a specific tile
+        /// </summary>
+        public void CommandMoveToTile(Entity squadEntity, Entity tileEntity)
+        {
+            if (squadEntity == null || tileEntity == null || 
+                !tileEntity.HasComponent<GridTileComponent>() || 
+                !squadEntity.HasComponent<SquadComponent>())
+            {
+                return;
+            }
+            
+            var tileComponent = tileEntity.GetComponent<GridTileComponent>();
+            
+            // Don't move if tile is occupied or not walkable
+            if (tileComponent.IsOccupied || !tileComponent.IsWalkable)
+            {
+                return;
+            }
+            
+            // Get world position for this tile
+            Vector3 targetPosition = _gridSystem.GridToWorld(new Vector2Int(tileComponent.X, tileComponent.Z));
+            
+            // Command move to position
+            CommandMove(squadEntity, targetPosition);
+            
+            // Update tile occupation
+            tileComponent.SetOccupied(squadEntity.Id);
+            
+            Debug.Log($"Squad {squadEntity.Id} commanded to move to tile at ({tileComponent.X}, {tileComponent.Z})");
         }
         
         /// <summary>
@@ -235,62 +399,19 @@ namespace Systems.Squad
         }
         
         /// <summary>
-        /// Command a squad to move to a position
+        /// Update a squad in the attacking state
         /// </summary>
-        public void CommandMove(Entity squadEntity, Vector3 targetPosition)
-        {
-            if (!squadEntity.HasComponent<SquadComponent>())
-            {
-                return;
-            }
-            
-            var stateComponent = squadEntity.GetComponent<SquadComponent>();
-            
-            // Log the command being executed
-            Debug.Log($"Commanding Squad {squadEntity.Id} to move to {targetPosition}");
-            
-            // Change state to Moving
-            stateComponent.ChangeState(SquadState.MOVING);
-            stateComponent.TargetPosition = targetPosition;
-            stateComponent.TargetEntityId = -1;
-            
-            // Store target in dictionary
-            _squadTargets[squadEntity.Id] = targetPosition;
-            
-            // FIX: Reset update timer to update immediately
-            _squadUpdateTimers[squadEntity.Id] = UPDATE_INTERVAL;
-            
-            // Configure steering parameters for moving state
-            foreach (var memberEntity in _world.GetEntitiesWith<SquadMemberComponent, SteeringDataComponent>())
-            {
-                var memberComponent = memberEntity.GetComponent<SquadMemberComponent>();
-                
-                if (memberComponent.SquadEntityId != squadEntity.Id)
-                {
-                    continue;
-                }
-                
-                var steeringData = memberEntity.GetComponent<SteeringDataComponent>();
-                
-                // Looser parameters for moving state
-                steeringData.ArrivalDistance = 0.5f;
-                steeringData.SlowingDistance = 2.0f;
-                steeringData.SmoothingFactor = 0.2f; // Smoother movement when moving
-            }
-            
-            // Immediately update squad members' targets
-            UpdateSquadMembersTargets(squadEntity);
-        }
-        
-        // Other command methods remain the same...
         private void UpdateAttackingSquad(Entity squadEntity, SquadComponent stateComponent, float deltaTime)
         {
-            // Similar to existing implementation
+            // Implementation remains the same
         }
         
+        /// <summary>
+        /// Update a squad in the defending state
+        /// </summary>
         private void UpdateDefendingSquad(Entity squadEntity, SquadComponent stateComponent, float deltaTime)
         {
-            // Similar to existing implementation
+            // Implementation remains the same
         }
     }
 }

@@ -47,13 +47,11 @@ namespace Core.DI
         {
             Type type = typeof(T);
             
-            // Check if we already have an instance
             if (_services.TryGetValue(type, out var service))
             {
                 return (T)service;
             }
             
-            // Check if we have a factory
             if (_factories.TryGetValue(type, out var factory))
             {
                 var instance = (T)factory();

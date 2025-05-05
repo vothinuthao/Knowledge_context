@@ -1,7 +1,7 @@
 ﻿using Core.ECS;
 using UnityEngine;
 
-namespace Squad
+namespace Components.Squad
 {
     /// <summary>
     /// Component for squad formation data

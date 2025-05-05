@@ -2,6 +2,7 @@
 using Components.Combat;
 using Components.Squad;
 using Core.ECS;
+using Core.Singleton;
 using Factories;
 using Systems.Behavior;
 using Systems.Movement;
@@ -12,24 +13,39 @@ using UnityEngine.Serialization;
 
 namespace Managers
 {
-    public class WorldManager : MonoBehaviour
+    public class WorldManager : ManualSingletonMono<WorldManager>
     {
+        [Header("Configuration")]
         [SerializeField] private GameConfig gameConfig;
-        [SerializeField] private GameObject _troopPrefab; // Add this field
+        [SerializeField] private GameObject _troopPrefab;
         private TroopFactory _troopFactory;
 
         public World World { get; private set; }
+
+        protected override void Awake()
         
-        private void Awake()
         {
-            InitializeWorld();
+            base.Awake();
+            // InitializeWorld();
+        }
+        public void SetWorld(World world)
+        {
+            if (world != null)
+            {
+                this.World = world;
+                InitializeWorld();
+                Debug.Log("WorldManager: World set externally and systems registered");
+            }
         }
         
         public void InitializeWorld()
         {
-            World = new World();
+            // World = new World();
             if (_troopPrefab)
                 _troopFactory = new TroopFactory(World, _troopPrefab);
+            
+            World.RegisterSystem(new Systems.GridSystem());
+            World.RegisterSystem(new Systems.SelectionSystem());
             
             World.RegisterSystem(new SquadCommandSystem());
             World.RegisterSystem(new SquadFormationSystem());
@@ -38,7 +54,6 @@ namespace Managers
             World.RegisterSystem(new MovementSystem());
             World.RegisterSystem(new RotationSystem());
     
-            // Behavior & Steering
             World.RegisterSystem(new BehaviorSystem());
             World.RegisterSystem(new EntityDetectionSystem());
             World.RegisterSystem(new SteeringSystem());
@@ -60,9 +75,9 @@ namespace Managers
         public Entity CreateSquad(SquadConfig config, Vector3 position)
         {
             Entity squadEntity = World.CreateEntity();
-            squadEntity.AddComponent(new SquadComponent(config.MaxTroops));
-            squadEntity.AddComponent(new PositionComponent(position));
-            squadEntity.AddComponent(new RotationComponent());
+            AddComponentSafely(squadEntity,new SquadComponent(config.MaxTroops));
+            AddComponentSafely(squadEntity,new PositionComponent(position));
+            AddComponentSafely(squadEntity,new RotationComponent());
             
             var squadComponent = squadEntity.GetComponent<SquadComponent>();
             squadComponent.Formation = config.DefaultFormation;
@@ -75,20 +90,41 @@ namespace Managers
         
         public Entity CreateTroop(TroopConfig config, Vector3 position, int squadId = -1)
         {
+            if (_troopFactory == null)
+            {
+                Debug.LogError("TroopFactory is null! Cannot create troop.");
+                return null;
+            }
+            
             Entity troopEntity = _troopFactory?.CreateTroop(position, Quaternion.identity, TroopType.Warrior);
             if (troopEntity != null)
             {
-                troopEntity.AddComponent(new TroopComponent(squadId, -1));
+                // troopEntity.AddComponent(new TroopComponent(squadId, -1));
                 if (config)
                 {
-                    troopEntity.AddComponent(new TroopComponent(squadId, -1));
-                    troopEntity.AddComponent(new PositionComponent(position));
-                    troopEntity.AddComponent(new VelocityComponent(config.MoveSpeed));
-                    troopEntity.AddComponent(new HealthComponent(config.Health));
-                    troopEntity.AddComponent(new CombatComponent(config.AttackPower, config.AttackRange, config.AttackCooldown));
+                    AddComponentSafely(troopEntity,new TroopComponent(squadId, -1));
+                    AddComponentSafely(troopEntity,new PositionComponent(position));
+                    AddComponentSafely(troopEntity,new VelocityComponent(config.MoveSpeed));
+                    AddComponentSafely(troopEntity,new HealthComponent(config.Health));
+                    AddComponentSafely(troopEntity,new CombatComponent(config.AttackPower, config.AttackRange, config.AttackCooldown));
                 }
             }
             return troopEntity;
+        }
+        private void AddComponentSafely<T>(Entity entity, T component) where T : IComponent
+        {
+            if (entity == null)
+            {
+                Debug.LogError($"Cannot add {typeof(T).Name} to null entity");
+                return;
+            }
+            if (entity.HasComponent<T>())
+            {
+                Debug.LogWarning($"Entity {entity.Id} already has component of type {typeof(T).Name}. Skipping.");
+                return;
+            }
+            
+            entity.AddComponent(component);
         }
     }
 }
