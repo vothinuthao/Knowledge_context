@@ -12,7 +12,19 @@ namespace VikingRaven.Core.Factory
         [SerializeField] private GameObject _pikePrefab;
         
         [Inject] private IEntityRegistry _entityRegistry;
-
+        
+        private void Awake()
+        {
+            if (_entityRegistry == null)
+            {
+                Debug.LogWarning("UnitFactory: _entityRegistry is null, trying to find manually");
+                _entityRegistry = FindObjectOfType<EntityRegistry>();
+        
+                if (_entityRegistry == null)
+                    Debug.LogError("UnitFactory: Failed to find EntityRegistry!");
+            }
+        }
+        
         public IEntity CreateEntity(Vector3 position, Quaternion rotation)
         {
             // Default to infantry

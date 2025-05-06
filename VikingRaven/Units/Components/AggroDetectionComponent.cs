@@ -15,19 +15,59 @@ namespace VikingRaven.Units.Components
         
         public event Action<IEntity> OnEnemyDetected;
         public event Action<IEntity> OnEnemyLost;
+        
+        
+        private void Awake()
+        {
+            _enemiesInRange ??= new List<IEntity>();
+            if (_enemyLayers == 0)
+            {
+                _enemyLayers = LayerMask.GetMask("Enemy"); // Hoặc layer khác phù hợp với game của bạn
+                Debug.LogWarning("AggroDetectionComponent: Enemy layer not specified, using default 'Unit' layer");
+            }
+        }
 
+        public override void Initialize()
+        {
+            base.Initialize();
+    
+            Debug.Log($"AggroDetectionComponent.Initialize() for entity ID: {(Entity != null ? Entity.Id.ToString() : "null")}");
+    
+            // Khởi tạo lại nếu cần
+            if (_enemiesInRange == null)
+            {
+                _enemiesInRange = new List<IEntity>();
+            }
+        }
+        
+        
         private void Update()
         {
             if (!IsActive)
                 return;
-                
-            DetectEnemies();
+        
+            if (Entity == null)
+            {
+                Debug.LogWarning("AggroDetectionComponent: Entity is null in Update");
+                return;
+            }
+            try
+            {
+                DetectEnemies();
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogError($"Exception in AggroDetectionComponent.Update: {ex.Message}\n{ex.StackTrace}");
+            }
         }
 
         private void DetectEnemies()
         {
-            // This is a simplified version. In a real game, you might use Physics.OverlapSphere
-            // or a more optimized spatial partitioning system
+            if (Entity == null)
+            {
+                Debug.LogError("AggroDetectionComponent: Entity is null");
+                return;
+            }
             
             var myTransform = Entity.GetComponent<TransformComponent>();
             if (myTransform == null)

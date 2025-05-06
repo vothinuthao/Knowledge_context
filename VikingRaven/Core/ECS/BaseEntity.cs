@@ -33,6 +33,15 @@ namespace VikingRaven.Core.ECS
             return null;
         }
 
+        public T GetComponentBehavior<T>() where T : class
+        {
+            if (_components.TryGetValue(typeof(T), out var component))
+            {
+                return component as T;
+            }
+            return null;
+        }
+
         public bool HasComponent<T>() where T : class, IComponent
         {
             return _components.ContainsKey(typeof(T));

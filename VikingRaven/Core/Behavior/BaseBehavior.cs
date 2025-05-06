@@ -10,7 +10,12 @@ namespace VikingRaven.Core.Behavior
         protected bool _isActive = true;
 
         public string Name => _name;
-        public float Weight => _weight;
+        public float Weight
+        {
+            get => _weight;
+            set => _weight = value;
+        }
+
         public bool IsActive { get => _isActive; set => _isActive = value; }
         public IEntity Entity => _entity;
 
@@ -19,6 +24,11 @@ namespace VikingRaven.Core.Behavior
             _name = name;
             _entity = entity;
             _weight = 0f;
+        }
+
+        public virtual void SetWeight(float weight)
+        {
+            _weight = weight;
         }
 
         public virtual float CalculateWeight()

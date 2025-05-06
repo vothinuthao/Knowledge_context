@@ -83,5 +83,19 @@ namespace VikingRaven.Units.Components
             
             OnAttackPerformed?.Invoke(target);
         }
+        public void SetAttackRange(float range)
+        {
+            _attackRange = range;
+        }
+
+        public void SetAttackDamage(float damage)
+        {
+            _attackDamage = damage;
+        }
+
+        public void SetAttackCooldown(float cooldown)
+        {
+            _attackCooldown = cooldown;
+        }
     }
 }

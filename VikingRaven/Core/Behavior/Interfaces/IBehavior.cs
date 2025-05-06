@@ -5,7 +5,7 @@ namespace VikingRaven.Core.Behavior
     public interface IBehavior
     {
         string Name { get; }
-        float Weight { get; }
+        float Weight { get; set; }
         bool IsActive { get; set; }
         IEntity Entity { get; }
         

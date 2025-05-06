@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 using VikingRaven.Core.DI;
 using VikingRaven.Core.ECS;
@@ -47,13 +48,11 @@ namespace VikingRaven.Game
                 _gameBootstrapper = bootstrapperObject.AddComponent<GameBootstrapper>();
             }
             
-            // Ensure systems are registered
             RegisterSystems();
         }
 
         private void RegisterSystems()
         {
-            // Register all systems with the system registry
             _systemRegistry.RegisterSystem(_stateManagementSystem);
             _systemRegistry.RegisterSystem(_movementSystem);
             _systemRegistry.RegisterSystem(_combatSystem);

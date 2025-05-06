@@ -21,7 +21,7 @@ namespace VikingRaven.Units.Components
                 GameObject machineObject = new GameObject($"StateMachine_{Entity.Id}");
                 machineObject.transform.SetParent(transform);
                 
-                stateMachineInGame = machineObject.AddComponent<Core.StateMachine.StateMachineInGame>();
+                stateMachineInGame = machineObject.AddComponent<StateMachineInGame>();
                 
                 // Register default states
                 InitializeDefaultStates();
