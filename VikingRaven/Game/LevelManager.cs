@@ -1,0 +1,54 @@
+﻿using UnityEngine;
+using VikingRaven.Units.Components;
+
+namespace VikingRaven.Game
+{
+    public class LevelManager : MonoBehaviour
+    {
+        [SerializeField] private GameManager _gameManager;
+        [SerializeField] private Transform[] _playerSpawnPoints;
+        [SerializeField] private Transform[] _enemySpawnPoints;
+        
+        public void StartLevel()
+        {
+            SpawnPlayerSquads();
+            SpawnEnemySquads();
+        }
+
+        private void SpawnPlayerSquads()
+        {
+            if (_playerSpawnPoints.Length == 0)
+            {
+                Debug.LogError("No player spawn points defined");
+                return;
+            }
+            
+            // Spawn an infantry squad at the first spawn point
+            _gameManager.CreateSquad(UnitType.Infantry, 8, _playerSpawnPoints[0].position);
+            
+            // Spawn a mixed squad at the second spawn point if available
+            if (_playerSpawnPoints.Length > 1)
+            {
+                _gameManager.CreateMixedSquad(_playerSpawnPoints[1].position);
+            }
+        }
+
+        private void SpawnEnemySquads()
+        {
+            if (_enemySpawnPoints.Length == 0)
+            {
+                Debug.LogError("No enemy spawn points defined");
+                return;
+            }
+            
+            // Spawn an archer squad at the first enemy spawn point
+            _gameManager.CreateSquad(UnitType.Archer, 6, _enemySpawnPoints[0].position);
+            
+            // Spawn a pike squad at the second enemy spawn point if available
+            if (_enemySpawnPoints.Length > 1)
+            {
+                _gameManager.CreateSquad(UnitType.Pike, 4, _enemySpawnPoints[1].position);
+            }
+        }
+    }
+}
