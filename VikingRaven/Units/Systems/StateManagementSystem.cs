@@ -17,7 +17,7 @@ namespace VikingRaven.Units.Systems
                 // State machine update is handled in the component's Update method
                 // This system could be used for additional state management logic
                 
-                // For example, check if entity is dead and change state accordingly
+                // For example, check if entity is dead and change state accordinglysd
                 var healthComponent = entity.GetComponent<HealthComponent>();
                 if (healthComponent && healthComponent.IsDead)
                 {

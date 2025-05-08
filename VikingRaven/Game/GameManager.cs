@@ -64,8 +64,7 @@ namespace VikingRaven.Game
             _systemRegistry.RegisterSystem(_tacticalAnalysisSystem);
             _systemRegistry.RegisterSystem(_weightedBehaviorSystem);
         }
-
-        // Example method to create a squad
+        
         public void CreateSquad(UnitType unitType, int count, Vector3 position)
         {
             _squadFactory.CreateSquad(unitType, count, position, Quaternion.identity);
