@@ -7,111 +7,186 @@ namespace VikingRaven.Units.Systems
 {
     public class FormationSystem : BaseSystem
     {
-        private Dictionary<int, Vector3> _squadCenters = new Dictionary<int, Vector3>();
-        private Dictionary<int, Quaternion> _squadRotations = new Dictionary<int, Quaternion>();
+        // Dictionary to track squad formations by squad ID
+        private Dictionary<int, Dictionary<FormationType, Vector3[]>> _formationTemplates = 
+            new Dictionary<int, Dictionary<FormationType, Vector3[]>>();
+        
+        private Dictionary<int, FormationType> _currentFormations = new Dictionary<int, FormationType>();
+        private Dictionary<int, List<IEntity>> _squadMembers = new Dictionary<int, List<IEntity>>();
+        
+        public override void Initialize()
+        {
+            base.Initialize();
+            Debug.Log("FormationSystem initialized");
+        }
         
         public override void Execute()
         {
-            // Get all entities with formation components
+            // Group entities by squad
+            UpdateSquadMembers();
+            
+            // Update formation positions for each squad
+            foreach (var squadId in _squadMembers.Keys)
+            {
+                var members = _squadMembers[squadId];
+                if (members.Count == 0) continue;
+                
+                // Get current formation type
+                FormationType formationType = FormationType.Line; // Default
+                if (_currentFormations.TryGetValue(squadId, out var currentFormation))
+                {
+                    formationType = currentFormation;
+                }
+                
+                // Ensure we have a formation template for this squad and formation type
+                EnsureFormationTemplate(squadId, formationType, members.Count);
+                
+                // Update formation positions
+                UpdateFormationPositions(squadId, members, formationType);
+            }
+        }
+        
+        private void UpdateSquadMembers()
+        {
+            _squadMembers.Clear();
+            
             var entities = EntityRegistry.GetEntitiesWithComponent<FormationComponent>();
             
-            // First, calculate the center of each squad
-            CalculateSquadCenters(entities);
-            
-            // Then, update formation positions for each entity
             foreach (var entity in entities)
             {
-                // Get required components
                 var formationComponent = entity.GetComponent<FormationComponent>();
-                var transformComponent = entity.GetComponent<TransformComponent>();
+                if (formationComponent == null) continue;
                 
-                if (transformComponent != null)
+                int squadId = formationComponent.SquadId;
+                
+                if (!_squadMembers.ContainsKey(squadId))
                 {
-                    // Get squad center and rotation
-                    if (_squadCenters.TryGetValue(formationComponent.SquadId, out Vector3 squadCenter) &&
-                        _squadRotations.TryGetValue(formationComponent.SquadId, out Quaternion squadRotation))
+                    _squadMembers[squadId] = new List<IEntity>();
+                }
+                
+                _squadMembers[squadId].Add(entity);
+                
+                // Update current formation type for the squad
+                _currentFormations[squadId] = formationComponent.CurrentFormationType;
+            }
+        }
+        
+        private void EnsureFormationTemplate(int squadId, FormationType formationType, int memberCount)
+        {
+            if (!_formationTemplates.ContainsKey(squadId))
+            {
+                _formationTemplates[squadId] = new Dictionary<FormationType, Vector3[]>();
+            }
+            
+            if (!_formationTemplates[squadId].ContainsKey(formationType) || 
+                _formationTemplates[squadId][formationType].Length != memberCount)
+            {
+                _formationTemplates[squadId][formationType] = GenerateFormationTemplate(formationType, memberCount);
+            }
+        }
+        
+        private Vector3[] GenerateFormationTemplate(FormationType formationType, int count)
+        {
+            Vector3[] positions = new Vector3[count];
+            
+            // Generate positions based on formation type
+            switch (formationType)
+            {
+                case FormationType.Line:
+                    // Line formation: units side by side
+                    for (int i = 0; i < count; i++)
                     {
-                        // Calculate formation position
-                        var formationOffset = formationComponent.FormationOffset;
-                        
-                        // Apply rotation to the offset
-                        var rotatedOffset = squadRotation * formationOffset;
-                        
-                        // Calculate target position
-                        var targetPosition = squadCenter + rotatedOffset;
-                        
-                        // Set target position for the unit to move to
-                        var navigationComponent = entity.GetComponent<NavigationComponent>();
-                        if (navigationComponent != null)
-                        {
-                            navigationComponent.SetDestination(targetPosition);
-                        }
+                        positions[i] = new Vector3(i * 1.5f, 0, 0);
                     }
+                    break;
+                
+                case FormationType.Column:
+                    // Column formation: units in a line front to back
+                    for (int i = 0; i < count; i++)
+                    {
+                        positions[i] = new Vector3(0, 0, i * 1.5f);
+                    }
+                    break;
+                
+                case FormationType.Phalanx:
+                    // Phalanx: grid formation
+                    int rows = Mathf.CeilToInt(Mathf.Sqrt(count));
+                    for (int i = 0; i < count; i++)
+                    {
+                        int row = i / rows;
+                        int col = i % rows;
+                        positions[i] = new Vector3(col * 1.0f, 0, row * 1.0f);
+                    }
+                    break;
+                
+                case FormationType.Testudo:
+                    // Testudo: tight grid formation
+                    rows = Mathf.CeilToInt(Mathf.Sqrt(count));
+                    for (int i = 0; i < count; i++)
+                    {
+                        int row = i / rows;
+                        int col = i % rows;
+                        positions[i] = new Vector3(col * 0.7f, 0, row * 0.7f);
+                    }
+                    break;
+                
+                case FormationType.Circle:
+                    // Circle formation
+                    float angleStep = 360f / count;
+                    for (int i = 0; i < count; i++)
+                    {
+                        float angle = i * angleStep * Mathf.Deg2Rad;
+                        positions[i] = new Vector3(Mathf.Cos(angle) * 3.0f, 0, Mathf.Sin(angle) * 3.0f);
+                    }
+                    break;
+                
+                default:
+                    // Default to line formation
+                    for (int i = 0; i < count; i++)
+                    {
+                        positions[i] = new Vector3(i * 1.5f, 0, 0);
+                    }
+                    break;
+            }
+            
+            return positions;
+        }
+        
+        private void UpdateFormationPositions(int squadId, List<IEntity> members, FormationType formationType)
+        {
+            var formationTemplate = _formationTemplates[squadId][formationType];
+            
+            // Ensure we don't exceed the template size
+            int count = Mathf.Min(members.Count, formationTemplate.Length);
+            
+            for (int i = 0; i < count; i++)
+            {
+                var entity = members[i];
+                var formationComponent = entity.GetComponent<FormationComponent>();
+                
+                if (formationComponent != null)
+                {
+                    formationComponent.SetFormationSlot(i);
+                    formationComponent.SetFormationOffset(formationTemplate[i]);
+                    formationComponent.SetFormationType(formationType);
                 }
             }
         }
-
-        private void CalculateSquadCenters(List<IEntity> entities)
+        
+        // Public method to change formation type for a squad
+        public void ChangeFormation(int squadId, FormationType formationType)
         {
-            // Clear previous data
-            _squadCenters.Clear();
-            _squadRotations.Clear();
+            _currentFormations[squadId] = formationType;
             
-            // First, calculate centers
-            Dictionary<int, List<Vector3>> squadPositions = new Dictionary<int, List<Vector3>>();
-            Dictionary<int, Vector3> squadForwardDirections = new Dictionary<int, Vector3>();
-            
-            foreach (var entity in entities)
+            // Update all entities in the squad
+            if (_squadMembers.TryGetValue(squadId, out var members))
             {
-                var formationComponent = entity.GetComponent<FormationComponent>();
-                var transformComponent = entity.GetComponent<TransformComponent>();
-                
-                if (formationComponent != null && transformComponent != null)
+                foreach (var entity in members)
                 {
-                    int squadId = formationComponent.SquadId;
-                    
-                    // Add position to squad positions
-                    if (!squadPositions.ContainsKey(squadId))
+                    var formationComponent = entity.GetComponent<FormationComponent>();
+                    if (formationComponent != null)
                     {
-                        squadPositions[squadId] = new List<Vector3>();
-                    }
-                    
-                    squadPositions[squadId].Add(transformComponent.Position);
-                    
-                    // Update squad forward direction
-                    if (!squadForwardDirections.ContainsKey(squadId))
-                    {
-                        squadForwardDirections[squadId] = transformComponent.Forward;
-                    }
-                }
-            }
-            
-            // Calculate center for each squad
-            foreach (var kvp in squadPositions)
-            {
-                int squadId = kvp.Key;
-                List<Vector3> positions = kvp.Value;
-                
-                if (positions.Count > 0)
-                {
-                    // Calculate average position
-                    Vector3 sum = Vector3.zero;
-                    foreach (var pos in positions)
-                    {
-                        sum += pos;
-                    }
-                    
-                    Vector3 center = sum / positions.Count;
-                    _squadCenters[squadId] = center;
-                    
-                    // Get rotation from forward direction
-                    if (squadForwardDirections.TryGetValue(squadId, out Vector3 forward))
-                    {
-                        _squadRotations[squadId] = Quaternion.LookRotation(forward);
-                    }
-                    else
-                    {
-                        _squadRotations[squadId] = Quaternion.identity;
+                        formationComponent.SetFormationType(formationType);
                     }
                 }
             }

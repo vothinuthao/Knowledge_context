@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using Zenject;
 using VikingRaven.Core.ECS;
 using VikingRaven.Units.Components;
 
@@ -8,7 +7,7 @@ namespace VikingRaven.Units.Systems
 {
     public class TacticalAnalysisSystem : BaseSystem
     {
-        [Inject] private SquadCoordinationSystem _squadCoordinationSystem;
+        private SquadCoordinationSystem _squadCoordinationSystem;
         
         // Tactical parameters
         private float _combatEvaluationInterval = 2.0f;
@@ -16,7 +15,6 @@ namespace VikingRaven.Units.Systems
         
         public override void Execute()
         {
-            // Only evaluate tactics periodically to save performance
             if (Time.time - _lastEvaluationTime < _combatEvaluationInterval)
                 return;
                 

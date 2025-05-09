@@ -1,13 +1,20 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using Core.Utils;
 using UnityEngine;
 
 namespace VikingRaven.Core.ECS
 {
-    public class EntityRegistry : MonoBehaviour, IEntityRegistry
+    public class EntityRegistry : Singleton<EntityRegistry>, IEntityRegistry
     {
         private readonly Dictionary<int, IEntity> _entities = new Dictionary<int, IEntity>();
         private int _nextEntityId = 1;
+
+        protected override void OnInitialize()
+        {
+            base.OnInitialize();
+            Debug.Log("EntityRegistry initialized as singleton");
+        }
 
         public IEntity CreateEntity()
         {

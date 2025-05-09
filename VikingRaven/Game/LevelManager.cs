@@ -1,14 +1,28 @@
-﻿using UnityEngine;
+﻿using Core.Utils;
+using UnityEngine;
 using VikingRaven.Units.Components;
-using Zenject;
 
 namespace VikingRaven.Game
 {
-    public class LevelManager : MonoBehaviour
+     public class LevelManager : Singleton<LevelManager>
     {
-        [Inject] private GameManager _gameManager;
+        // Reference to GameManager now accessed through singleton
+        private GameManager GameManager => GameManager.Instance;
+        
         [SerializeField] private Transform[] _playerSpawnPoints;
         [SerializeField] private Transform[] _enemySpawnPoints;
+        
+        protected override void OnInitialize()
+        {
+            base.OnInitialize();
+            Debug.Log("LevelManager initialized as singleton");
+            
+            // Check if GameManager is available
+            if (GameManager == null)
+            {
+                Debug.LogError("LevelManager: GameManager singleton is not available");
+            }
+        }
         
         /// <summary>
         /// Starts the level by spawning all units
@@ -30,13 +44,19 @@ namespace VikingRaven.Game
                 return;
             }
             
+            if (GameManager == null)
+            {
+                Debug.LogError("LevelManager: GameManager is null, cannot spawn player squads");
+                return;
+            }
+            
             // Spawn an infantry squad at the first spawn point
-            _gameManager.CreateSquad(UnitType.Infantry, 8, _playerSpawnPoints[0].position);
+            GameManager.CreateSquad(UnitType.Infantry, 8, _playerSpawnPoints[0].position);
             
             // Spawn a mixed squad at the second spawn point if available
             if (_playerSpawnPoints.Length > 1)
             {
-                _gameManager.CreateMixedSquad(_playerSpawnPoints[1].position);
+                GameManager.CreateMixedSquad(_playerSpawnPoints[1].position);
             }
         }
 
@@ -51,13 +71,19 @@ namespace VikingRaven.Game
                 return;
             }
             
+            if (GameManager == null)
+            {
+                Debug.LogError("LevelManager: GameManager is null, cannot spawn enemy squads");
+                return;
+            }
+            
             // Spawn an archer squad at the first enemy spawn point
-            _gameManager.CreateSquad(UnitType.Archer, 6, _enemySpawnPoints[0].position);
+            GameManager.CreateSquad(UnitType.Archer, 6, _enemySpawnPoints[0].position);
             
             // Spawn a pike squad at the second enemy spawn point if available
             if (_enemySpawnPoints.Length > 1)
             {
-                _gameManager.CreateSquad(UnitType.Pike, 4, _enemySpawnPoints[1].position);
+                GameManager.CreateSquad(UnitType.Pike, 4, _enemySpawnPoints[1].position);
             }
         }
     }

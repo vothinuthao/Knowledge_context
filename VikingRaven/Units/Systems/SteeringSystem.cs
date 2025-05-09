@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using Zenject;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.Steering;
 using VikingRaven.Units.Components;
@@ -9,7 +8,7 @@ namespace VikingRaven.Units.Systems
 {
      public class SteeringSystem : BaseSystem
     {
-        [Inject] private SquadCoordinationSystem _squadCoordinationSystem;
+        private SquadCoordinationSystem _squadCoordinationSystem;
         
         private Dictionary<int, Vector3> _squadCenters = new Dictionary<int, Vector3>();
         private Dictionary<int, Quaternion> _squadRotations = new Dictionary<int, Quaternion>();

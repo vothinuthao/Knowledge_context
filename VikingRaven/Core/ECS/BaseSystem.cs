@@ -1,5 +1,5 @@
 ﻿using UnityEngine;
-using Zenject;
+using VikingRaven.Core.Factory;
 
 namespace VikingRaven.Core.ECS
 {
@@ -10,11 +10,29 @@ namespace VikingRaven.Core.ECS
         
         public int Priority => _priority;
         public bool IsActive { get => _isActive; set => _isActive = value; }
-        
-        [Inject] protected IEntityRegistry EntityRegistry { get; set; }
+        protected EntityRegistry EntityRegistry => EntityRegistry.Instance;
 
-        public virtual void Initialize() { }
+        private void Awake()
+        {
+            // Auto-register with SystemRegistry
+            SystemRegistry.Instance?.RegisterSystem(this);
+        }
+
+        public virtual void Initialize() 
+        {
+        }
+        
         public abstract void Execute();
+        
         public virtual void Cleanup() { }
+        
+        private void OnDestroy()
+        {
+            // Auto-unregister from SystemRegistry when destroyed
+            if (SystemRegistry.HasInstance)
+            {
+                SystemRegistry.Instance.UnregisterSystem(this);
+            }
+        }
     }
 }

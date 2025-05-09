@@ -1,13 +1,20 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using Core.Utils;
 using UnityEngine;
 
 namespace VikingRaven.Core.ECS
 {
-    public class SystemRegistry : MonoBehaviour, ISystemRegistry
+    public class SystemRegistry : Singleton<SystemRegistry>, ISystemRegistry
     {
         private readonly List<ISystem> _systems = new List<ISystem>();
         private bool _systemsSorted = false;
+
+        protected override void OnInitialize()
+        {
+            base.OnInitialize();
+            Debug.Log("SystemRegistry initialized as singleton");
+        }
 
         public void RegisterSystem(ISystem system)
         {
@@ -15,6 +22,11 @@ namespace VikingRaven.Core.ECS
             {
                 _systems.Add(system);
                 _systemsSorted = false;
+                
+                // Initialize the system immediately if it's added after startup
+                system.Initialize();
+                
+                Debug.Log($"System registered: {system.GetType().Name}");
             }
         }
 
@@ -43,6 +55,8 @@ namespace VikingRaven.Core.ECS
             {
                 system.Initialize();
             }
+            
+            Debug.Log($"Initialized {_systems.Count} systems");
         }
 
         public void CleanupAllSystems()

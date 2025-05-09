@@ -11,29 +11,22 @@ namespace VikingRaven.Units.Components
         
         public override void Execute()
         {
-            // Get all entities with weighted behavior components
             var entities = EntityRegistry.GetEntitiesWithComponent<WeightedBehaviorComponent>();
-            
-            // First calculate squad centers and rotations
             CalculateSquadCenters(entities);
-            
-            // Then update specialized behaviors for each entity
             foreach (var entity in entities)
             {
                 var weightedBehaviorComponent = entity.GetComponent<WeightedBehaviorComponent>();
-                if (weightedBehaviorComponent == null)
+                if (!weightedBehaviorComponent)
                     continue;
                     
                 var formationComponent = entity.GetComponent<FormationComponent>();
-                if (formationComponent == null)
+                if (!formationComponent)
                     continue;
                     
                 int squadId = formationComponent.SquadId;
                 
-                // Update formation-based behaviors
                 UpdateFormationBehaviors(entity, weightedBehaviorComponent, squadId);
                 
-                // Update role-based behaviors
                 UpdateRoleBasedBehaviors(entity, weightedBehaviorComponent);
             }
         }

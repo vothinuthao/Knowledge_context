@@ -17,7 +17,6 @@ namespace VikingRaven.Core.ECS
 
         public void Awake()
         {
-            // Auto-collect components attached to the GameObject
             foreach (var component in GetComponents<MonoBehaviour>().OfType<IComponent>())
             {
                 AddComponent(component);

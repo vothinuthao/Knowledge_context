@@ -220,27 +220,18 @@ namespace VikingRaven.Game.Examples
                 return;
             }
                 
-            // Kiểm tra xem target có phải là enemy unit không
             var targetUnitType = targetObject.GetComponent<UnitTypeComponent>();
             
             if (targetUnitType != null)
             {
-                // Tấn công target nếu đó là enemy (triển khai đơn giản)
                 Debug.Log($"Squad {_selectedSquadId} attacking target at {position}");
-                
-                // Trong triển khai thực tế, bạn sẽ sử dụng squad battle commands
-                // hoặc kích hoạt các behavior phù hợp
-                
-                // Ví dụ, thay đổi sang formation circle (surround)
                 ChangeFormation(FormationType.Circle);
                 MoveSelectedSquad(position);
             }
             else
             {
-                // Hành động đặc biệt hoặc di chuyển trên địa hình
                 Debug.Log($"Squad {_selectedSquadId} performing special action at {position}");
                 
-                // Có thể triển khai thêm các hành động đặc biệt ở đây
             }
         }
 
@@ -251,8 +242,7 @@ namespace VikingRaven.Game.Examples
                 Debug.LogWarning("SimpleSquadController: No squad selected for formation change!");
                 return;
             }
-                
-            // Sử dụng squad coordination system để thay đổi formation
+            
             if (_squadCoordinationSystem != null)
             {
                 _squadCoordinationSystem.SetSquadFormation(_selectedSquadId, formation);
@@ -264,7 +254,6 @@ namespace VikingRaven.Game.Examples
             {
                 Debug.LogError("SimpleSquadController: SquadCoordinationSystem is null, cannot change formation!");
                 
-                // Cố gắng tìm SquadCoordinationSystem nếu chưa có
                 _squadCoordinationSystem = FindObjectOfType<SquadCoordinationSystem>();
                 if (_squadCoordinationSystem != null)
                 {
@@ -274,8 +263,6 @@ namespace VikingRaven.Game.Examples
                 }
             }
         }
-        
-        // Phương thức này có thể được gọi từ các nút UI
         public void SetFormationFromUI(int formationIndex)
         {
             FormationType formation = (FormationType)formationIndex;
