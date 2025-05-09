@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using VikingRaven.Core.DI;
+using Zenject;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.Steering;
 using VikingRaven.Units.Components;

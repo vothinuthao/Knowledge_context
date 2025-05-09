@@ -1,22 +1,27 @@
 ﻿using UnityEngine;
 using VikingRaven.Core.ECS;
+using Zenject;
 
 namespace VikingRaven.Core.DI
 {
     public class GameBootstrapper : MonoBehaviour
     {
-        [SerializeField] private DependencyInstaller _dependencyInstaller;
-        [SerializeField] private SystemRegistry _systemRegistry;
+        [Inject] private SystemRegistry _systemRegistry;
         
-        private void Awake()
+        /// <summary>
+        /// Initialize all systems after Zenject has injected dependencies
+        /// </summary>
+        private void Start()
         {
-            // Initialize all systems after dependencies are injected
+            Debug.Log("GameBootstrapper: Initializing all systems");
             _systemRegistry.InitializeAllSystems();
         }
         
+        /// <summary>
+        /// Execute all systems every frame
+        /// </summary>
         private void Update()
         {
-            // Execute all systems every frame
             _systemRegistry.ExecuteAllSystems();
         }
     }

@@ -1,20 +1,27 @@
 ﻿using UnityEngine;
 using VikingRaven.Units.Components;
+using Zenject;
 
 namespace VikingRaven.Game
 {
     public class LevelManager : MonoBehaviour
     {
-        [SerializeField] private GameManager _gameManager;
+        [Inject] private GameManager _gameManager;
         [SerializeField] private Transform[] _playerSpawnPoints;
         [SerializeField] private Transform[] _enemySpawnPoints;
         
+        /// <summary>
+        /// Starts the level by spawning all units
+        /// </summary>
         public void StartLevel()
         {
             SpawnPlayerSquads();
             SpawnEnemySquads();
         }
 
+        /// <summary>
+        /// Spawns player squads at the specified spawn points
+        /// </summary>
         private void SpawnPlayerSquads()
         {
             if (_playerSpawnPoints.Length == 0)
@@ -33,6 +40,9 @@ namespace VikingRaven.Game
             }
         }
 
+        /// <summary>
+        /// Spawns enemy squads at the specified spawn points
+        /// </summary>
         private void SpawnEnemySquads()
         {
             if (_enemySpawnPoints.Length == 0)

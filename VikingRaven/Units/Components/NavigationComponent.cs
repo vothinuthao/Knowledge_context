@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEngine.AI;
 using VikingRaven.Core.ECS;
+using Zenject;
 
 namespace VikingRaven.Units.Components
 {
@@ -10,6 +11,8 @@ namespace VikingRaven.Units.Components
         [SerializeField] private NavMeshAgent _navMeshAgent;
         [SerializeField] private float _stoppingDistance = 0.1f;
         [SerializeField] private bool _isPathfindingActive = true;
+        
+        [Inject] private IEntityRegistry _entityRegistry;
         
         private Vector3 _destination;
         private List<Vector3> _currentPath = new List<Vector3>();

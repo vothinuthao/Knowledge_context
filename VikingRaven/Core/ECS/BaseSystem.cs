@@ -1,5 +1,5 @@
 ﻿using UnityEngine;
-using VikingRaven.Core.DI;
+using Zenject;
 
 namespace VikingRaven.Core.ECS
 {

@@ -4,6 +4,7 @@ using UnityEngine;
 using VikingRaven.Core.DI;
 using VikingRaven.Core.ECS;
 using VikingRaven.Units.Components;
+using Zenject;
 
 namespace VikingRaven.Core.Factory
 {
@@ -100,7 +101,7 @@ namespace VikingRaven.Core.Factory
                 }
             }
 
-            return squadEntities;
+            return squadEntities;   
         }
     }
 }
