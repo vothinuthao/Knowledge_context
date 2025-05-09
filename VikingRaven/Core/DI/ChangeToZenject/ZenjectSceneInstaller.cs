@@ -1,13 +1,18 @@
-﻿using UnityEngine;
+﻿// ZenjectSceneInstaller.cs - Phiên bản đã cập nhật
+using UnityEngine;
+using Zenject;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.Factory;
 using VikingRaven.Game;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Systems;
-using Zenject;
 
 namespace VikingRaven.Core.DI
 {
+    /// <summary>
+    /// Main installer for registering all dependencies in the scene
+    /// This replaces the old DependencyInstaller class
+    /// </summary>
     public class ZenjectSceneInstaller : MonoInstaller
     {
         [Header("Core Registries")]
@@ -34,6 +39,7 @@ namespace VikingRaven.Core.DI
 
         [Header("Game Management")]
         [SerializeField] private GameManager _gameManager;
+        [SerializeField] private LevelManager _levelManager;
 
         /// <summary>
         /// This method is called by Zenject to install all bindings
@@ -48,7 +54,11 @@ namespace VikingRaven.Core.DI
             InstallSystems();
             InstallManagers();
             
-            Debug.Log("ZenjectSceneInstaller: Bindings installed successfully");
+            // Debug helper - nếu đã tạo class ZenjectDebugHelper
+            // ZenjectDebugHelper.LogBindings(Container);
+            
+            // Hoặc log thủ công
+            Debug.Log("ZenjectSceneInstaller: All bindings installed successfully");
         }
 
         /// <summary>
@@ -56,6 +66,8 @@ namespace VikingRaven.Core.DI
         /// </summary>
         private void InstallRegistries()
         {
+            Debug.Log("Installing Registries...");
+            
             // Bind registries
             if (_entityRegistry != null)
             {
@@ -85,9 +97,18 @@ namespace VikingRaven.Core.DI
         /// </summary>
         private void InstallFactories()
         {
+            Debug.Log("Installing Factories...");
+            
             // Bind factories
             if (_unitFactory != null)
             {
+                // Kiểm tra các prefab trong UnitFactory
+                bool prefabsValid = _unitFactory.ValidatePrefabs();
+                if (!prefabsValid)
+                {
+                    Debug.LogWarning("UnitFactory has missing prefabs. Check the inspector!");
+                }
+                
                 Container.Bind<UnitFactory>().FromInstance(_unitFactory).AsSingle();
                 Container.Bind<IEntityFactory>().FromInstance(_unitFactory).AsSingle();
                 Debug.Log("Registered UnitFactory");
@@ -106,6 +127,10 @@ namespace VikingRaven.Core.DI
             {
                 Debug.LogWarning("SquadFactory is missing, some functionality will be limited");
             }
+            
+            // Bind DiContainer để các factory có thể sử dụng
+            Container.Bind<DiContainer>().FromInstance(Container).AsSingle();
+            Debug.Log("Registered DiContainer for manual injection in factories");
         }
 
         /// <summary>
@@ -113,19 +138,33 @@ namespace VikingRaven.Core.DI
         /// </summary>
         private void InstallSystems()
         {
-            // Bind systems
-            BindIfNotNull(_squadCoordinationSystem);
-            BindIfNotNull(_stateManagementSystem);
-            BindIfNotNull(_movementSystem);
-            BindIfNotNull(_combatSystem);
-            BindIfNotNull(_aiDecisionSystem);
-            BindIfNotNull(_formationSystem);
-            BindIfNotNull(_aggroDetectionSystem);
-            BindIfNotNull(_animationSystem);
-            BindIfNotNull(_tacticalAnalysisSystem);
-            BindIfNotNull(_weightedBehaviorSystem);
-            BindIfNotNull(_steeringSystem);
-            BindIfNotNull(_specializedBehaviorSystem);
+            Debug.Log("Installing Systems...");
+            
+            // Bind systems - grouped by category for better error handling
+            
+            // Core systems
+            BindIfNotNull(_stateManagementSystem, "State Management System");
+            BindIfNotNull(_movementSystem, "Movement System");
+            
+            // Combat systems
+            BindIfNotNull(_combatSystem, "Combat System");
+            BindIfNotNull(_aggroDetectionSystem, "Aggro Detection System");
+            
+            // AI and decision making systems
+            BindIfNotNull(_aiDecisionSystem, "AI Decision System");
+            BindIfNotNull(_tacticalAnalysisSystem, "Tactical Analysis System");
+            BindIfNotNull(_weightedBehaviorSystem, "Weighted Behavior System");
+            
+            // Formation and coordination systems
+            BindIfNotNull(_squadCoordinationSystem, "Squad Coordination System");
+            BindIfNotNull(_formationSystem, "Formation System");
+            
+            // Animation and visual systems
+            BindIfNotNull(_animationSystem, "Animation System");
+            
+            // Steering and movement systems
+            BindIfNotNull(_steeringSystem, "Steering System");
+            BindIfNotNull(_specializedBehaviorSystem, "Specialized Behavior System");
         }
 
         /// <summary>
@@ -133,6 +172,8 @@ namespace VikingRaven.Core.DI
         /// </summary>
         private void InstallManagers()
         {
+            Debug.Log("Installing Managers...");
+            
             if (_gameManager != null)
             {
                 Container.Bind<GameManager>().FromInstance(_gameManager).AsSingle();
@@ -142,21 +183,31 @@ namespace VikingRaven.Core.DI
             {
                 Debug.LogWarning("GameManager is missing");
             }
+            
+            if (_levelManager != null)
+            {
+                Container.Bind<LevelManager>().FromInstance(_levelManager).AsSingle();
+                Debug.Log("Registered LevelManager");
+            }
+            else
+            {
+                Debug.LogWarning("LevelManager is missing");
+            }
         }
 
         /// <summary>
         /// Helper method to bind a component if it's not null
         /// </summary>
-        private void BindIfNotNull<T>(T system) where T : Component
+        private void BindIfNotNull<T>(T system, string systemName = null) where T : Component
         {
             if (system != null)
             {
                 Container.Bind<T>().FromInstance(system).AsSingle();
-                Debug.Log($"Registered {typeof(T).Name}");
+                Debug.Log($"Registered {systemName ?? typeof(T).Name}");
             }
             else
             {
-                Debug.LogWarning($"{typeof(T).Name} is null, not registered");
+                Debug.LogWarning($"{systemName ?? typeof(T).Name} is missing, not registered");
             }
         }
     }
