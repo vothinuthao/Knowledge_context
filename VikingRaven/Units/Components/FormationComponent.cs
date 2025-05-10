@@ -3,82 +3,86 @@ using VikingRaven.Core.ECS;
 
 namespace VikingRaven.Units.Components
 {
+    /// <summary>
+    /// Component xử lý vị trí của đơn vị trong đội hình
+    /// </summary>
     public class FormationComponent : BaseComponent
     {
+        [Tooltip("Chỉ số slot của đơn vị trong đội hình")]
         [SerializeField] private int _formationSlotIndex;
-        [SerializeField] private Vector3 _formationOffset;
-        [SerializeField] private int _squadId;
-        [SerializeField] private FormationType _currentFormationType;
         
+        [Tooltip("Vị trí offset của đơn vị so với trung tâm squad")]
+        [SerializeField] private Vector3 _formationOffset;
+        
+        [Tooltip("ID của squad mà đơn vị thuộc về")]
+        [SerializeField] private int _squadId;
+        
+        [Tooltip("Loại đội hình hiện tại")]
+        [SerializeField] private FormationType _currentFormationType = FormationType.Line;
+        
+        // Properties để truy cập từ bên ngoài
         public int FormationSlotIndex => _formationSlotIndex;
         public Vector3 FormationOffset => _formationOffset;
         public int SquadId => _squadId;
         public FormationType CurrentFormationType => _currentFormationType;
 
+        /// <summary>
+        /// Đặt chỉ số slot trong đội hình
+        /// </summary>
         public void SetFormationSlot(int slotIndex)
         {
             _formationSlotIndex = slotIndex;
         }
 
+        /// <summary>
+        /// Đặt vị trí offset trong đội hình
+        /// </summary>
         public void SetFormationOffset(Vector3 offset)
         {
             _formationOffset = offset;
         }
 
+        /// <summary>
+        /// Đặt ID của squad
+        /// </summary>
         public void SetSquadId(int squadId)
         {
             _squadId = squadId;
         }
 
+        /// <summary>
+        /// Đặt loại đội hình và cập nhật offset nếu cần
+        /// </summary>
         public void SetFormationType(FormationType formationType)
         {
-            _currentFormationType = formationType;
-            
-            // Update formation offset based on formation type
-            switch (_currentFormationType)
+            // Chỉ cập nhật nếu đổi formation type
+            if (_currentFormationType != formationType)
             {
-                case FormationType.Line:
-                    // Line formation: units side by side
-                    _formationOffset = new Vector3(_formationSlotIndex * 1.5f, 0, 0);
-                    break;
+                _currentFormationType = formationType;
                 
-                case FormationType.Column:
-                    // Column formation: units in a line front to back
-                    _formationOffset = new Vector3(0, 0, _formationSlotIndex * 1.5f);
-                    break;
-                
-                case FormationType.Phalanx:
-                    // Phalanx: grid formation
-                    int rowSize = Mathf.CeilToInt(Mathf.Sqrt(_formationSlotIndex + 1));
-                    int row = _formationSlotIndex / rowSize;
-                    int col = _formationSlotIndex % rowSize;
-                    _formationOffset = new Vector3(col * 1.0f, 0, row * 1.0f);
-                    break;
-                
-                case FormationType.Testudo:
-                    // Testudo: tight grid formation
-                    rowSize = Mathf.CeilToInt(Mathf.Sqrt(_formationSlotIndex + 1));
-                    row = _formationSlotIndex / rowSize;
-                    col = _formationSlotIndex % rowSize;
-                    _formationOffset = new Vector3(col * 0.7f, 0, row * 0.7f);
-                    break;
-                
-                case FormationType.Circle:
-                    // Circle formation
-                    float angle = (_formationSlotIndex * Mathf.PI * 2) / 8; // Assuming 8 units max
-                    _formationOffset = new Vector3(Mathf.Cos(angle) * 3.0f, 0, Mathf.Sin(angle) * 3.0f);
-                    break;
+                // Offset sẽ được cập nhật bởi FormationSystem
+                // Vì FormationSystem quản lý offset cho tất cả đơn vị trong squad để đảm bảo tính nhất quán
             }
         }
-    }
-
-    public enum FormationType
-    {
-        None,
-        Line,
-        Column,
-        Phalanx,
-        Testudo,
-        Circle
+        
+        /// <summary>
+        /// Được gọi khi component được khởi tạo
+        /// </summary>
+        public override void Initialize()
+        {
+            base.Initialize();
+            
+            // Các khởi tạo khác nếu cần
+        }
+        
+        /// <summary>
+        /// Được gọi khi component bị hủy
+        /// </summary>
+        public override void Cleanup()
+        {
+            base.Cleanup();
+            
+            // Dọn dẹp nếu cần
+        }
     }
 }

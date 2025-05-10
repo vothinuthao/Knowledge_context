@@ -199,8 +199,6 @@ namespace VikingRaven.Debug_Game
             textMesh.anchor = TextAnchor.LowerCenter;
             textMesh.color = Color.white;
             
-            // Luôn hướng về camera
-            textObj.AddComponent<BillboardText>();
         }
         
         private void ClearMarkers()
@@ -227,19 +225,6 @@ namespace VikingRaven.Debug_Game
             if (_slotMarkerPrefab != null && _slotMarkerPrefab.name.StartsWith("Sphere"))
             {
                 Destroy(_slotMarkerPrefab);
-            }
-        }
-    }
-    
-    // Lớp helper để text luôn hướng về camera
-    public class BillboardText : MonoBehaviour
-    {
-        private void LateUpdate()
-        {
-            if (Camera.main != null)
-            {
-                transform.LookAt(Camera.main.transform);
-                transform.rotation = Quaternion.LookRotation(Camera.main.transform.forward);
             }
         }
     }

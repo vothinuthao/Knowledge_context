@@ -8,7 +8,12 @@ namespace VikingRaven.Core.ECS
         [SerializeField] private int _priority = 0;
         [SerializeField] private bool _isActive = true;
         
-        public int Priority => _priority;
+        public int Priority
+        {
+            get => _priority;
+            set => _priority = value;
+        }
+
         public bool IsActive { get => _isActive; set => _isActive = value; }
         protected EntityRegistry EntityRegistry => EntityRegistry.Instance;
 

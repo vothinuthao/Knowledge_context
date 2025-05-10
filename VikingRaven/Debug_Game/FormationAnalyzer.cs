@@ -12,7 +12,7 @@ namespace VikingRaven.Debug_Game
     /// </summary>
     public class FormationAnalyzer : MonoBehaviour
     {
-        [SerializeField] private Text _uiOutput; // Text UI để hiển thị kết quả
+        [SerializeField] public Text _uiOutput; // Text UI để hiển thị kết quả
         [SerializeField] private bool _autoAnalyze = true;
         [SerializeField] private float _analyzeInterval = 1.0f;
         [SerializeField] private int _selectedSquadId = -1; // -1 phân tích tất cả squad

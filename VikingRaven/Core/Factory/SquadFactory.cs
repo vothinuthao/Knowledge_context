@@ -4,6 +4,7 @@ using Core.Utils;
 using UnityEngine;
 using VikingRaven.Core.ECS;
 using VikingRaven.Game;
+using VikingRaven.Units;
 using VikingRaven.Units.Components;
 
 namespace VikingRaven.Core.Factory
