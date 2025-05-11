@@ -24,7 +24,7 @@ namespace VikingRaven.Game
         {
             if (SquadFactory != null)
             {
-                SquadFactory.CreateSquad(unitType, count, position, Quaternion.identity);
+                // SquadFactory.CreateSquad(unitType, count, position, Quaternion.identity);
             }
             else
             {
@@ -45,7 +45,7 @@ namespace VikingRaven.Game
                     { UnitType.Archer, 2 },
                     { UnitType.Pike, 2 }
                 };
-                SquadFactory.CreateMixedSquad(unitCounts, position, Quaternion.identity);
+                // SquadFactory.CreateMixedSquad(unitCounts, position, Quaternion.identity);
             }
             else
             {

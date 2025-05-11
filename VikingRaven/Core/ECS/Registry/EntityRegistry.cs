@@ -16,6 +16,41 @@ namespace VikingRaven.Core.ECS
             Debug.Log("EntityRegistry initialized as singleton");
         }
 
+        // New method to register entities from outside
+        public void RegisterEntity(IEntity entity)
+        {
+            if (entity is { Id: > 0 })
+            {
+                if (!_entities.ContainsKey(entity.Id))
+                {
+                    _entities[entity.Id] = entity;
+                    Debug.Log($"EntityRegistry: Registered entity with ID {entity.Id}");
+                }
+                else
+                {
+                    // Entity already registered, skip
+                    Debug.LogWarning($"EntityRegistry: Entity with ID {entity.Id} already registered");
+                }
+            }
+            else
+            {
+                Debug.LogError("EntityRegistry: Cannot register null entity or entity with invalid ID");
+            }
+        }
+
+        // Added for debugging
+        public int EntityCount => _entities.Count;
+
+        // Added for debugging
+        public void LogAllEntities()
+        {
+            Debug.Log($"EntityRegistry: Contains {_entities.Count} entities");
+            foreach (var entity in _entities.Values)
+            {
+                Debug.Log($"EntityRegistry: Entity {entity.Id}, IsActive = {entity.IsActive}");
+            }
+        }
+
         public IEntity CreateEntity()
         {
             var entityObject = new GameObject($"Entity_{_nextEntityId}");

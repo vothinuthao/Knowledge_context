@@ -1,381 +1,306 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using VikingRaven.Core.ECS;
-using VikingRaven.Units;
 using VikingRaven.Units.Components;
 
 namespace VikingRaven.Debug_Game
 {
     /// <summary>
-    /// Hiển thị trực quan các formation và offset trong game
+    /// Hiển thị vị trí formation của các unit trong squad
     /// </summary>
     public class FormationDebugVisualizer : MonoBehaviour
     {
         [Header("Visualization Settings")]
-        [SerializeField] private bool _enabled = true;
-        [SerializeField] private int _selectedSquadId = -1; // -1 = hiển thị tất cả squad
-        [SerializeField] private float _updateInterval = 0.25f;
-        [SerializeField] private GameObject _slotPrefab;
-
-        [Header("Display Options")]
-        [SerializeField] private bool _showSquadCenter = true;
-        [SerializeField] private bool _showFormationSlots = true;
-        [SerializeField] private bool _showUnitLinks = true;
-        [SerializeField] private bool _showFormationInfo = true;
-
+        [Tooltip("Bật/tắt hiển thị debug")]
+        [SerializeField] private bool _showDebug = true;
+        
+        [Tooltip("Kích thước của ô hiển thị")]
+        [SerializeField] private float _boxSize = 0.5f;
+        
+        [Tooltip("Hiện chỉ số trong đội hình")]
+        [SerializeField] private bool _showIndexes = true;
+        
+        [Tooltip("Chiều cao chữ")]
+        [SerializeField] private float _textHeight = 0.5f;
+        
+        [Tooltip("Hiện vùng chuyển giai đoạn")]
+        [SerializeField] private bool _showPhaseRadius = true;
+        
         [Header("Colors")]
-        [SerializeField] private Color _squadCenterColor = Color.red;
-        [SerializeField] private Color _unitLinkColor = Color.green;
-
-        // Color mapping for different formation types
-        private Dictionary<FormationType, Color> _formationColors = new Dictionary<FormationType, Color>
+        [Tooltip("Màu hiển thị cho các squad theo ID")]
+        [SerializeField] private Color[] _squadColors = new Color[]
         {
-            { FormationType.Line, Color.yellow },
-            { FormationType.Column, Color.blue },
-            { FormationType.Phalanx, Color.magenta },
-            { FormationType.Testudo, Color.cyan },
-            { FormationType.Circle, new Color(1.0f, 0.5f, 0.0f) }, // Orange
-            { FormationType.Normal, new Color(0.5f, 1.0f, 0.5f) }  // Light Green
+            Color.blue,
+            Color.red,
+            Color.green,
+            Color.yellow,
+            Color.cyan,
+            Color.magenta
         };
-
-        // Runtime data
-        private float _lastUpdateTime = 0f;
-        private Dictionary<int, SquadDebugInfo> _squadDebugInfo = new Dictionary<int, SquadDebugInfo>();
-        private Dictionary<int, Dictionary<int, GameObject>> _slotMarkers = new Dictionary<int, Dictionary<int, GameObject>>();
-
-        private void Start()
+        
+        [Tooltip("Màu cho ô tại vị trí đích")]
+        [SerializeField] private Color _targetPositionColor = new Color(1, 1, 1, 0.5f);
+        
+        [Tooltip("Màu cho dòng kết nối từ unit đến vị trí đích")]
+        [SerializeField] private Color _connectionLineColor = new Color(1, 1, 1, 0.3f);
+        
+        [Tooltip("Màu cho giai đoạn Approaching")]
+        [SerializeField] private Color _approachingColor = new Color(1, 0.5f, 0, 0.3f);
+        
+        [Tooltip("Màu cho giai đoạn Forming")]
+        [SerializeField] private Color _formingColor = new Color(0, 1, 0.5f, 0.3f);
+        
+        // Singleton instance
+        private static FormationDebugVisualizer _instance;
+        public static FormationDebugVisualizer Instance
         {
-            if (_slotPrefab == null)
+            get
             {
-                CreateDefaultSlotPrefab();
+                if (_instance == null)
+                {
+                    _instance = FindObjectOfType<FormationDebugVisualizer>();
+                    
+                    if (_instance == null)
+                    {
+                        GameObject visualizerObject = new GameObject("FormationDebugVisualizer");
+                        _instance = visualizerObject.AddComponent<FormationDebugVisualizer>();
+                    }
+                }
+                
+                return _instance;
             }
         }
 
-        private void Update()
+        private void Awake()
         {
-            if (!_enabled) return;
-
-            if (Time.time - _lastUpdateTime >= _updateInterval)
+            if (_instance != null && _instance != this)
             {
-                RefreshDebugData();
-                UpdateVisualizers();
-                _lastUpdateTime = Time.time;
+                Destroy(gameObject);
+            }
+            else
+            {
+                _instance = this;
+                DontDestroyOnLoad(gameObject);
             }
         }
 
         private void OnDrawGizmos()
         {
-            if (!Application.isPlaying || !_enabled) return;
-
-            foreach (var squadInfo in _squadDebugInfo.Values)
-            {
-                // Draw squad center
-                if (_showSquadCenter)
-                {
-                    Gizmos.color = _squadCenterColor;
-                    Gizmos.DrawSphere(squadInfo.Center, 0.5f);
-                    
-                    // Draw forward direction
-                    Gizmos.DrawRay(squadInfo.Center, squadInfo.Rotation * Vector3.forward * 2f);
-                }
-
-                // Draw unit links
-                if (_showUnitLinks)
-                {
-                    Gizmos.color = _unitLinkColor;
-                    foreach (var unitInfo in squadInfo.Units)
-                    {
-                        if (unitInfo.SlotPosition != Vector3.zero)
-                        {
-                            Gizmos.DrawLine(unitInfo.CurrentPosition, unitInfo.SlotPosition);
-                        }
-                    }
-                }
-            }
+            if (!_showDebug)
+                return;
+            
+            if (!Application.isPlaying)
+                return;
+            
+            DrawAllFormationPositions();
         }
 
         /// <summary>
-        /// Tạo lại toàn bộ dữ liệu debug
+        /// Vẽ tất cả vị trí đội hình cho tất cả squad
         /// </summary>
-        private void RefreshDebugData()
+        private void DrawAllFormationPositions()
         {
-            _squadDebugInfo.Clear();
-
-            // Lấy tất cả FormationComponent
-            var formationComponents = FindObjectsOfType<FormationComponent>();
+            if (!EntityRegistry.HasInstance)
+                return;
             
-            // Nhóm thành các squad
-            Dictionary<int, List<DebugUnitInfo>> squadUnits = new Dictionary<int, List<DebugUnitInfo>>();
-            Dictionary<int, Vector3> squadCenters = new Dictionary<int, Vector3>();
-            Dictionary<int, Vector3> squadForwards = new Dictionary<int, Vector3>();
-            Dictionary<int, FormationType> squadFormationTypes = new Dictionary<int, FormationType>();
-
-            foreach (var fc in formationComponents)
+            var entityRegistry = EntityRegistry.Instance;
+            var entities = entityRegistry.GetEntitiesWithComponent<FormationComponent>();
+            
+            // Group by squads
+            Dictionary<int, List<UnitFormationData>> squadFormations = new Dictionary<int, List<UnitFormationData>>();
+            
+            foreach (var entity in entities)
             {
-                int squadId = fc.SquadId;
+                var formationComponent = entity.GetComponent<FormationComponent>();
+                var transformComponent = entity.GetComponent<TransformComponent>();
+                var navigationComponent = entity.GetComponent<NavigationComponent>();
                 
-                // Bỏ qua nếu chỉ xem squad cụ thể
-                if (_selectedSquadId != -1 && squadId != _selectedSquadId)
+                if (formationComponent == null || transformComponent == null) 
                     continue;
-
-                var tc = fc.GetComponent<TransformComponent>();
-                if (tc == null) continue;
-
-                // Initialize lists if needed
-                if (!squadUnits.ContainsKey(squadId))
-                {
-                    squadUnits[squadId] = new List<DebugUnitInfo>();
-                    squadCenters[squadId] = Vector3.zero;
-                    squadForwards[squadId] = Vector3.zero;
-                }
-
-                // Add unit info
-                squadUnits[squadId].Add(new DebugUnitInfo
-                {
-                    Entity = fc.Entity,
-                    SlotIndex = fc.FormationSlotIndex,
-                    FormationOffset = fc.FormationOffset,
-                    CurrentPosition = tc.Position,
-                    Forward = tc.Forward,
-                    FormationType = fc.CurrentFormationType
-                });
-
-                // Accumulate position and forward for center/rotation calculation
-                squadCenters[squadId] += tc.Position;
-                squadForwards[squadId] += tc.Forward;
                 
-                // Store formation type (should be same for all units in squad)
-                squadFormationTypes[squadId] = fc.CurrentFormationType;
-            }
-
-            // Calculate squad centers and rotations
-            foreach (var squadId in squadUnits.Keys)
-            {
-                var units = squadUnits[squadId];
-                if (units.Count == 0) continue;
-
-                Vector3 center = squadCenters[squadId] / units.Count;
-                Vector3 forward = squadForwards[squadId].normalized;
-                Quaternion rotation = forward != Vector3.zero ? 
-                    Quaternion.LookRotation(forward) : Quaternion.identity;
-
-                // Calculate slot positions
-                foreach (var unit in units)
-                {
-                    unit.SlotPosition = center + (rotation * unit.FormationOffset);
-                }
-
-                // Create squad debug info
-                _squadDebugInfo[squadId] = new SquadDebugInfo
-                {
-                    SquadId = squadId,
-                    Center = center,
-                    Rotation = rotation,
-                    FormationType = squadFormationTypes[squadId],
-                    Units = units
-                };
-            }
-        }
-
-        /// <summary>
-        /// Cập nhật các hiển thị trực quan (markers, labels)
-        /// </summary>
-        private void UpdateVisualizers()
-        {
-            // Clear old markers
-            ClearMarkers();
-
-            // Skip if not showing slots
-            if (!_showFormationSlots) return;
-
-            // Create markers for each squad and slot
-            foreach (var squadInfo in _squadDebugInfo.Values)
-            {
-                int squadId = squadInfo.SquadId;
+                int squadId = formationComponent.SquadId;
                 
-                // Initialize squad dictionary if needed
-                if (!_slotMarkers.ContainsKey(squadId))
+                if (!squadFormations.ContainsKey(squadId))
                 {
-                    _slotMarkers[squadId] = new Dictionary<int, GameObject>();
+                    squadFormations[squadId] = new List<UnitFormationData>();
                 }
-
-                // Get formation color
-                Color formationColor = Color.white;
-                if (_formationColors.TryGetValue(squadInfo.FormationType, out Color color))
+                
+                // Extract NavMeshAgent info if available
+                float formationPhaseDistance = 5.0f;
+                
+                var navMeshAgent = navigationComponent.GetComponent<UnityEngine.AI.NavMeshAgent>();
+                if (navMeshAgent != null)
                 {
-                    formationColor = color;
-                }
-
-                // Create/update markers for each unit
-                foreach (var unitInfo in squadInfo.Units)
-                {
-                    int slotIndex = unitInfo.SlotIndex;
+                    // Try to get _formationPhaseDistance using reflection (since it's private)
+                    var fieldInfo = navigationComponent.GetType().GetField("_formationPhaseDistance", 
+                        System.Reflection.BindingFlags.NonPublic | 
+                        System.Reflection.BindingFlags.Instance);
                     
-                    // Create marker if it doesn't exist
-                    if (!_slotMarkers[squadId].ContainsKey(slotIndex))
+                    if (fieldInfo != null)
                     {
-                        GameObject marker = Instantiate(_slotPrefab, unitInfo.SlotPosition, Quaternion.identity);
-                        marker.name = $"Slot_{squadId}_{slotIndex}";
-                        
-                        // Set marker color
-                        Renderer renderer = marker.GetComponent<Renderer>();
-                        if (renderer != null)
-                        {
-                            renderer.material.color = formationColor;
-                        }
-                        
-                        // Add label
-                        if (_showFormationInfo)
-                        {
-                            AddInfoLabel(marker, unitInfo, squadInfo.FormationType);
-                        }
-                        
-                        _slotMarkers[squadId][slotIndex] = marker;
-                    }
-                    else
-                    {
-                        // Update existing marker
-                        GameObject marker = _slotMarkers[squadId][slotIndex];
-                        marker.transform.position = unitInfo.SlotPosition;
-                        
-                        // Update marker color
-                        Renderer renderer = marker.GetComponent<Renderer>();
-                        if (renderer != null)
-                        {
-                            renderer.material.color = formationColor;
-                        }
-                        
-                        // Update label
-                        if (_showFormationInfo)
-                        {
-                            Transform labelTransform = marker.transform.Find("InfoLabel");
-                            if (labelTransform != null)
-                            {
-                                TextMesh textMesh = labelTransform.GetComponent<TextMesh>();
-                                if (textMesh != null)
-                                {
-                                    textMesh.text = $"Slot: {slotIndex}\n" +
-                                                    $"Type: {squadInfo.FormationType}\n" +
-                                                    $"Offset: {unitInfo.FormationOffset.ToString("F1")}";
-                                }
-                            }
-                        }
+                        formationPhaseDistance = (float)fieldInfo.GetValue(navigationComponent);
                     }
                 }
-            }
-        }
-
-        /// <summary>
-        /// Thêm label thông tin cho marker
-        /// </summary>
-        private void AddInfoLabel(GameObject parent, DebugUnitInfo unitInfo, FormationType formationType)
-        {
-            GameObject label = new GameObject("InfoLabel");
-            label.transform.parent = parent.transform;
-            label.transform.localPosition = new Vector3(0, 0.5f, 0);
-            
-            TextMesh textMesh = label.AddComponent<TextMesh>();
-            textMesh.fontSize = 10;
-            textMesh.alignment = TextAlignment.Center;
-            textMesh.anchor = TextAnchor.LowerCenter;
-            textMesh.color = Color.white;
-            textMesh.text = $"Slot: {unitInfo.SlotIndex}\n" +
-                           $"Type: {formationType}\n" +
-                           $"Offset: {unitInfo.FormationOffset.ToString("F1")}";
-            
-            // Add billboard script
-            label.AddComponent<BillboardText>();
-        }
-
-        /// <summary>
-        /// Tạo prefab marker mặc định nếu chưa được set
-        /// </summary>
-        private void CreateDefaultSlotPrefab()
-        {
-            _slotPrefab = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            _slotPrefab.transform.localScale = new Vector3(0.3f, 0.3f, 0.3f);
-            _slotPrefab.SetActive(false);
-            
-            // Remove collider
-            Destroy(_slotPrefab.GetComponent<Collider>());
-            
-            // Set default material
-            Renderer renderer = _slotPrefab.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                Material mat = new Material(Shader.Find("Standard"));
-                mat.color = Color.yellow;
-                renderer.material = mat;
-            }
-        }
-
-        /// <summary>
-        /// Xóa tất cả markers
-        /// </summary>
-        private void ClearMarkers()
-        {
-            foreach (var squadMarkers in _slotMarkers.Values)
-            {
-                foreach (var marker in squadMarkers.Values)
+                
+                // Create formation data
+                UnitFormationData data = new UnitFormationData
                 {
-                    if (marker != null)
-                    {
-                        Destroy(marker);
-                    }
-                }
-                squadMarkers.Clear();
+                    EntityId = entity.Id,
+                    FormationSlot = formationComponent.FormationSlotIndex,
+                    FormationOffset = formationComponent.FormationOffset,
+                    CurrentPosition = transformComponent.Position,
+                    TargetPosition = navigationComponent != null ? navigationComponent.Destination : transformComponent.Position,
+                    FormationPhaseDistance = formationPhaseDistance
+                };
+                
+                squadFormations[squadId].Add(data);
             }
-            _slotMarkers.Clear();
-        }
-
-        private void OnDestroy()
-        {
-            ClearMarkers();
             
-            if (_slotPrefab != null && _slotPrefab.name.StartsWith("Sphere"))
+            // Draw each squad
+            foreach (var squadEntry in squadFormations)
             {
-                Destroy(_slotPrefab);
+                int squadId = squadEntry.Key;
+                var formationData = squadEntry.Value;
+                
+                // Select color for this squad
+                Color squadColor = GetSquadColor(squadId);
+                
+                // Calculate squad center
+                Vector3 squadCenter = CalculateSquadCenter(formationData);
+                
+                // Calculate target center
+                Vector3 targetCenter = CalculateTargetCenter(formationData);
+                
+                // Draw squad information
+                DrawSquadFormation(squadId, squadCenter, targetCenter, formationData, squadColor);
             }
         }
-    }
 
-    /// <summary>
-    /// Script để text luôn hướng về camera
-    /// </summary>
-    public class BillboardText : MonoBehaviour
-    {
-        private void LateUpdate()
+        /// <summary>
+        /// Tính toán trung tâm của squad
+        /// </summary>
+        private Vector3 CalculateSquadCenter(List<UnitFormationData> formationData)
         {
-            if (Camera.main != null)
+            if (formationData.Count == 0)
+                return Vector3.zero;
+            
+            Vector3 sum = Vector3.zero;
+            foreach (var data in formationData)
             {
-                transform.rotation = Camera.main.transform.rotation;
+                sum += data.CurrentPosition;
             }
+            
+            return sum / formationData.Count;
+        }
+
+        /// <summary>
+        /// Tính toán trung tâm của điểm đích
+        /// </summary>
+        private Vector3 CalculateTargetCenter(List<UnitFormationData> formationData)
+        {
+            if (formationData.Count == 0)
+                return Vector3.zero;
+            
+            Vector3 sum = Vector3.zero;
+            foreach (var data in formationData)
+            {
+                sum += data.TargetPosition;
+            }
+            
+            return sum / formationData.Count;
+        }
+
+        /// <summary>
+        /// Vẽ thông tin đội hình cho một squad
+        /// </summary>
+        private void DrawSquadFormation(int squadId, Vector3 squadCenter, Vector3 targetCenter, List<UnitFormationData> formationData, Color squadColor)
+        {
+            // Draw squad center
+            Gizmos.color = squadColor;
+            Gizmos.DrawSphere(squadCenter, _boxSize * 0.5f);
+            
+            // Draw target center
+            Gizmos.color = _targetPositionColor;
+            Gizmos.DrawSphere(targetCenter, _boxSize * 0.5f);
+            
+            // Draw formation phase radius if we have data
+            if (_showPhaseRadius && formationData.Count > 0)
+            {
+                float phaseRadius = formationData[0].FormationPhaseDistance;
+                Gizmos.color = _approachingColor;
+                Gizmos.DrawWireSphere(targetCenter, phaseRadius);
+                
+                // Draw inner circle for forming phase
+                Gizmos.color = _formingColor;
+                Gizmos.DrawWireSphere(targetCenter, phaseRadius * 0.5f);
+            }
+            
+            // Draw each unit's position and target position
+            foreach (var data in formationData)
+            {
+                // Draw current position
+                Gizmos.color = squadColor;
+                DrawBox(data.CurrentPosition, _boxSize);
+                
+                // Draw formation position (with offset from center)
+                Gizmos.color = _targetPositionColor;
+                Vector3 formationPos = targetCenter + data.FormationOffset;
+                DrawBox(formationPos, _boxSize * 0.5f);
+                
+                // Draw connection line
+                Gizmos.color = _connectionLineColor;
+                Gizmos.DrawLine(data.CurrentPosition, formationPos);
+                
+                // Draw formation slot index
+                if (_showIndexes)
+                {
+#if UNITY_EDITOR
+                    // Draw formation slot index at current position
+                    UnityEditor.Handles.color = squadColor;
+                    Vector3 textPos = data.CurrentPosition + Vector3.up * _textHeight;
+                    UnityEditor.Handles.Label(textPos, data.FormationSlot.ToString());
+                    
+                    // Draw entity ID at target position
+                    UnityEditor.Handles.color = _targetPositionColor;
+                    Vector3 idPos = formationPos + Vector3.up * _textHeight;
+                    UnityEditor.Handles.Label(idPos, $"ID:{data.EntityId}");
+#endif
+                }
+            }
+        }
+
+        /// <summary>
+        /// Vẽ một ô vuông tại vị trí chỉ định
+        /// </summary>
+        private void DrawBox(Vector3 position, float size)
+        {
+            Vector3 halfSize = new Vector3(size, 0.1f, size) * 0.5f;
+            Gizmos.DrawCube(position + Vector3.up * 0.05f, halfSize * 2);
+            Gizmos.DrawWireCube(position + Vector3.up * 0.05f, halfSize * 2);
+        }
+
+        /// <summary>
+        /// Lấy màu cho squad dựa trên ID
+        /// </summary>
+        private Color GetSquadColor(int squadId)
+        {
+            if (_squadColors.Length == 0)
+                return Color.white;
+            
+            return _squadColors[squadId % _squadColors.Length];
         }
     }
 
     /// <summary>
-    /// Thông tin debug của một squad
+    /// Dữ liệu về vị trí đội hình của một unit
     /// </summary>
-    public class SquadDebugInfo
+    public class UnitFormationData
     {
-        public int SquadId;
-        public Vector3 Center;
-        public Quaternion Rotation;
-        public FormationType FormationType;
-        public List<DebugUnitInfo> Units = new List<DebugUnitInfo>();
-    }
-
-    /// <summary>
-    /// Thông tin debug của một unit
-    /// </summary>
-    public class DebugUnitInfo
-    {
-        public IEntity Entity;
-        public int SlotIndex;
+        public int EntityId;
+        public int FormationSlot;
         public Vector3 FormationOffset;
         public Vector3 CurrentPosition;
-        public Vector3 SlotPosition;
-        public Vector3 Forward;
-        public FormationType FormationType;
+        public Vector3 TargetPosition;
+        public float FormationPhaseDistance;
     }
 }

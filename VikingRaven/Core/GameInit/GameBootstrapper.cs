@@ -9,8 +9,6 @@ namespace VikingRaven.Core
     public class GameBootstrapper : MonoBehaviour
     {
         [SerializeField] private bool _autoStartLevel = true;
-        
-        // References to singletons
         private SystemRegistry SystemRegistry => SystemRegistry.Instance;
         private EntityRegistry EntityRegistry => EntityRegistry.Instance;
         private UnitFactory UnitFactory => GameManager.Instance.UnitFactory;
@@ -21,29 +19,20 @@ namespace VikingRaven.Core
         private void Start()
         {
             Debug.Log("GameBootstrapper: Initializing game...");
-            
             VerifySingletons();
             if (SystemRegistry != null)
             {
                 SystemRegistry.InitializeAllSystems();
-                Debug.Log("All systems initialized");
-            }
-            else
-            {
-                Debug.LogError("GameBootstrapper: SystemRegistry is null, cannot initialize systems");
             }
             
-            // Start level if auto-start is enabled
             if (_autoStartLevel && LevelManager != null)
             {
-                Debug.Log("Auto-starting level");
                 LevelManager.StartLevel();
             }
         }
         
         private void Update()
         {
-            // Execute all systems every frame
             SystemRegistry?.ExecuteAllSystems();
         }
         

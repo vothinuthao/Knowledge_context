@@ -6,7 +6,6 @@ namespace VikingRaven.Game
 {
      public class LevelManager : Singleton<LevelManager>
     {
-        // Reference to GameManager now accessed through singleton
         private GameManager GameManager => GameManager.Instance;
         
         [SerializeField] private Transform[] _playerSpawnPoints;
@@ -16,8 +15,6 @@ namespace VikingRaven.Game
         {
             base.OnInitialize();
             Debug.Log("LevelManager initialized as singleton");
-            
-            // Check if GameManager is available
             if (GameManager == null)
             {
                 Debug.LogError("LevelManager: GameManager singleton is not available");
@@ -29,8 +26,8 @@ namespace VikingRaven.Game
         /// </summary>
         public void StartLevel()
         {
-            SpawnPlayerSquads();
-            SpawnEnemySquads();
+            // SpawnPlayerSquads();
+            // SpawnEnemySquads();
         }
 
         /// <summary>
@@ -51,7 +48,7 @@ namespace VikingRaven.Game
             }
             
             // Spawn an infantry squad at the first spawn point
-            GameManager.CreateSquad(UnitType.Infantry, 8, _playerSpawnPoints[0].position);
+            GameManager.CreateSquad(UnitType.Infantry, 9, _playerSpawnPoints[0].position);
             
             // Spawn a mixed squad at the second spawn point if available
             if (_playerSpawnPoints.Length > 1)

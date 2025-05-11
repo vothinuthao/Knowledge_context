@@ -38,7 +38,6 @@ namespace VikingRaven.Game.Examples
                 return;
             }
             
-            // Create a player squad at the first spawn point
             if (_playerSpawnPoints.Length > 0)
             {
                 var playerSquad = CreateMixedSquad(_playerSpawnPoints[0].position, 1);
@@ -78,7 +77,6 @@ namespace VikingRaven.Game.Examples
 
         private System.Collections.Generic.List<Core.ECS.IEntity> CreateMixedSquad(Vector3 position, int squadId)
         {
-            // Create a mixed squad with infantry, archers, and pike units
             System.Collections.Generic.Dictionary<UnitType, int> unitCounts = new System.Collections.Generic.Dictionary<UnitType, int>
             {
                 { UnitType.Infantry, _infantryPerSquad },

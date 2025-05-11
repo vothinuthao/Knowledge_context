@@ -1,384 +1,665 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using UnityEngine;
-using UnityEditor;
-using UnityEditor.SceneManagement;
 using Sirenix.OdinInspector;
 using Sirenix.OdinInspector.Editor;
-using VikingRaven.Core.ECS;
-using VikingRaven.Game;
-using VikingRaven.Units.Systems;
+using UnityEditor;
+using UnityEngine;
+using VikingRaven.Configuration;
 using VikingRaven.Core;
+using VikingRaven.Core.ECS;
 using VikingRaven.Core.Factory;
+using VikingRaven.Game;
+using VikingRaven.Game.Examples;
 using VikingRaven.Units.Components;
+using VikingRaven.Units.Systems;
 
-namespace VikingRaven.Editor
+namespace Editor
 {
-    /// <summary>
-    /// Cửa sổ thiết lập Scene - tự động tạo và thiết lập cảnh với các thành phần cần thiết
-    /// </summary>
     public class SceneSetupWindow : OdinEditorWindow
     {
-        [MenuItem("VikingRaven/Công cụ/Thiết lập Scene")]
+        [MenuItem("VikingRaven/Setup/Scene Setup")]
         private static void OpenWindow()
         {
             GetWindow<SceneSetupWindow>().Show();
         }
 
-        [TitleGroup("Thông tin cơ bản")]
-        [LabelText("Tên Scene"), LabelWidth(150)]
-        public string sceneName = "VikingRaven_Scene";
-
-        [TitleGroup("Thông tin cơ bản")]
-        [LabelText("Lưu đường dẫn"), LabelWidth(150)]
-        public bool saveScene = true;
-
-        [TitleGroup("Thông tin cơ bản")]
-        [LabelText("Đường dẫn lưu"), ShowIf("saveScene"), LabelWidth(150)]
-        [FolderPath]
-        public string savePath = "Assets/Scenes";
-
-        [TitleGroup("Cấu hình Core Systems")]
-        [LabelText("Tạo GameBootstrapper"), LabelWidth(200)]
-        public bool createGameBootstrapper = true;
-
-        [TitleGroup("Cấu hình Core Systems")]
-        [LabelText("Tạo EntityRegistry"), LabelWidth(200)]
-        public bool createEntityRegistry = true;
-
-        [TitleGroup("Cấu hình Core Systems")]
-        [LabelText("Tạo SystemRegistry"), LabelWidth(200)]
-        public bool createSystemRegistry = true;
-
-        [TitleGroup("Cấu hình Core Systems")]
-        [LabelText("Tạo GameManager"), LabelWidth(200)]
-        public bool createGameManager = true;
-
-        [TitleGroup("Cấu hình Core Systems")]
-        [LabelText("Tạo LevelManager"), LabelWidth(200)]
-        public bool createLevelManager = true;
-
-        [TitleGroup("Cấu hình Game Systems")]
-        [TableList(ShowIndexLabels = true), LabelText("Danh sách Game Systems")]
-        public List<GameSystemInfo> gameSystems = new List<GameSystemInfo>();
-
-        [Serializable]
-        public class GameSystemInfo
+        [PropertySpace(10)]
+        [Title("Scene Setup Window", "Automatically set up a complete tactical game scene")]
+        
+        [BoxGroup("Scene Configuration")]
+        public bool SetupNewScene = true;
+        
+        [BoxGroup("Scene Configuration")]
+        [ShowIf("SetupNewScene")]
+        public string NewSceneName = "TacticalBattle";
+        
+        [BoxGroup("Scene Configuration")]
+        [LabelText("Create Terrain")]
+        public bool CreateTerrain = true;
+        
+        [BoxGroup("Scene Configuration")]
+        [ShowIf("CreateTerrain")]
+        [MinMaxSlider(10, 1000, true)]
+        public Vector2 TerrainSize = new Vector2(100, 100);
+        
+        [PropertySpace(10)]
+        [TabGroup("Core Setup")]
+        [BoxGroup("Core Setup/Core Objects")]
+        [LabelText("Create Core Systems")]
+        public bool CreateCoreSystems = true;
+        
+        [BoxGroup("Core Setup/Core Objects")]
+        [LabelText("Create Game Manager")]
+        public bool CreateGameManager = true;
+        
+        [BoxGroup("Core Setup/Core Objects")]
+        [LabelText("Create Entity Registry")]
+        public bool CreateEntityRegistry = true;
+        
+        [BoxGroup("Core Setup/Core Objects")]
+        [LabelText("Create System Registry")]
+        public bool CreateSystemRegistry = true;
+        
+        [BoxGroup("Core Setup/Core Objects")]
+        [LabelText("Create Game Bootstrapper")]
+        public bool CreateGameBootstrapper = true;
+        
+        [PropertySpace(10)]
+        [BoxGroup("Core Setup/Factories")]
+        [LabelText("Create Unit Factory")]
+        public bool CreateUnitFactory = true;
+        
+        [BoxGroup("Core Setup/Factories")]
+        [LabelText("Create Squad Factory")]
+        public bool CreateSquadFactory = true;
+        
+        [PropertySpace(10)]
+        [TabGroup("Core Setup")]
+        [BoxGroup("Core Setup/Systems")]
+        [TableList(ShowIndexLabels = true, IsReadOnly = false)]
+        public List<SystemSetupInfo> SystemsToCreate = new List<SystemSetupInfo>
         {
-            [TableColumnWidth(150)]
-            public string Name;
-            
-            [TableColumnWidth(250)]
-            [GUIColor("GetSystemColor")]
-            [LabelText("Loại System")]
-            [ValueDropdown("GetSystemTypes")]
-            public string SystemType;
-            
-            [TableColumnWidth(80)]
-            public bool Create;
-            
-            [HideInInspector]
-            public System.Type ActualType;
+            new SystemSetupInfo { SystemType = "MovementSystem", CreateSystem = true, Priority = 10 },
+            new SystemSetupInfo { SystemType = "AIDecisionSystem", CreateSystem = true, Priority = 20 },
+            new SystemSetupInfo { SystemType = "FormationSystem", CreateSystem = true, Priority = 30 },
+            new SystemSetupInfo { SystemType = "AggroDetectionSystem", CreateSystem = true, Priority = 40 },
+            new SystemSetupInfo { SystemType = "SquadCoordinationSystem", CreateSystem = true, Priority = 50 },
+            new SystemSetupInfo { SystemType = "SteeringSystem", CreateSystem = true, Priority = 60 },
+            new SystemSetupInfo { SystemType = "TacticalAnalysisSystem", CreateSystem = true, Priority = 70 },
+            new SystemSetupInfo { SystemType = "WeightedBehaviorSystem", CreateSystem = true, Priority = 80 }
+        };
+        
+        [PropertySpace(10)]
+        [TabGroup("Units Setup")]
+        [BoxGroup("Units Setup/Player Squads")]
+        [LabelText("Create Player Squads")]
+        public bool CreatePlayerSquads = true;
+        
+        [BoxGroup("Units Setup/Player Squads")]
+        [ShowIf("CreatePlayerSquads")]
+        [TableList(ShowIndexLabels = false)]
+        public List<SquadSetupInfo> PlayerSquads = new List<SquadSetupInfo>
+        {
+            new SquadSetupInfo { SquadName = "Infantry Squad", UnitType = UnitType.Infantry, UnitCount = 8, 
+                Position = new Vector3(0, 0, -20), Rotation = Quaternion.identity }
+        };
+        
+        [PropertySpace(10)]
+        [BoxGroup("Units Setup/Enemy Squads")]
+        [LabelText("Create Enemy Squads")]
+        public bool CreateEnemySquads = true;
+        
+        [BoxGroup("Units Setup/Enemy Squads")]
+        [ShowIf("CreateEnemySquads")]
+        [TableList(ShowIndexLabels = false)]
+        public List<SquadSetupInfo> EnemySquads = new List<SquadSetupInfo>
+        {
+            new SquadSetupInfo { SquadName = "Enemy Archer Squad", UnitType = UnitType.Archer, UnitCount = 6, 
+                Position = new Vector3(0, 0, 20), Rotation = Quaternion.Euler(0, 180, 0) }
+        };
+        
+        [PropertySpace(10)]
+        [TabGroup("Units Setup")]
+        [BoxGroup("Units Setup/Camera & Controls")]
+        [LabelText("Create Camera")]
+        public bool CreateCamera = true;
+        
+        [BoxGroup("Units Setup/Camera & Controls")]
+        [LabelText("Create Squad Controller")]
+        public bool CreateSquadController = true;
+        
+        [PropertySpace(10)]
+        [TabGroup("Configuration")]
+        [BoxGroup("Configuration/Config Files")]
+        [LabelText("Load System Configuration")]
+        public bool LoadSystemConfig = true;
+        
+        [BoxGroup("Configuration/Config Files")]
+        [ShowIf("LoadSystemConfig")]
+        [AssetsOnly, AssetSelector(Paths = "Assets")]
+        public SystemConfigurationSO SystemConfigurationAsset;
+        
+        [BoxGroup("Configuration/Config Files")]
+        [LabelText("Load Troop Configuration")]
+        public bool LoadTroopConfig = true;
+        
+        [BoxGroup("Configuration/Config Files")]
+        [ShowIf("LoadTroopConfig")]
+        [AssetsOnly, AssetSelector(Paths = "Assets")]
+        public TroopConfigurationSO TroopConfigurationAsset;
 
-            public Color GetSystemColor()
+        [PropertySpace(20)]
+        [Button("Setup Scene", ButtonSizes.Large), GUIColor(0.4f, 0.8f, 0.4f)]
+        public void SetupScene()
+        {
+            if (SetupNewScene)
             {
-                if (SystemType.Contains("Movement")) return Color.green;
-                if (SystemType.Contains("Combat")) return new Color(1, 0.5f, 0.5f);
-                if (SystemType.Contains("AI")) return new Color(0.5f, 0.5f, 1);
-                if (SystemType.Contains("Formation")) return new Color(1, 0.7f, 0.3f);
-                if (SystemType.Contains("Tactical")) return new Color(0.7f, 0.3f, 1);
-                return Color.white;
-            }
-
-            public IEnumerable<string> GetSystemTypes()
-            {
-                var baseSystemType = typeof(BaseSystem);
-                var systemTypes = AppDomain.CurrentDomain.GetAssemblies()
-                    .SelectMany(a => a.GetTypes())
-                    .Where(t => baseSystemType.IsAssignableFrom(t) && !t.IsAbstract && t != baseSystemType)
-                    .Select(t => t.Name)
-                    .OrderBy(n => n);
+                // Check if there are unsaved changes
+                if (UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene().isDirty)
+                {
+                    bool shouldProceed = EditorUtility.DisplayDialog(
+                        "Unsaved Changes",
+                        "Current scene has unsaved changes. Do you want to proceed and lose these changes?",
+                        "Yes, Create New Scene",
+                        "Cancel"
+                    );
+                    
+                    if (!shouldProceed)
+                        return;
+                }
                 
-                return systemTypes;
+                // Create a new scene
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(
+                    UnityEditor.SceneManagement.NewSceneSetup.DefaultGameObjects,
+                    UnityEditor.SceneManagement.NewSceneMode.Single
+                );
+            }
+            
+            try
+            {
+                EditorUtility.DisplayProgressBar("Setting Up Scene", "Creating core objects...", 0.1f);
+                
+                // Create terrain if needed
+                GameObject terrain = null;
+                if (CreateTerrain)
+                {
+                    terrain = CreateTerrainObject();
+                }
+                
+                EditorUtility.DisplayProgressBar("Setting Up Scene", "Creating managers...", 0.2f);
+                
+                // Create core managers
+                GameObject coreContainer = new GameObject("Core");
+                
+                if (CreateGameManager)
+                {
+                    CreateManagerObject<GameManager>(coreContainer, "GameManager");
+                }
+                
+                if (CreateEntityRegistry)
+                {
+                    CreateManagerObject<EntityRegistry>(coreContainer, "EntityRegistry");
+                }
+                
+                if (CreateSystemRegistry)
+                {
+                    CreateManagerObject<SystemRegistry>(coreContainer, "SystemRegistry");
+                }
+                
+                if (CreateGameBootstrapper)
+                {
+                    CreateManagerObject<GameBootstrapper>(coreContainer, "GameBootstrapper");
+                }
+                
+                // Create factories
+                if (CreateUnitFactory || CreateSquadFactory)
+                {
+                    GameObject factoriesContainer = new GameObject("Factories");
+                    factoriesContainer.transform.SetParent(coreContainer.transform);
+                    
+                    if (CreateUnitFactory)
+                    {
+                        var factoryObj = new GameObject("UnitFactory");
+                        factoryObj.transform.SetParent(factoriesContainer.transform);
+                        factoryObj.AddComponent<UnitFactory>();
+                    }
+                    
+                    if (CreateSquadFactory)
+                    {
+                        var factoryObj = new GameObject("SquadFactory");
+                        factoryObj.transform.SetParent(factoriesContainer.transform);
+                        factoryObj.AddComponent<SquadFactory>();
+                    }
+                }
+                
+                EditorUtility.DisplayProgressBar("Setting Up Scene", "Creating systems...", 0.3f);
+                
+                // Create Systems
+                GameObject systemsContainer = null;
+                if (CreateCoreSystems && SystemsToCreate.Count > 0)
+                {
+                    systemsContainer = new GameObject("Systems");
+                    systemsContainer.transform.SetParent(coreContainer.transform);
+                    
+                    foreach (var systemInfo in SystemsToCreate)
+                    {
+                        if (systemInfo.CreateSystem)
+                        {
+                            CreateSystemFromName(systemsContainer, systemInfo.SystemType, systemInfo.Priority);
+                        }
+                    }
+                }
+                
+                EditorUtility.DisplayProgressBar("Setting Up Scene", "Creating player units...", 0.6f);
+                
+                // Create squads
+                GameObject squadsContainer = new GameObject("Squads");
+                
+                GameObject playerSquadsContainer = null;
+                if (CreatePlayerSquads && PlayerSquads.Count > 0)
+                {
+                    playerSquadsContainer = new GameObject("PlayerSquads");
+                    playerSquadsContainer.transform.SetParent(squadsContainer.transform);
+                    
+                    int index = 0;
+                    foreach (var squadInfo in PlayerSquads)
+                    {
+                        CreateSquad(playerSquadsContainer, squadInfo, index++, true);
+                    }
+                }
+                
+                EditorUtility.DisplayProgressBar("Setting Up Scene", "Creating enemy units...", 0.7f);
+                
+                GameObject enemySquadsContainer = null;
+                if (CreateEnemySquads && EnemySquads.Count > 0)
+                {
+                    enemySquadsContainer = new GameObject("EnemySquads");
+                    enemySquadsContainer.transform.SetParent(squadsContainer.transform);
+                    
+                    int index = 0;
+                    foreach (var squadInfo in EnemySquads)
+                    {
+                        CreateSquad(enemySquadsContainer, squadInfo, index++, false);
+                    }
+                }
+                
+                EditorUtility.DisplayProgressBar("Setting Up Scene", "Creating camera and controls...", 0.8f);
+                
+                // Create camera and controls
+                if (CreateCamera)
+                {
+                    GameObject cameraObj = new GameObject("Main Camera");
+                    Camera camera = cameraObj.AddComponent<Camera>();
+                    cameraObj.tag = "MainCamera";
+                    
+                    // Set up camera position and rotation
+                    cameraObj.transform.position = new Vector3(0, 30, -20);
+                    cameraObj.transform.rotation = Quaternion.Euler(60, 0, 0);
+                    
+                    // Add a simple orbit camera script if available
+                    Type orbitCameraType = Type.GetType("VikingRaven.Game.OrbitCamera");
+                    if (orbitCameraType != null)
+                    {
+                        cameraObj.AddComponent(orbitCameraType);
+                    }
+                }
+                
+                if (CreateSquadController)
+                {
+                    GameObject controllerObj = new GameObject("SquadController");
+                    controllerObj.AddComponent<SimpleSquadController>();
+                    
+                    // Link to camera and system if exists
+                    SimpleSquadController controller = controllerObj.GetComponent<SimpleSquadController>();
+                    if (controller != null)
+                    {
+                        // controller._mainCamera = Camera.main;
+                        
+                        if (systemsContainer != null)
+                        {
+                            var coordinationSystem = systemsContainer.GetComponentInChildren<SquadCoordinationSystem>();
+                            if (coordinationSystem != null)
+                            {
+                                var serializedObj = new SerializedObject(controller);
+                                var systemField = serializedObj.FindProperty("_squadCoordinationSystem");
+                                systemField.objectReferenceValue = coordinationSystem;
+                                serializedObj.ApplyModifiedProperties();
+                            }
+                        }
+                    }
+                }
+                
+                EditorUtility.DisplayProgressBar("Setting Up Scene", "Applying configurations...", 0.9f);
+                
+                // Apply configurations if specified
+                if (LoadSystemConfig && SystemConfigurationAsset != null && systemsContainer != null)
+                {
+                    ApplySystemConfiguration(systemsContainer, SystemConfigurationAsset);
+                }
+                
+                if (LoadTroopConfig && TroopConfigurationAsset != null)
+                {
+                    ApplyTroopConfiguration(TroopConfigurationAsset);
+                }
+                
+                EditorUtility.DisplayProgressBar("Setting Up Scene", "Finalizing...", 1.0f);
+                
+                // Save the scene if it's new
+                if (SetupNewScene)
+                {
+                    string scenePath = $"Assets/Scenes/{NewSceneName}.unity";
+                    UnityEditor.SceneManagement.EditorSceneManager.SaveScene(
+                        UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene(), 
+                        scenePath, 
+                        true
+                    );
+                }
+                
+                EditorUtility.DisplayDialog("Success", "Scene setup completed successfully!", "OK");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error during scene setup: {ex.Message}\n{ex.StackTrace}");
+                EditorUtility.DisplayDialog("Error", $"Failed to set up scene: {ex.Message}", "OK");
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
             }
         }
 
-        [TitleGroup("Thiết lập Terrain")]
-        [LabelText("Tạo Terrain"), LabelWidth(200)]
-        public bool createTerrain = true;
-
-        [TitleGroup("Thiết lập Terrain")]
-        [LabelText("Kích thước Terrain"), ShowIf("createTerrain"), LabelWidth(200)]
-        [MinValue(100), MaxValue(2000)]
-        public Vector3 terrainSize = new Vector3(500, 100, 500);
-
-        [TitleGroup("Thiết lập Spawn Points")]
-        [LabelText("Số lượng điểm hồi sinh"), LabelWidth(200)]
-        [MinValue(0), MaxValue(10)]
-        public int spawnPointCount = 2;
-
-        [TitleGroup("Thiết lập Debug Tools")]
-        [LabelText("Tạo công cụ debug Formation"), LabelWidth(250)]
-        public bool createFormationDebugger = true;
-
-        [TitleGroup("Thiết lập Debug Tools")]
-        [LabelText("Tạo công cụ debug FormationSlot"), LabelWidth(250)]
-        public bool createFormationSlotVisualizer = true;
-
-        [TitleGroup("Thiết lập Debug Tools")]
-        [LabelText("Tạo công cụ phân tích Formation"), LabelWidth(250)]
-        public bool createFormationAnalyzer = true;
-
-        [Button("Thiết lập Scene", ButtonSizes.Large)]
-        [GUIColor(0, 0.8f, 0)]
-        private void SetupScene()
+        private GameObject CreateTerrainObject()
         {
-            if (EditorApplication.isPlaying)
+            // Create terrain data
+            TerrainData terrainData = new TerrainData();
+            terrainData.size = new Vector3(TerrainSize.x, 20, TerrainSize.y);
+            
+            // Create terrain game object
+            GameObject terrainObject = Terrain.CreateTerrainGameObject(terrainData);
+            terrainObject.name = "Terrain";
+            
+            // Flatten the terrain
+            float[,] heights = new float[terrainData.heightmapResolution, terrainData.heightmapResolution];
+            for (int i = 0; i < terrainData.heightmapResolution; i++)
             {
-                EditorUtility.DisplayDialog("Không thể thực hiện", "Không thể thiết lập scene khi game đang chạy. Vui lòng dừng game và thử lại.", "OK");
+                for (int j = 0; j < terrainData.heightmapResolution; j++)
+                {
+                    heights[i, j] = 0; // Flat terrain
+                }
+            }
+            terrainData.SetHeights(0, 0, heights);
+            
+            // Set the terrain material if needed
+            Terrain terrain = terrainObject.GetComponent<Terrain>();
+            terrain.materialTemplate = AssetDatabase.GetBuiltinExtraResource<Material>("Default-Terrain-Standard.mat");
+            
+            return terrainObject;
+        }
+
+        private T CreateManagerObject<T>(GameObject parent, string name) where T : Component
+        {
+            GameObject obj = new GameObject(name);
+            obj.transform.SetParent(parent.transform);
+            return obj.AddComponent<T>();
+        }
+
+        private void CreateSystemFromName(GameObject parent, string systemTypeName, int priority)
+        {
+            string fullTypeName = $"VikingRaven.Units.Systems.{systemTypeName}";
+            Type systemType = Type.GetType(fullTypeName);
+            
+            if (systemType == null)
+            {
+                fullTypeName = $"VikingRaven.Core.Systems.{systemTypeName}";
+                systemType = Type.GetType(fullTypeName);
+            }
+            
+            if (systemType == null)
+            {
+                Debug.LogWarning($"System type '{systemTypeName}' not found.");
                 return;
             }
-
-            // Tạo scene mới
-            EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects);
-
-            // Core Systems
-            if (createGameBootstrapper) CreateGameBootstrapper();
-            if (createEntityRegistry) CreateEntityRegistry();
-            if (createSystemRegistry) CreateSystemRegistry();
-            if (createGameManager) CreateGameManager();
-            if (createLevelManager) CreateLevelManager();
-
-            // Game Systems
-            CreateSelectedGameSystems();
-
-            // Terrain
-            if (createTerrain) CreateTerrain();
-
-            // Spawn Points
-            CreateSpawnPoints();
-
-            // Debug Tools
-            CreateDebugTools();
-
-            // Lưu scene
-            if (saveScene)
+            
+            GameObject systemObj = new GameObject(systemTypeName);
+            systemObj.transform.SetParent(parent.transform);
+            
+            BaseSystem system = systemObj.AddComponent(systemType) as BaseSystem;
+            if (system != null)
             {
-                string scenePath = $"{savePath}/{sceneName}.unity";
-                EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), scenePath);
-                Debug.Log($"Scene đã được lưu tại: {scenePath}");
+                system.Priority = priority;
             }
-
-            EditorUtility.DisplayDialog("Thiết lập hoàn tất", "Scene đã được thiết lập thành công với các thành phần được chọn.", "OK");
         }
 
-        private void CreateGameBootstrapper()
+        private void CreateSquad(GameObject parent, SquadSetupInfo squadInfo, int index, bool isPlayer)
         {
-            GameObject bootstrapper = new GameObject("GameBootstrapper");
-            bootstrapper.AddComponent<GameBootstrapper>();
-            Debug.Log("Đã tạo GameBootstrapper");
-        }
-
-        private void CreateEntityRegistry()
-        {
-            GameObject entityRegistry = new GameObject("EntityRegistry");
-            entityRegistry.AddComponent<EntityRegistry>();
-            Debug.Log("Đã tạo EntityRegistry");
-        }
-
-        private void CreateSystemRegistry()
-        {
-            GameObject systemRegistry = new GameObject("SystemRegistry");
-            systemRegistry.AddComponent<SystemRegistry>();
-            Debug.Log("Đã tạo SystemRegistry");
-        }
-
-        private void CreateGameManager()
-        {
-            GameObject gameManager = new GameObject("GameManager");
-            GameManager manager = gameManager.AddComponent<GameManager>();
+            GameObject squadContainer = new GameObject(squadInfo.SquadName);
+            squadContainer.transform.SetParent(parent.transform);
+            squadContainer.transform.position = squadInfo.Position;
+            squadContainer.transform.rotation = squadInfo.Rotation;
             
-            // Tạo UnitFactory
-            GameObject unitFactoryObj = new GameObject("UnitFactory");
-            unitFactoryObj.transform.SetParent(gameManager.transform);
-            UnitFactory unitFactory = unitFactoryObj.AddComponent<UnitFactory>();
+            // Create placeholder for units
+            // In a real scenario, you would use SquadFactory to create actual units
+            GameObject unitsPlaceholder = new GameObject($"Units");
+            unitsPlaceholder.transform.SetParent(squadContainer.transform);
             
-            // Gán UnitFactory
-            var fieldInfo = typeof(GameManager).GetField("_unitFactory", 
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (fieldInfo != null)
+            // Create visual representation for the squad in editor
+            GameObject visualRepresentation = new GameObject("SquadVisual");
+            visualRepresentation.transform.SetParent(squadContainer.transform);
+            
+            // Add a visual mesh to represent the squad type
+            if (squadInfo.UnitType == UnitType.Infantry)
             {
-                fieldInfo.SetValue(manager, unitFactory);
+                CreateVisualMesh(visualRepresentation, PrimitiveType.Cube, isPlayer ? Color.blue : Color.red);
+            }
+            else if (squadInfo.UnitType == UnitType.Archer)
+            {
+                CreateVisualMesh(visualRepresentation, PrimitiveType.Sphere, isPlayer ? Color.cyan : Color.magenta);
+            }
+            else if (squadInfo.UnitType == UnitType.Pike)
+            {
+                CreateVisualMesh(visualRepresentation, PrimitiveType.Cylinder, isPlayer ? Color.green : Color.yellow);
             }
             
-            Debug.Log("Đã tạo GameManager");
+            // Add info component to the squad for easy identification
+            SquadInfoHelper infoHelper = squadContainer.AddComponent<SquadInfoHelper>();
+            infoHelper.SquadName = squadInfo.SquadName;
+            infoHelper.UnitType = squadInfo.UnitType;
+            infoHelper.UnitCount = squadInfo.UnitCount;
+            infoHelper.IsPlayerSquad = isPlayer;
+            infoHelper.SquadId = isPlayer ? index + 1 : 101 + index;
         }
 
-        private void CreateLevelManager()
+        private void CreateVisualMesh(GameObject parent, PrimitiveType meshType, Color color)
         {
-            GameObject levelManager = new GameObject("LevelManager");
-            levelManager.AddComponent<LevelManager>();
-            Debug.Log("Đã tạo LevelManager");
-        }
-
-        private void CreateSelectedGameSystems()
-        {
-            GameObject systemsContainer = new GameObject("Game_Systems");
+            GameObject meshObj = GameObject.CreatePrimitive(meshType);
+            meshObj.transform.SetParent(parent.transform);
+            meshObj.transform.localPosition = Vector3.zero;
+            meshObj.transform.localScale = new Vector3(5, 1, 5);
             
-            foreach (var systemInfo in gameSystems)
+            // Set material color
+            Renderer renderer = meshObj.GetComponent<Renderer>();
+            if (renderer != null)
             {
-                if (systemInfo.Create && !string.IsNullOrEmpty(systemInfo.SystemType))
+                renderer.material = new Material(Shader.Find("Standard"));
+                renderer.material.color = color;
+            }
+        }
+
+        private void ApplySystemConfiguration(GameObject systemsContainer, SystemConfigurationSO config)
+        {
+            if (systemsContainer == null || config == null)
+                return;
+                
+            BaseSystem[] systems = systemsContainer.GetComponentsInChildren<BaseSystem>();
+            
+            foreach (var system in systems)
+            {
+                string systemType = system.GetType().Name;
+                var systemConfig = config.GetSystemConfig(systemType);
+                
+                if (systemConfig != null)
                 {
-                    // Tìm type hệ thống
-                    var baseSystemType = typeof(BaseSystem);
-                    var systemType = AppDomain.CurrentDomain.GetAssemblies()
-                        .SelectMany(a => a.GetTypes())
-                        .FirstOrDefault(t => t.Name == systemInfo.SystemType && baseSystemType.IsAssignableFrom(t));
-
-                    if (systemType != null)
-                    {
-                        GameObject systemObj = new GameObject(systemInfo.Name ?? systemInfo.SystemType);
-                        systemObj.transform.SetParent(systemsContainer.transform);
-                        
-                        Component system = systemObj.AddComponent(systemType);
-                        Debug.Log($"Đã tạo {systemInfo.SystemType}");
-                    }
+                    system.IsActive = systemConfig.IsActive;
+                    system.Priority = systemConfig.Priority;
+                    
+                    // Apply custom parameters
+                    // This would require reflection to access private fields
+                    // Simplified implementation for the tutorial
                 }
             }
         }
 
-        private void CreateTerrain()
+        private void ApplyTroopConfiguration(TroopConfigurationSO config)
         {
-            GameObject terrainObj = new GameObject("Terrain");
-            Terrain terrain = terrainObj.AddComponent<Terrain>();
-            terrainObj.AddComponent<TerrainCollider>();
-            
-            TerrainData terrainData = new TerrainData();
-            terrainData.size = terrainSize;
-            
-            terrain.terrainData = terrainData;
-            
-            // Đặt terrain ở vị trí phù hợp
-            terrainObj.transform.position = new Vector3(-terrainSize.x / 2, 0, -terrainSize.z / 2);
-            
-            // Lưu terrainData
-            if (saveScene)
-            {
-                string terrainDataPath = $"{savePath}/TerrainData_{sceneName}.asset";
-                AssetDatabase.CreateAsset(terrainData, terrainDataPath);
-                AssetDatabase.SaveAssets();
-            }
-            
-            Debug.Log("Đã tạo Terrain");
-        }
-
-        private void CreateSpawnPoints()
-        {
-            if (spawnPointCount <= 0) return;
-            
-            GameObject spawnPointsContainer = new GameObject("SpawnPoints");
-            GameObject playerSpawnsContainer = new GameObject("PlayerSpawnPoints");
-            GameObject enemySpawnsContainer = new GameObject("EnemySpawnPoints");
-            
-            playerSpawnsContainer.transform.SetParent(spawnPointsContainer.transform);
-            enemySpawnsContainer.transform.SetParent(spawnPointsContainer.transform);
-            
-            // Tạo spawn points cho player
-            for (int i = 0; i < spawnPointCount; i++)
-            {
-                GameObject spawnPoint = new GameObject($"PlayerSpawn_{i}");
-                spawnPoint.transform.SetParent(playerSpawnsContainer.transform);
-                spawnPoint.transform.position = new Vector3(i * 10, 0, 0);
-            }
-            
-            // Tạo spawn points cho enemy
-            for (int i = 0; i < spawnPointCount; i++)
-            {
-                GameObject spawnPoint = new GameObject($"EnemySpawn_{i}");
-                spawnPoint.transform.SetParent(enemySpawnsContainer.transform);
-                spawnPoint.transform.position = new Vector3(i * 10, 0, 50);
-            }
-            
-            Debug.Log($"Đã tạo {spawnPointCount} điểm hồi sinh cho player và enemy");
-        }
-
-        private void CreateDebugTools()
-        {
-            GameObject debugContainer = new GameObject("DebugTools");
-            
-            if (createFormationDebugger)
-            {
-                GameObject debuggerObj = new GameObject("FormationDebugger");
-                debuggerObj.transform.SetParent(debugContainer.transform);
-                debuggerObj.AddComponent<VikingRaven.Debug_Game.FormationDebugger>();
-                Debug.Log("Đã tạo FormationDebugger");
-            }
-            
-            if (createFormationSlotVisualizer)
-            {
-                GameObject visualizerObj = new GameObject("FormationSlotVisualizer");
-                visualizerObj.transform.SetParent(debugContainer.transform);
-                visualizerObj.AddComponent<VikingRaven.Debug_Game.FormationSlotVisualizer>();
-                Debug.Log("Đã tạo FormationSlotVisualizer");
-            }
-            
-            if (createFormationAnalyzer)
-            {
-                GameObject analyzerObj = new GameObject("FormationAnalyzer");
-                analyzerObj.transform.SetParent(debugContainer.transform);
+            if (config == null)
+                return;
                 
-                // Tạo Canvas UI cho FormationAnalyzer
-                GameObject canvasObj = new GameObject("Canvas");
-                canvasObj.transform.SetParent(analyzerObj.transform);
-                Canvas canvas = canvasObj.AddComponent<Canvas>();
-                canvasObj.AddComponent<UnityEngine.UI.CanvasScaler>();
-                canvasObj.AddComponent<UnityEngine.UI.GraphicRaycaster>();
-                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-                
-                // Tạo Text output
-                GameObject textObj = new GameObject("AnalyzerOutput");
-                textObj.transform.SetParent(canvasObj.transform);
-                UnityEngine.UI.Text text = textObj.AddComponent<UnityEngine.UI.Text>();
-                text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
-                text.fontSize = 14;
-                text.color = Color.white;
-                
-                // Thiết lập RectTransform
-                RectTransform rectTransform = textObj.GetComponent<RectTransform>();
-                rectTransform.anchorMin = new Vector2(0, 0);
-                rectTransform.anchorMax = new Vector2(0.3f, 1);
-                rectTransform.pivot = new Vector2(0, 1);
-                rectTransform.offsetMin = new Vector2(10, 10);
-                rectTransform.offsetMax = new Vector2(-10, -10);
-                
-                // Add FormationAnalyzer và thiết lập
-                VikingRaven.Debug_Game.FormationAnalyzer analyzer = analyzerObj.AddComponent<VikingRaven.Debug_Game.FormationAnalyzer>();
-                analyzer._uiOutput = text;
-                
-                Debug.Log("Đã tạo FormationAnalyzer");
+            // In a real scenario, you would find all unit prefabs and apply the configuration
+            // For this tutorial, we just log the application
+            Debug.Log("Applied troop configuration to scene.");
+            
+            // Update squad info helpers
+            SquadInfoHelper[] squadInfos = FindObjectsOfType<SquadInfoHelper>();
+            foreach (var info in squadInfos)
+            {
+                var troopConfig = config.GetConfigForType(info.UnitType);
+                info.UpdateConfigInfo(troopConfig);
             }
         }
 
-        [OnInspectorInit]
-        private void Initialize()
+        // Reset button to default settings
+        [PropertySpace(10)]
+        [Button("Reset to Defaults"), GUIColor(1, 0.6f, 0.4f)]
+        public void ResetToDefaults()
         {
-            if (gameSystems.Count == 0)
+            NewSceneName = "TacticalBattle";
+            CreateTerrain = true;
+            TerrainSize = new Vector2(100, 100);
+            
+            CreateCoreSystems = true;
+            CreateGameManager = true;
+            CreateEntityRegistry = true;
+            CreateSystemRegistry = true;
+            CreateGameBootstrapper = true;
+            
+            CreateUnitFactory = true;
+            CreateSquadFactory = true;
+            
+            SystemsToCreate = new List<SystemSetupInfo>
             {
-                // Thiết lập các system mặc định
-                gameSystems = new List<GameSystemInfo>
-                {
-                    new GameSystemInfo { Name = "MovementSystem", SystemType = "MovementSystem", Create = true },
-                    new GameSystemInfo { Name = "FormationSystem", SystemType = "FormationSystem", Create = true },
-                    new GameSystemInfo { Name = "SquadCoordinationSystem", SystemType = "SquadCoordinationSystem", Create = true },
-                    new GameSystemInfo { Name = "AggroDetectionSystem", SystemType = "AggroDetectionSystem", Create = true },
-                    new GameSystemInfo { Name = "AIDecisionSystem", SystemType = "AIDecisionSystem", Create = true },
-                    new GameSystemInfo { Name = "SteeringSystem", SystemType = "SteeringSystem", Create = true },
-                    new GameSystemInfo { Name = "WeightedBehaviorSystem", SystemType = "WeightedBehaviorSystem", Create = true },
-                    new GameSystemInfo { Name = "TacticalAnalysisSystem", SystemType = "TacticalAnalysisSystem", Create = true },
-                    new GameSystemInfo { Name = "SpecializedBehaviorSystem", SystemType = "SpecializedBehaviorSystem", Create = true },
-                };
-            }
+                new SystemSetupInfo { SystemType = "MovementSystem", CreateSystem = true, Priority = 10 },
+                new SystemSetupInfo { SystemType = "AIDecisionSystem", CreateSystem = true, Priority = 20 },
+                new SystemSetupInfo { SystemType = "FormationSystem", CreateSystem = true, Priority = 30 },
+                new SystemSetupInfo { SystemType = "AggroDetectionSystem", CreateSystem = true, Priority = 40 },
+                new SystemSetupInfo { SystemType = "SquadCoordinationSystem", CreateSystem = true, Priority = 50 },
+                new SystemSetupInfo { SystemType = "SteeringSystem", CreateSystem = true, Priority = 60 },
+                new SystemSetupInfo { SystemType = "TacticalAnalysisSystem", CreateSystem = true, Priority = 70 },
+                new SystemSetupInfo { SystemType = "WeightedBehaviorSystem", CreateSystem = true, Priority = 80 }
+            };
+            
+            CreatePlayerSquads = true;
+            PlayerSquads = new List<SquadSetupInfo>
+            {
+                new SquadSetupInfo { SquadName = "Infantry Squad", UnitType = UnitType.Infantry, UnitCount = 8, 
+                    Position = new Vector3(0, 0, -20), Rotation = Quaternion.identity }
+            };
+            
+            CreateEnemySquads = true;
+            EnemySquads = new List<SquadSetupInfo>
+            {
+                new SquadSetupInfo { SquadName = "Enemy Archer Squad", UnitType = UnitType.Archer, UnitCount = 6, 
+                    Position = new Vector3(0, 0, 20), Rotation = Quaternion.Euler(0, 180, 0) }
+            };
+            
+            CreateCamera = true;
+            CreateSquadController = true;
+            
+            LoadSystemConfig = true;
+            SystemConfigurationAsset = null;
+            LoadTroopConfig = true;
+            TroopConfigurationAsset = null;
+        }
+
+        // Helper class for system setup info
+        [Serializable]
+        public class SystemSetupInfo
+        {
+            [LabelText("System Type")]
+            public string SystemType;
+            
+            [LabelText("Create")]
+            [ToggleLeft]
+            public bool CreateSystem = true;
+            
+            [LabelText("Priority")]
+            [Range(0, 100)]
+            public int Priority = 0;
+        }
+
+        // Helper class for squad setup info
+        [Serializable]
+        public class SquadSetupInfo
+        {
+            [LabelText("Squad Name")]
+            public string SquadName;
+            
+            [LabelText("Unit Type")]
+            public UnitType UnitType;
+            
+            [LabelText("Unit Count")]
+            [MinValue(1)]
+            public int UnitCount = 8;
+            
+            [LabelText("Position")]
+            public Vector3 Position;
+            
+            [LabelText("Rotation")]
+            public Quaternion Rotation = Quaternion.identity;
+        }
+    }
+
+    // Helper MonoBehaviour to store squad info in the scene
+    public class SquadInfoHelper : MonoBehaviour
+    {
+        [ReadOnly]
+        public string SquadName;
+        
+        [ReadOnly]
+        public UnitType UnitType;
+        
+        [ReadOnly]
+        public int UnitCount;
+        
+        [ReadOnly]
+        public bool IsPlayerSquad;
+        
+        [ReadOnly]
+        public int SquadId;
+        
+        [ReadOnly]
+        public Dictionary<string, float> ConfigValues = new Dictionary<string, float>();
+        
+        public void UpdateConfigInfo(TroopConfigurationSO.TroopTypeConfig config)
+        {
+            if (config == null)
+                return;
+                
+            ConfigValues.Clear();
+            ConfigValues.Add("Health", config.MaxHealth);
+            ConfigValues.Add("Speed", config.MoveSpeed);
+            ConfigValues.Add("Damage", config.AttackDamage);
+            ConfigValues.Add("Range", config.AttackRange);
+        }
+        
+        private void OnDrawGizmos()
+        {
+            // Draw squad gizmo for easy visualization in the editor
+            Gizmos.color = IsPlayerSquad ? Color.blue : Color.red;
+            Gizmos.DrawWireSphere(transform.position, 5f);
+            
+            // Draw text label with squad info
+            Handles.Label(transform.position + Vector3.up * 2, 
+                $"{SquadName}\nType: {UnitType}\nUnits: {UnitCount}");
         }
     }
 }

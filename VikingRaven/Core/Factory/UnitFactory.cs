@@ -14,12 +14,9 @@ namespace VikingRaven.Core.Factory
         [SerializeField] private GameObject _pikePrefab;
 
         [SerializeField] private List<GameObject> _listCache = new List<GameObject>();
+        private int _nextEntityId = 1000; 
 
-        // private void Start()
-        // {
-        //     GameObject unitObject = Instantiate(test);
-        //     _listCache.Add(unitObject);
-        // }
+        private EntityRegistry EntityRegistry => EntityRegistry.Instance;
 
         public IEntity CreateEntity(Vector3 position, Quaternion rotation)
         {
@@ -35,26 +32,77 @@ namespace VikingRaven.Core.Factory
                 Debug.LogError($"UnitFactory: No prefab for unit type {unitType}");
                 return null;
             }
-            GameObject unitObject = Instantiate(prefab, position, rotation);
             
-            var entityComponent = unitObject.GetComponent<BaseEntity>();
-            // if (entityComponent == null)
-            // {
-            //     entityComponent = unitObject.AddComponent<BaseEntity>();
-            // }
-            //
-            // var unitTypeComponent = unitObject.GetComponent<UnitTypeComponent>();
-            // if (unitTypeComponent != null)
-            // {
-            //     unitTypeComponent.SetUnitType(unitType);
-            // }
-            // else
-            // {
-            //     Debug.LogError($"UnitFactory: UnitTypeComponent missing from prefab {prefab.name}");
-            // }
+            GameObject unitObject = Instantiate(prefab, position, rotation);
             _listCache.Add(unitObject);
-            Debug.Log($"Created unit at position {position}, active: {unitObject.activeSelf}, in scene: {unitObject.scene.name}, hierarchyPath: {GameObjectPath(unitObject)}");
+            
+            // Get or add a BaseEntity component
+            var entityComponent = unitObject.GetComponent<BaseEntity>();
+            if (entityComponent == null)
+            {
+                Debug.LogWarning($"UnitFactory: Prefab {prefab.name} doesn't have BaseEntity component, adding one");
+                entityComponent = unitObject.AddComponent<BaseEntity>();
+            }
+            
+            // Set the entity ID using reflection if it's not already set
+            var idField = typeof(BaseEntity).GetField("_id", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            int currentId = (int)idField.GetValue(entityComponent);
+            
+            if (currentId <= 0)
+            {
+                // Assign a new ID
+                int newId = _nextEntityId++;
+                idField.SetValue(entityComponent, newId);
+                Debug.Log($"UnitFactory: Assigned ID {newId} to entity");
+            }
+            
+            // Manually register the entity with EntityRegistry
+            if (EntityRegistry != null)
+            {
+                EntityRegistry.RegisterEntity(entityComponent);
+                Debug.Log($"UnitFactory: Registered entity {entityComponent.Id} with EntityRegistry");
+            }
+            else
+            {
+                Debug.LogError("UnitFactory: EntityRegistry is null, cannot register entity");
+            }
+            
+            // Configure unit type if component exists
+            var unitTypeComponent = unitObject.GetComponent<UnitTypeComponent>();
+            if (unitTypeComponent != null)
+            {
+                unitTypeComponent.SetUnitType(unitType);
+            }
+            else
+            {
+                Debug.LogError($"UnitFactory: UnitTypeComponent missing from prefab {prefab.name}");
+            }
+            
+            // Initialize core components
+            InitializeEntityComponents(entityComponent);
+            
+            Debug.Log($"UnitFactory: Created unit with ID {entityComponent.Id} at position {position}, active: {unitObject.activeSelf}, in scene: {unitObject.scene.name}, hierarchyPath: {GameObjectPath(unitObject)}");
+            
             return entityComponent;
+        }
+
+        private void InitializeEntityComponents(IEntity entity)
+        {
+            // Make sure all essential components are initialized
+            var entityTransform = entity as MonoBehaviour;
+            if (entityTransform == null) return;
+            
+            // Ensure that all components are properly initialized
+            var components = entityTransform.GetComponents<IComponent>();
+            foreach (var component in components)
+            {
+                if (component.Entity == null)
+                {
+                    component.Entity = entity;
+                }
+                
+                component.Initialize();
+            }
         }
 
         private GameObject GetPrefabForUnitType(UnitType unitType)

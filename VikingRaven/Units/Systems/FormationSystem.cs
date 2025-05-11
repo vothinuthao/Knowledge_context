@@ -10,6 +10,9 @@ namespace VikingRaven.Units.Systems
     /// </summary>
     public class FormationSystem : BaseSystem
     {
+        // Set priority for this system - should execute before StateManagementSystem
+        [SerializeField] private int _systemPriority = 300;
+        
         // Dictionary to track squad formations by squad ID
         private Dictionary<int, Dictionary<FormationType, Vector3[]>> _formationTemplates = 
             new Dictionary<int, Dictionary<FormationType, Vector3[]>>();
@@ -17,20 +20,49 @@ namespace VikingRaven.Units.Systems
         private Dictionary<int, FormationType> _currentFormations = new Dictionary<int, FormationType>();
         private Dictionary<int, List<IEntity>> _squadMembers = new Dictionary<int, List<IEntity>>();
         
+        // Tracking squad manual movement
+        private Dictionary<int, bool> _squadManualMovement = new Dictionary<int, bool>();
+        private Dictionary<int, float> _lastManualMoveTime = new Dictionary<int, float>();
+        [SerializeField] private float _manualMoveTimeout = 5.0f; // How long manual move priority lasts
+        
         // Mapping từ squad ID tới center và rotation
         private Dictionary<int, Vector3> _squadCenters = new Dictionary<int, Vector3>();
         private Dictionary<int, Quaternion> _squadRotations = new Dictionary<int, Quaternion>();
         
+        // Debug flags
+        [SerializeField] private bool _logDebugInfo = true;
+        
         public override void Initialize()
         {
             base.Initialize();
-            Debug.Log("FormationSystem initialized");
+            // Set priority for this system
+            Priority = _systemPriority;
+            Debug.Log($"FormationSystem initialized with priority {Priority}");
+            
+            // Check EntityRegistry initialization
+            if (EntityRegistry != null)
+            {
+                Debug.Log($"FormationSystem: EntityRegistry is available with {EntityRegistry.EntityCount} entities");
+            }
+            else
+            {
+                Debug.LogError("FormationSystem: EntityRegistry is null");
+            }
         }
         
         public override void Execute()
         {
+            // Debug log
+            if (_logDebugInfo)
+            {
+                Debug.Log($"FormationSystem.Execute: Starting execution with {(_squadMembers != null ? _squadMembers.Count : 0)} squads");
+            }
+            
             // Cập nhật danh sách unit theo squad
             UpdateSquadMembers();
+            
+            // Cập nhật trạng thái manual movement
+            UpdateManualMovementStatus();
             
             // Tính toán trung tâm và hướng mới cho mỗi squad
             CalculateSquadCentersAndRotations();
@@ -40,6 +72,18 @@ namespace VikingRaven.Units.Systems
             {
                 var members = _squadMembers[squadId];
                 if (members.Count == 0) continue;
+                
+                // Kiểm tra xem squad này có đang di chuyển thủ công không
+                bool isManuallyMoving = false;
+                if (_squadManualMovement.TryGetValue(squadId, out isManuallyMoving) && isManuallyMoving)
+                {
+                    // Bỏ qua cập nhật vị trí formation nếu đang di chuyển thủ công
+                    if (_logDebugInfo)
+                    {
+                        Debug.Log($"FormationSystem: Squad {squadId} is being manually moved, skipping formation update");
+                    }
+                    continue;
+                }
                 
                 // Lấy formation type hiện tại
                 FormationType formationType = FormationType.Line; // Mặc định
@@ -54,6 +98,12 @@ namespace VikingRaven.Units.Systems
                 // Cập nhật vị trí formation
                 UpdateFormationPositions(squadId, members, formationType);
             }
+            
+            // Debug log
+            if (_logDebugInfo)
+            {
+                Debug.Log($"FormationSystem.Execute: Finished execution, processed {_squadMembers.Count} squads");
+            }
         }
         
         /// <summary>
@@ -63,12 +113,34 @@ namespace VikingRaven.Units.Systems
         {
             _squadMembers.Clear();
             
+            // Debug logging to check EntityRegistry state
+            if (_logDebugInfo)
+            {
+                Debug.Log($"FormationSystem.UpdateSquadMembers: EntityRegistry has {EntityRegistry.EntityCount} entities");
+            }
+            
             var entities = EntityRegistry.GetEntitiesWithComponent<FormationComponent>();
+            
+            // Debug log
+            if (_logDebugInfo)
+            {
+                Debug.Log($"FormationSystem.UpdateSquadMembers: Found {entities.Count} entities with FormationComponent");
+            }
             
             foreach (var entity in entities)
             {
                 var formationComponent = entity.GetComponent<FormationComponent>();
-                if (formationComponent == null || !formationComponent.IsActive) continue;
+                if (formationComponent == null)
+                {
+                    Debug.LogWarning($"FormationSystem: Entity {entity.Id} has null FormationComponent");
+                    continue;
+                }
+                
+                if (!formationComponent.IsActive)
+                {
+                    Debug.LogWarning($"FormationSystem: Entity {entity.Id} has inactive FormationComponent");
+                    continue;
+                }
                 
                 int squadId = formationComponent.SquadId;
                 
@@ -79,11 +151,79 @@ namespace VikingRaven.Units.Systems
                 
                 _squadMembers[squadId].Add(entity);
                 
+                if (_logDebugInfo)
+                {
+                    Debug.Log($"FormationSystem: Added entity {entity.Id} to squad {squadId}, slot {formationComponent.FormationSlotIndex}");
+                }
+                
                 // Cập nhật loại formation hiện tại cho squad
                 if (!_currentFormations.ContainsKey(squadId))
                 {
                     _currentFormations[squadId] = formationComponent.CurrentFormationType;
+                    
+                    if (_logDebugInfo)
+                    {
+                        Debug.Log($"FormationSystem: Set formation type for squad {squadId} to {formationComponent.CurrentFormationType}");
+                    }
                 }
+            }
+            
+            // Log squad member counts
+            if (_logDebugInfo)
+            {
+                foreach (var squad in _squadMembers)
+                {
+                    Debug.Log($"FormationSystem: Squad {squad.Key} has {squad.Value.Count} members");
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Cập nhật trạng thái di chuyển thủ công của các squad
+        /// </summary>
+        private void UpdateManualMovementStatus()
+        {
+            float currentTime = Time.time;
+            List<int> expiredSquads = new List<int>();
+            
+            // Kiểm tra và cập nhật các squad hết thời gian di chuyển thủ công
+            foreach (var squadId in _squadManualMovement.Keys)
+            {
+                if (_squadManualMovement[squadId])
+                {
+                    if (_lastManualMoveTime.TryGetValue(squadId, out float lastMoveTime))
+                    {
+                        if (currentTime - lastMoveTime > _manualMoveTimeout)
+                        {
+                            // Đã hết thời gian timeout cho manual movement
+                            expiredSquads.Add(squadId);
+                            if (_logDebugInfo)
+                            {
+                                Debug.Log($"FormationSystem: Squad {squadId} manual movement expired");
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Reset trạng thái cho các squad hết hạn
+            foreach (var squadId in expiredSquads)
+            {
+                _squadManualMovement[squadId] = false;
+            }
+        }
+        
+        /// <summary>
+        /// Đánh dấu một squad là đang được di chuyển thủ công
+        /// </summary>
+        public void SetSquadManualMovement(int squadId, bool isManuallyMoving)
+        {
+            _squadManualMovement[squadId] = isManuallyMoving;
+            _lastManualMoveTime[squadId] = Time.time;
+            
+            if (_logDebugInfo)
+            {
+                Debug.Log($"FormationSystem: Squad {squadId} manual movement set to {isManuallyMoving}");
             }
         }
         
@@ -130,6 +270,11 @@ namespace VikingRaven.Units.Systems
                     {
                         _squadRotations[squadId] = Quaternion.identity;
                     }
+                    
+                    if (_logDebugInfo)
+                    {
+                        Debug.Log($"FormationSystem: Calculated center for squad {squadId} at {center}");
+                    }
                 }
             }
         }
@@ -148,6 +293,11 @@ namespace VikingRaven.Units.Systems
                 _formationTemplates[squadId][formationType].Length != memberCount)
             {
                 _formationTemplates[squadId][formationType] = GenerateFormationTemplate(formationType, memberCount);
+                
+                if (_logDebugInfo)
+                {
+                    Debug.Log($"FormationSystem: Generated new template for squad {squadId}, formation {formationType}, members {memberCount}");
+                }
             }
         }
         
@@ -293,7 +443,14 @@ namespace VikingRaven.Units.Systems
                     if (navigationComponent != null && navigationComponent.IsActive)
                     {
                         Vector3 targetPosition = center + (rotation * formationTemplate[i]);
-                        navigationComponent.SetDestination(targetPosition);
+                        
+                        // Sử dụng ưu tiên Normal cho lệnh di chuyển formation
+                        navigationComponent.SetDestination(targetPosition, NavigationCommandPriority.Normal);
+                        
+                        if (_logDebugInfo)
+                        {
+                            Debug.Log($"FormationSystem: Set destination for entity {entity.Id} to {targetPosition} with Normal priority");
+                        }
                     }
                 }
             }

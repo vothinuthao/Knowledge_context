@@ -221,7 +221,6 @@ namespace VikingRaven.Debug_Game
         {
             ClearMarkers();
             
-            // Hủy prefab nếu chúng ta đã tạo nó
             if (_slotMarkerPrefab != null && _slotMarkerPrefab.name.StartsWith("Sphere"))
             {
                 Destroy(_slotMarkerPrefab);

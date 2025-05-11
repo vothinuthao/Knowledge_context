@@ -15,35 +15,22 @@ namespace VikingRaven.Units.Systems
         
         public override void Execute()
         {
-            // Get all entities with steering components
             var entities = EntityRegistry.GetEntitiesWithComponent<SteeringComponent>();
-            
-            // First, calculate squad centers and rotations
             CalculateSquadCentersAndRotations(entities);
-            
-            // Then update steering behaviors for each entity
             foreach (var entity in entities)
             {
-                // Get steering component
                 var steeringComponent = entity.GetComponent<SteeringComponent>();
                 if (steeringComponent == null || steeringComponent.SteeringManager == null)
                     continue;
-                    
-                // Update formation following behavior
                 UpdateFormationFollowingBehavior(entity, steeringComponent);
-                
-                // Steering manager will calculate and apply steering forces in its Update method
-                // which is called by Unity's update system
             }
         }
 
         private void CalculateSquadCentersAndRotations(List<IEntity> entities)
         {
-            // Clear previous data
             _squadCenters.Clear();
             _squadRotations.Clear();
             
-            // Group entities by squad
             Dictionary<int, List<Vector3>> squadPositions = new Dictionary<int, List<Vector3>>();
             Dictionary<int, List<Vector3>> squadForwards = new Dictionary<int, List<Vector3>>();
             
@@ -55,8 +42,6 @@ namespace VikingRaven.Units.Systems
                 if (formationComponent != null && transformComponent != null)
                 {
                     int squadId = formationComponent.SquadId;
-                    
-                    // Add position to squad positions
                     if (!squadPositions.ContainsKey(squadId))
                     {
                         squadPositions[squadId] = new List<Vector3>();
@@ -68,7 +53,6 @@ namespace VikingRaven.Units.Systems
                 }
             }
             
-            // Calculate center and average rotation for each squad
             foreach (var squadId in squadPositions.Keys)
             {
                 var positions = squadPositions[squadId];
@@ -76,7 +60,6 @@ namespace VikingRaven.Units.Systems
                 
                 if (positions.Count > 0)
                 {
-                    // Calculate average position
                     Vector3 sum = Vector3.zero;
                     foreach (var pos in positions)
                     {
@@ -85,8 +68,6 @@ namespace VikingRaven.Units.Systems
                     
                     Vector3 center = sum / positions.Count;
                     _squadCenters[squadId] = center;
-                    
-                    // Calculate average forward direction
                     Vector3 averageForward = Vector3.zero;
                     foreach (var fwd in forwards)
                     {

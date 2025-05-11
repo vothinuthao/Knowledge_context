@@ -17,13 +17,12 @@ namespace VikingRaven.Game.Examples
         [SerializeField] private int _selectedSquadId = -1;
         [SerializeField] private FormationType _currentFormation = FormationType.Line;
         
-        // Reference để hiển thị squad được chọn
         [SerializeField] private GameObject _selectionMarkerPrefab;
         private GameObject _selectionMarker;
         
         // Debug options
         [SerializeField] private bool _debugMode = true;
-
+        
         private void Start()
         {
             // Lấy main camera nếu chưa được gán
@@ -168,32 +167,52 @@ namespace VikingRaven.Game.Examples
                 Debug.LogWarning("SimpleSquadController: No squad selected!");
                 return;
             }
-                
-            // Tìm tất cả unit trong squad đã chọn
-            var formationComponents = FindObjectsOfType<FormationComponent>();
-            bool anyUnitMoved = false;
             
-            foreach (var formationComponent in formationComponents)
+            // Use SquadCoordinationSystem to move the squad
+            if (_squadCoordinationSystem != null)
             {
-                if (formationComponent.SquadId == _selectedSquadId)
+                _squadCoordinationSystem.MoveSquadToPosition(_selectedSquadId, targetPosition);
+                
+                if (_debugMode)
                 {
-                    var navigationComponent = formationComponent.GetComponent<NavigationComponent>();
-                    if (navigationComponent != null)
+                    Debug.Log($"SimpleSquadController: Moving squad {_selectedSquadId} to position {targetPosition} via SquadCoordinationSystem");
+                }
+            }
+            else
+            {
+                // Fallback to direct control if SquadCoordinationSystem is not available
+                Debug.LogWarning("SimpleSquadController: SquadCoordinationSystem not available, using direct control");
+                
+                // Tìm tất cả unit trong squad đã chọn
+                var formationComponents = FindObjectsOfType<FormationComponent>();
+                bool anyUnitMoved = false;
+                
+                foreach (var formationComponent in formationComponents)
+                {
+                    if (formationComponent.SquadId == _selectedSquadId)
                     {
-                        // Đảm bảo pathfinding được bật
-                        navigationComponent.EnablePathfinding();
-                        navigationComponent.SetDestination(targetPosition);
-                        anyUnitMoved = true;
-                        
-                        if (_debugMode)
+                        var navigationComponent = formationComponent.GetComponent<NavigationComponent>();
+                        if (navigationComponent != null)
                         {
-                            Debug.Log($"Moving unit in squad {_selectedSquadId} to position {targetPosition}");
+                            // Đảm bảo pathfinding được bật
+                            navigationComponent.EnablePathfinding();
+                            navigationComponent.SetDestination(targetPosition, NavigationCommandPriority.High);
+                            anyUnitMoved = true;
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"Unit in squad {_selectedSquadId} has no NavigationComponent!");
                         }
                     }
-                    else
-                    {
-                        Debug.LogWarning($"Unit in squad {_selectedSquadId} has no NavigationComponent!");
-                    }
+                }
+                
+                if (!anyUnitMoved)
+                {
+                    Debug.LogWarning($"No units found for squad ID: {_selectedSquadId}");
+                }
+                else
+                {
+                    Debug.Log($"Moving Squad {_selectedSquadId} to position {targetPosition} via direct control");
                 }
             }
             
@@ -201,15 +220,6 @@ namespace VikingRaven.Game.Examples
             if (_selectionMarker != null)
             {
                 _selectionMarker.transform.position = targetPosition;
-            }
-            
-            if (!anyUnitMoved)
-            {
-                Debug.LogWarning($"No units found for squad ID: {_selectedSquadId}");
-            }
-            else
-            {
-                Debug.Log($"Moving Squad {_selectedSquadId} to position {targetPosition}");
             }
         }
 
@@ -264,6 +274,7 @@ namespace VikingRaven.Game.Examples
                 }
             }
         }
+        
         public void SetFormationFromUI(int formationIndex)
         {
             FormationType formation = (FormationType)formationIndex;
@@ -306,7 +317,7 @@ namespace VikingRaven.Game.Examples
                     string typeStr = unitType != null ? unitType.UnitType.ToString() : "Unknown";
                     string posStr = transform != null ? transform.position.ToString("F1") : "Unknown";
                     string navStr = navComponent != null ? 
-                        (navComponent.HasReachedDestination ? "At destination" : "Moving") : "No nav";
+                        (navComponent.HasReachedDestination ? "At destination" : $"Moving (Priority: {navComponent.CurrentCommandPriority})") : "No nav";
                     
                     Debug.Log($"  Unit ID: {unit.GetInstanceID()}, Type: {typeStr}, Pos: {posStr}, Nav: {navStr}");
                 }

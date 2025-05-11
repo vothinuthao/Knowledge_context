@@ -40,7 +40,7 @@ namespace VikingRaven.Units.Components
 
         public void PlayAnimation(string animationName)
         {
-            if (_animator == null || string.IsNullOrEmpty(animationName))
+            if (!_animator || string.IsNullOrEmpty(animationName) || IsActive)
                 return;
                 
             // Check if the animation exists in our hash table
