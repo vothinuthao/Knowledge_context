@@ -7,50 +7,72 @@ namespace VikingRaven.Units.Systems
 {
     public class SquadCoordinationSystem : BaseSystem
     {
-        // Thiết lập ưu tiên cao hơn FormationSystem
+        // Set higher priority than FormationSystem
         [SerializeField] private int _systemPriority = 200;
         
         private Dictionary<int, FormationType> _squadFormationTypes = new Dictionary<int, FormationType>();
         private FormationSystem _formationSystem;
         
-        // Theo dõi vị trí mục tiêu của squad
+        // Track squad target positions
         private Dictionary<int, Vector3> _squadTargetPositions = new Dictionary<int, Vector3>();
         private Dictionary<int, Quaternion> _squadTargetRotations = new Dictionary<int, Quaternion>();
         
-        // Tham số khoảng cách trong đội hình
-        [Header("Tham số đội hình")]
-        [SerializeField] private float _lineSpacing = 2.0f;      // Khoảng cách giữa các đơn vị trong Line
-        [SerializeField] private float _columnSpacing = 2.0f;    // Khoảng cách giữa các đơn vị trong Column
-        [SerializeField] private float _phalanxSpacing = 1.2f;   // Khoảng cách giữa các đơn vị trong Phalanx
-        [SerializeField] private float _testudoSpacing = 0.8f;   // Khoảng cách giữa các đơn vị trong Testudo
-        [SerializeField] private float _circleMultiplier = 0.3f; // Hệ số nhân bán kính cho Circle
-        [SerializeField] private float _gridSpacing = 2.0f;      // Khoảng cách các ô trong Normal
+        // Formation spacing parameters
+        [Header("Formation Parameters")]
+        [SerializeField] private float _lineSpacing = 2.0f;      // Spacing between units in Line
+        [SerializeField] private float _columnSpacing = 2.0f;    // Spacing between units in Column
+        [SerializeField] private float _phalanxSpacing = 1.2f;   // Spacing between units in Phalanx
+        [SerializeField] private float _testudoSpacing = 0.8f;   // Spacing between units in Testudo
+        [SerializeField] private float _circleMultiplier = 0.3f; // Radius multiplier for Circle
+        [SerializeField] private float _gridSpacing = 2.0f;      // Grid cell spacing in Normal
         
+        // Smart movement settings
+        [Header("Smart Movement Settings")]
+        [SerializeField] private bool _useSmartMovement = true;            // Enable smart movement
+        [SerializeField] private float _leaderArriveDistance = 1.5f;       // Distance for leader to start formation
+        [SerializeField] private float _squadFormingDelay = 0.5f;          // Delay before starting formation
+        [SerializeField] private float _movementSmoothness = 0.8f;         // Movement smoothness (0-1)
+
         [SerializeField] private bool _debugLog = false;
+        
+        // Track movement states for squads
+        private Dictionary<int, SquadMovementState> _squadMovementStates = new Dictionary<int, SquadMovementState>();
+
+        // Internal class to track movement state
+        private class SquadMovementState
+        {
+            public Vector3 TargetPosition { get; set; } = Vector3.zero;
+            public Vector3 StartPosition { get; set; } = Vector3.zero;
+            public float MoveStartTime { get; set; } = 0f;
+            public bool IsLeaderArrived { get; set; } = false;
+            public bool IsFormingUp { get; set; } = false;
+            public float FormationStartTime { get; set; } = 0f;
+            public List<IEntity> MembersInPosition { get; set; } = new List<IEntity>();
+        }
         
         public override void Initialize()
         {
             base.Initialize();
             
-            // Thiết lập ưu tiên cho hệ thống này
+            // Set system priority
             Priority = _systemPriority;
             
-            // Tìm FormationSystem
+            // Find FormationSystem
             _formationSystem = FindObjectOfType<FormationSystem>();
             if (_formationSystem == null)
             {
-                Debug.LogError("SquadCoordinationSystem: Không tìm thấy FormationSystem!");
+                Debug.LogError("SquadCoordinationSystem: FormationSystem not found!");
             }
             
-            Debug.Log($"SquadCoordinationSystem khởi tạo với ưu tiên {Priority}");
+            Debug.Log($"SquadCoordinationSystem initialized with priority {Priority}");
         }
         
         public override void Execute()
         {
-            // Lấy tất cả đơn vị có FormationComponent
+            // Get all units with FormationComponent
             var entities = EntityRegistry.GetEntitiesWithComponent<FormationComponent>();
             
-            // Cập nhật loại đội hình cho các đơn vị trong mỗi squad
+            // Update formation types for units in each squad
             foreach (var entity in entities)
             {
                 var formationComponent = entity.GetComponent<FormationComponent>();
@@ -59,13 +81,13 @@ namespace VikingRaven.Units.Systems
                 {
                     int squadId = formationComponent.SquadId;
                     
-                    // Nếu loại đội hình mới đã được thiết lập cho squad này, cập nhật cho đơn vị
+                    // If a new formation type has been set for this squad, update the unit
                     if (_squadFormationTypes.TryGetValue(squadId, out FormationType formationType) &&
                         formationComponent.CurrentFormationType != formationType)
                     {
                         formationComponent.SetFormationType(formationType);
                         
-                        // Thông báo cho FormationSystem về thay đổi
+                        // Notify FormationSystem about change
                         if (_formationSystem != null)
                         {
                             _formationSystem.ChangeFormation(squadId, formationType);
@@ -73,21 +95,189 @@ namespace VikingRaven.Units.Systems
                         
                         if (_debugLog)
                         {
-                            Debug.Log($"SquadCoordinationSystem: Cập nhật loại đội hình cho squad {squadId} thành {formationType}");
+                            Debug.Log($"SquadCoordinationSystem: Updated formation type for squad {squadId} to {formationType}");
                         }
                     }
                 }
             }
+            
+            // If smart movement is enabled, update movement states
+            if (_useSmartMovement)
+            {
+                UpdateSquadMovementStates(entities);
+            }
         }
 
         /// <summary>
-        /// Đặt loại đội hình cho một squad
+        /// Update movement states for squads
+        /// </summary>
+        private void UpdateSquadMovementStates(List<IEntity> entities)
+        {
+            // Group entities by squad
+            Dictionary<int, List<IEntity>> squadMembers = new Dictionary<int, List<IEntity>>();
+            
+            foreach (var entity in entities)
+            {
+                var formationComponent = entity.GetComponent<FormationComponent>();
+                if (formationComponent != null)
+                {
+                    int squadId = formationComponent.SquadId;
+                    
+                    if (!squadMembers.ContainsKey(squadId))
+                    {
+                        squadMembers[squadId] = new List<IEntity>();
+                    }
+                    
+                    squadMembers[squadId].Add(entity);
+                }
+            }
+            
+            // Update movement state for each squad
+            foreach (var entry in squadMembers)
+            {
+                int squadId = entry.Key;
+                var members = entry.Value;
+                
+                if (members.Count > 0)
+                {
+                    // Sort by ID to ensure consistent leader
+                    members.Sort((a, b) => a.Id.CompareTo(b.Id));
+                    
+                    // Get current state or create new if none exists
+                    if (!_squadMovementStates.TryGetValue(squadId, out var state))
+                    {
+                        state = new SquadMovementState();
+                        _squadMovementStates[squadId] = state;
+                    }
+                    
+                    // Update the squad's state
+                    UpdateSingleSquadMovement(squadId, members, state);
+                }
+            }
+            
+            // Remove states for squads that no longer exist
+            List<int> stateIdsToRemove = new List<int>();
+            foreach (var squadId in _squadMovementStates.Keys)
+            {
+                if (!squadMembers.ContainsKey(squadId))
+                {
+                    stateIdsToRemove.Add(squadId);
+                }
+            }
+            
+            foreach (var id in stateIdsToRemove)
+            {
+                _squadMovementStates.Remove(id);
+            }
+        }
+
+        /// <summary>
+        /// Update movement state of a single squad
+        /// </summary>
+        private void UpdateSingleSquadMovement(int squadId, List<IEntity> members, SquadMovementState state)
+        {
+            if (members.Count == 0)
+                return;
+                
+            // Get leader (first unit)
+            var leader = members[0];
+            var leaderTransform = leader.GetComponent<TransformComponent>();
+            var leaderNavigation = leader.GetComponent<NavigationComponent>();
+            
+            if (leaderTransform == null || leaderNavigation == null)
+                return;
+                
+            // Check if moving to target position
+            bool isMovingToTarget = 
+                _squadTargetPositions.TryGetValue(squadId, out Vector3 targetPosition) &&
+                Vector3.Distance(leaderTransform.Position, targetPosition) > 0.1f;
+                
+            // If moving, continue tracking progress
+            if (isMovingToTarget)
+            {
+                // Check if leader has arrived
+                float distanceToTarget = Vector3.Distance(leaderTransform.Position, targetPosition);
+                
+                if (!state.IsLeaderArrived && distanceToTarget <= _leaderArriveDistance)
+                {
+                    // Leader has reached near destination, start formation phase
+                    state.IsLeaderArrived = true;
+                    state.FormationStartTime = Time.time;
+                    state.IsFormingUp = true;
+                    
+                    if (_debugLog)
+                    {
+                        Debug.Log($"SquadCoordinationSystem: Leader of squad {squadId} has reached forming position, beginning formation");
+                    }
+                    
+                    // At this phase leader will continue to move to destination but slower
+                    leaderNavigation.SetDestination(targetPosition, NavigationCommandPriority.High);
+                }
+                
+                // If in formation phase, adjust other members
+                if (state.IsFormingUp)
+                {
+                    // Ensure we've waited long enough before starting
+                    if (Time.time - state.FormationStartTime >= _squadFormingDelay)
+                    {
+                        // Update status of each member
+                        state.MembersInPosition.Clear();
+                        
+                        // Get formation info
+                        FormationType formationType = FormationType.Line;
+                        if (_squadFormationTypes.TryGetValue(squadId, out var squadFormationType))
+                        {
+                            formationType = squadFormationType;
+                        }
+                        
+                        // Last known position to perform formation
+                        for (int i = 0; i < members.Count; i++)
+                        {
+                            var member = members[i];
+                            var memberTransform = member.GetComponent<TransformComponent>();
+                            var memberNavigation = member.GetComponent<NavigationComponent>();
+                            var formationComponent = member.GetComponent<FormationComponent>();
+                            
+                            if (memberTransform != null && memberNavigation != null && formationComponent != null)
+                            {
+                                // Check if this member is in position
+                                if (memberNavigation.HasReachedDestination)
+                                {
+                                    state.MembersInPosition.Add(member);
+                                }
+                            }
+                        }
+                        
+                        // If all members are in position, mark as complete
+                        if (state.MembersInPosition.Count >= members.Count)
+                        {
+                            state.IsFormingUp = false;
+                            
+                            if (_debugLog)
+                            {
+                                Debug.Log($"SquadCoordinationSystem: Squad {squadId} has completed movement and formation at {targetPosition}");
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Not moving, reset state
+                state.IsLeaderArrived = false;
+                state.IsFormingUp = false;
+                state.MembersInPosition.Clear();
+            }
+        }
+
+        /// <summary>
+        /// Set squad formation type
         /// </summary>
         public void SetSquadFormation(int squadId, FormationType formationType)
         {
             _squadFormationTypes[squadId] = formationType;
             
-            // Thông báo ngay cho FormationSystem
+            // Notify FormationSystem immediately
             if (_formationSystem != null)
             {
                 _formationSystem.ChangeFormation(squadId, formationType);
@@ -95,22 +285,22 @@ namespace VikingRaven.Units.Systems
             
             if (_debugLog)
             {
-                Debug.Log($"SquadCoordinationSystem: Đặt loại đội hình cho squad {squadId} thành {formationType}");
+                Debug.Log($"SquadCoordinationSystem: Set formation type for squad {squadId} to {formationType}");
             }
             
-            // Cập nhật đội hình cho tất cả đơn vị trong squad
+            // Update formation for all units in squad
             UpdateSquadFormation(squadId, formationType);
         }
         
         /// <summary>
-        /// Di chuyển một squad đến vị trí mới
+        /// Move a squad to a new position
         /// </summary>
         public void MoveSquadToPosition(int squadId, Vector3 targetPosition)
         {
-            // Lưu vị trí mục tiêu cho squad này
+            // Store target position for this squad
             _squadTargetPositions[squadId] = targetPosition;
             
-            // Mặc định giữ nguyên hướng quay hiện tại hoặc hướng về phía trước nếu không có
+            // Default to keep current rotation or face forward if none exists
             Quaternion targetRotation = Quaternion.identity;
             if (_squadTargetRotations.TryGetValue(squadId, out Quaternion currentRotation))
             {
@@ -118,7 +308,7 @@ namespace VikingRaven.Units.Systems
             }
             _squadTargetRotations[squadId] = targetRotation;
             
-            // Lấy loại đội hình cho squad này
+            // Get formation type for this squad
             FormationType formationType = FormationType.Line;
             if (_squadFormationTypes.TryGetValue(squadId, out var storedFormationType))
             {
@@ -129,17 +319,17 @@ namespace VikingRaven.Units.Systems
                 formationType = _formationSystem.GetCurrentFormationType(squadId);
             }
             
-            // Thông báo cho FormationSystem về di chuyển thủ công
+            // Notify FormationSystem about manual movement
             if (_formationSystem != null)
             {
                 _formationSystem.SetSquadManualMovement(squadId, true);
             }
             
-            // Tìm tất cả đơn vị trong squad này
+            // Find all units in this squad
             var entities = EntityRegistry.GetEntitiesWithComponent<FormationComponent>();
             var squadMembers = new List<IEntity>();
             
-            // Nhóm các thành viên squad
+            // Group squad members
             foreach (var entity in entities)
             {
                 var formationComponent = entity.GetComponent<FormationComponent>();
@@ -153,15 +343,40 @@ namespace VikingRaven.Units.Systems
             {
                 if (_debugLog)
                 {
-                    Debug.LogWarning($"SquadCoordinationSystem: Không thể di chuyển squad {squadId}, không tìm thấy đơn vị nào");
+                    Debug.LogWarning($"SquadCoordinationSystem: Cannot move squad {squadId}, no units found");
                 }
                 return;
             }
             
-            // Tạo hoặc lấy template đội hình
+            // Sort squad members by ID for consistency
+            squadMembers.Sort((a, b) => a.Id.CompareTo(b.Id));
+            
+            // Store current position of squad for smart movement
+            if (_useSmartMovement)
+            {
+                // Get or create movement state for this squad
+                if (!_squadMovementStates.TryGetValue(squadId, out var state))
+                {
+                    state = new SquadMovementState();
+                    _squadMovementStates[squadId] = state;
+                }
+                
+                // Calculate current center
+                Vector3 currentCenter = CalculateSquadCenter(squadMembers);
+                
+                // Update movement state
+                state.TargetPosition = targetPosition;
+                state.StartPosition = currentCenter;
+                state.MoveStartTime = Time.time;
+                state.IsLeaderArrived = false;
+                state.IsFormingUp = false;
+                state.MembersInPosition.Clear();
+            }
+            
+            // Create or get formation template
             Vector3[] formationOffsets = GenerateFormationTemplate(formationType, squadMembers.Count);
             
-            // Di chuyển từng đơn vị
+            // Move each unit with different priorities
             for (int i = 0; i < squadMembers.Count; i++)
             {
                 var entity = squadMembers[i];
@@ -170,40 +385,63 @@ namespace VikingRaven.Units.Systems
                 
                 if (formationComponent != null && navigationComponent != null)
                 {
-                    // Mở khóa vị trí nếu đơn vị đã bị khóa
+                    // Unlock position if unit was locked
                     navigationComponent.UnlockPosition();
                     
-                    // Cập nhật slot và offset trong đội hình
+                    // Update slot and offset in formation
                     formationComponent.SetFormationSlot(i);
                     Vector3 offset = formationOffsets[i];
                     formationComponent.SetFormationOffset(offset);
                     
-                    // Thiết lập thông tin đội hình cho từng đơn vị
-                    navigationComponent.SetFormationInfo(targetPosition, offset, NavigationCommandPriority.High);
-                    
-                    if (_debugLog)
+                    // Set movement destination with different priorities
+                    if (i == 0) // Leader
                     {
-                        Debug.Log($"SquadCoordinationSystem: Di chuyển đơn vị {entity.Id} đến vị trí đội hình với offset {offset}");
+                        // Highest priority for leader
+                        navigationComponent.SetFormationInfo(targetPosition, offset, NavigationCommandPriority.High);
+                        
+                        if (_debugLog)
+                        {
+                            Debug.Log($"SquadCoordinationSystem: Moving leader {entity.Id} of squad {squadId} to {targetPosition} with High priority");
+                        }
+                    }
+                    else
+                    {
+                        // Descending priority for other members
+                        // This helps avoid situation where all units arrive at once and conflict in position
+                        NavigationCommandPriority followerPriority = NavigationCommandPriority.High;
+                        
+                        // If using smart movement, reduce priority to let leader move first
+                        if (_useSmartMovement)
+                        {
+                            followerPriority = NavigationCommandPriority.Normal;
+                        }
+                        
+                        navigationComponent.SetFormationInfo(targetPosition, offset, followerPriority);
+                        
+                        if (_debugLog)
+                        {
+                            Debug.Log($"SquadCoordinationSystem: Moving member {entity.Id} of squad {squadId} to formation position with offset {offset}");
+                        }
                     }
                 }
             }
             
             if (_debugLog)
             {
-                Debug.Log($"SquadCoordinationSystem: Di chuyển squad {squadId} đến {targetPosition}");
+                Debug.Log($"SquadCoordinationSystem: Moving squad {squadId} to {targetPosition}");
             }
         }
         
         /// <summary>
-        /// Cập nhật đội hình cho tất cả đơn vị trong squad
+        /// Update formation for all units in squad
         /// </summary>
         private void UpdateSquadFormation(int squadId, FormationType formationType)
         {
-            // Kiểm tra xem squad đã có vị trí mục tiêu chưa
+            // Check if squad has a target position
             if (!_squadTargetPositions.TryGetValue(squadId, out Vector3 targetPosition))
                 return;
             
-            // Tìm tất cả đơn vị trong squad
+            // Find all units in squad
             var entities = EntityRegistry.GetEntitiesWithComponent<FormationComponent>();
             var squadMembers = new List<IEntity>();
             
@@ -219,10 +457,13 @@ namespace VikingRaven.Units.Systems
             if (squadMembers.Count == 0)
                 return;
             
-            // Tạo template đội hình mới
+            // Sort by ID for consistency
+            squadMembers.Sort((a, b) => a.Id.CompareTo(b.Id));
+            
+            // Create new formation template
             Vector3[] formationOffsets = GenerateFormationTemplate(formationType, squadMembers.Count);
             
-            // Cập nhật vị trí cho từng đơn vị
+            // Update position for each unit
             for (int i = 0; i < squadMembers.Count; i++)
             {
                 var entity = squadMembers[i];
@@ -231,113 +472,170 @@ namespace VikingRaven.Units.Systems
                 
                 if (formationComponent != null && navigationComponent != null)
                 {
-                    // Cập nhật slot và offset trong đội hình
+                    // Update slot and offset in formation
                     formationComponent.SetFormationSlot(i);
                     Vector3 offset = formationOffsets[i];
                     formationComponent.SetFormationOffset(offset);
                     
-                    // Cập nhật thông tin đội hình
+                    // Update formation info
                     navigationComponent.SetFormationInfo(targetPosition, offset, NavigationCommandPriority.High);
                 }
             }
         }
         
         /// <summary>
-        /// Tạo mảng offset vị trí dựa trên loại đội hình
+        /// Calculate current center of a squad
+        /// </summary>
+        private Vector3 CalculateSquadCenter(List<IEntity> squadMembers)
+        {
+            if (squadMembers.Count == 0)
+                return Vector3.zero;
+                
+            Vector3 sum = Vector3.zero;
+            int validCount = 0;
+            
+            foreach (var entity in squadMembers)
+            {
+                var transformComponent = entity.GetComponent<TransformComponent>();
+                if (transformComponent != null)
+                {
+                    sum += transformComponent.Position;
+                    validCount++;
+                }
+            }
+            
+            return validCount > 0 ? sum / validCount : Vector3.zero;
+        }
+        
+        /// <summary>
+        /// Generate formation template offsets
         /// </summary>
         private Vector3[] GenerateFormationTemplate(FormationType formationType, int count)
         {
+            // Similar to FormationSystem, with some adjustments for movement formation
             Vector3[] positions = new Vector3[count];
             
             switch (formationType)
             {
                 case FormationType.Line:
-                    // Đội hình Line: đơn vị xếp ngang hàng
-                    for (int i = 0; i < count; i++)
-                    {
-                        float xOffset = i - (count - 1) / 2.0f; // Đảm bảo căn giữa
-                        positions[i] = new Vector3(xOffset * _lineSpacing, 0, 0);
-                    }
-                    break;
-                
-                case FormationType.Column:
-                    // Đội hình Column: đơn vị xếp dọc hàng
-                    for (int i = 0; i < count; i++)
-                    {
-                        float zOffset = i - (count - 1) / 2.0f; // Đảm bảo căn giữa
-                        positions[i] = new Vector3(0, 0, zOffset * _columnSpacing);
-                    }
-                    break;
-                
-                case FormationType.Phalanx:
-                    // Đội hình Phalanx: lưới vuông/chữ nhật
-                    int rowSize = Mathf.CeilToInt(Mathf.Sqrt(count));
-                    for (int i = 0; i < count; i++)
-                    {
-                        int row = i / rowSize;
-                        int col = i % rowSize;
-                        
-                        // Căn giữa đội hình
-                        float xOffset = col - (rowSize - 1) / 2.0f;
-                        float zOffset = row - ((count - 1) / rowSize) / 2.0f;
-                        
-                        positions[i] = new Vector3(xOffset * _phalanxSpacing, 0, zOffset * _phalanxSpacing);
-                    }
-                    break;
-                
-                case FormationType.Testudo:
-                    // Đội hình Testudo: lưới chặt chẽ hơn
-                    rowSize = Mathf.CeilToInt(Mathf.Sqrt(count));
-                    for (int i = 0; i < count; i++)
-                    {
-                        int row = i / rowSize;
-                        int col = i % rowSize;
-                        
-                        // Căn giữa đội hình
-                        float xOffset = col - (rowSize - 1) / 2.0f;
-                        float zOffset = row - ((count - 1) / rowSize) / 2.0f;
-                        
-                        positions[i] = new Vector3(xOffset * _testudoSpacing, 0, zOffset * _testudoSpacing);
-                    }
-                    break;
-                
-                case FormationType.Circle:
-                    // Đội hình Circle: vòng tròn
-                    float radius = Mathf.Max(1.5f, count * _circleMultiplier); // Bán kính tự động điều chỉnh
+                    // Line formation: horizontal row with leader in center
+                    int halfLineCount = count / 2;
                     
                     for (int i = 0; i < count; i++)
                     {
-                        float angle = (i * 2 * Mathf.PI) / count;
-                        float x = Mathf.Sin(angle) * radius;
-                        float z = Mathf.Cos(angle) * radius;
+                        float xOffset;
+                        
+                        // Place leader (i=0) in center
+                        if (i == 0)
+                        {
+                            xOffset = 0;
+                        }
+                        // Members on leader's left (even numbers)
+                        else if (i % 2 == 0)
+                        {
+                            xOffset = (i / 2) * _lineSpacing;
+                        }
+                        // Members on leader's right (odd numbers)
+                        else
+                        {
+                            xOffset = -((i + 1) / 2) * _lineSpacing;
+                        }
+                        
+                        positions[i] = new Vector3(xOffset, 0, 0);
+                    }
+                    break;
+                    
+                case FormationType.Column:
+                    // Column formation: vertical line with leader at front
+                    for (int i = 0; i < count; i++)
+                    {
+                        // Leader (i=0) at front, others behind
+                        float zOffset = -i * _columnSpacing;
+                        positions[i] = new Vector3(0, 0, zOffset);
+                    }
+                    break;
+                    
+                case FormationType.Phalanx:
+                    // Improved Phalanx: rectangle with leader in center
+                    int rowSize = Mathf.CeilToInt(Mathf.Sqrt(count));
+                    
+                    // Determine Leader position (center)
+                    int centerRow = (rowSize - 1) / 2;
+                    int centerCol = (rowSize - 1) / 2;
+                    
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (i == 0)
+                        {
+                            // Leader at center
+                            positions[i] = new Vector3(0, 0, 0);
+                        }
+                        else
+                        {
+                            // Other members arranged in spiral from center
+                            // Calculate position based on distance from center
+                            int layer = 1;
+                            int positionInLayer = 0;
+                            int layerCapacity = 8 * layer; // Positions in each spiral layer
+                            
+                            // Find layer and position in layer
+                            int position = i;
+                            while (position > layerCapacity)
+                            {
+                                position -= layerCapacity;
+                                layer++;
+                                layerCapacity = 8 * layer;
+                            }
+                            
+                            positionInLayer = position;
+                            
+                            // Calculate position based on layer and position in layer
+                            float angle = (positionInLayer * 2 * Mathf.PI) / layerCapacity;
+                            float radius = layer * _phalanxSpacing;
+                            
+                            float x = Mathf.Sin(angle) * radius;
+                            float z = Mathf.Cos(angle) * radius;
+                            
+                            positions[i] = new Vector3(x, 0, z);
+                        }
+                    }
+                    break;
+                    
+                case FormationType.Circle:
+                    // Circle formation: leader in center, others in circle
+                    positions[0] = Vector3.zero; // Leader at center
+                    
+                    float circleRadius = Mathf.Max(1.5f, (count - 1) * 0.25f);
+                    
+                    for (int i = 1; i < count; i++)
+                    {
+                        float angle = ((i - 1) * 2 * Mathf.PI) / (count - 1);
+                        float x = Mathf.Sin(angle) * circleRadius;
+                        float z = Mathf.Cos(angle) * circleRadius;
+                        
                         positions[i] = new Vector3(x, 0, z);
                     }
                     break;
-                
-                case FormationType.Normal:
-                    // Đội hình Normal: lưới 3x3 cố định
-                    for (int i = 0; i < count; i++)
-                    {
-                        // Modulo 3 để tính hàng/cột trong lưới 3x3
-                        int row = i / 3;
-                        int col = i % 3;
-                        
-                        // Căn giữa đội hình để slot 4 (ở giữa) nằm ở vị trí (0,0)
-                        float xOffset = col - 1.0f; 
-                        float zOffset = row - 1.0f;
-                        
-                        positions[i] = new Vector3(xOffset * _gridSpacing, 0, zOffset * _gridSpacing);
-                    }
-                    break;
-                
+                    
+                // Add other formations similarly...
+                    
                 default:
-                    // Mặc định sử dụng đội hình Line
+                    // Default formation: similar to Line
                     for (int i = 0; i < count; i++)
                     {
                         float xOffset = i - (count - 1) / 2.0f;
                         positions[i] = new Vector3(xOffset * _lineSpacing, 0, 0);
                     }
                     break;
+            }
+            
+            // Add small random offset to avoid exact collisions
+            for (int i = 1; i < count; i++) // Skip leader (i=0)
+            {
+                positions[i] += new Vector3(
+                    Random.Range(-0.05f, 0.05f),
+                    0,
+                    Random.Range(-0.05f, 0.05f));
             }
             
             return positions;

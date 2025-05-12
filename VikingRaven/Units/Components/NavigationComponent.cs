@@ -10,22 +10,31 @@ namespace VikingRaven.Units.Components
         [SerializeField] private float _stoppingDistance = 0.1f;
         [SerializeField] private bool _isPathfindingActive = true;
         
-        // Biến điều khiển ưu tiên
+        // Priority control variables
         [SerializeField] private NavigationCommandPriority _currentCommandPriority = NavigationCommandPriority.Normal;
         [SerializeField] private float _priorityDecayTime = 1.0f;
         private float _lastCommandTime = 0f;
         
-        // Thông tin đội hình
+        // Formation information
         private Vector3 _squadCenter;
         private Vector3 _formationOffset;
         private bool _hasFormationInfo = false;
         private bool _useFormationPosition = false;
         
-        // Biến kiểm soát vị trí chính xác
+        // Precise position control variables
         private bool _hasReachedExactPosition = false;
         private Vector3 _exactPosition;
         
-        // Thuộc tính truy cập
+        // New fields for enhanced formation movement
+        [SerializeField] private bool _ignoreSquadMemberCollision = true;  // Ignore collision between squad members
+        [SerializeField] private int _avoidanceLayer = -1;                // Avoidance layer (default: all)
+        [SerializeField] private float _squadCohesionFactor = 0.5f;      // Cohesion factor with the squad
+
+        private bool _isFollowingLeader = false;                         // Flag if following leader
+        private IEntity _squadLeader = null;                             // Reference to squad leader
+        private Vector3 _formationDirectionOffset = Vector3.zero;        // Direction offset in formation
+        
+        // Properties for access
         public Vector3 Destination => _destination;
         public bool IsPathfindingActive => _isPathfindingActive;
         public bool HasReachedDestination => _hasReachedExactPosition;
@@ -35,46 +44,63 @@ namespace VikingRaven.Units.Components
 
         public override void Initialize()
         {
-            if (_navMeshAgent == null)
-            {
-                _navMeshAgent = GetComponent<NavMeshAgent>();
-                
-                if (_navMeshAgent == null)
-                {
-                    _navMeshAgent = gameObject.AddComponent<NavMeshAgent>();
-                }
-            }
-            
-            // Cấu hình cơ bản
             _navMeshAgent.stoppingDistance = _stoppingDistance;
-            
-            // Cấu hình tránh chướng ngại vật
             ConfigureObstacleAvoidance();
+            ConfigureFormationMovement();
         }
         
         /// <summary>
-        /// Cấu hình tránh chướng ngại vật cho NavMeshAgent
+        /// Configure obstacle avoidance for NavMeshAgent
         /// </summary>
         private void ConfigureObstacleAvoidance()
         {
             if (_navMeshAgent == null) return;
-            
-            // Sử dụng chất lượng tránh vật cản trung bình để cân bằng hiệu suất và hiệu quả
             _navMeshAgent.obstacleAvoidanceType = ObstacleAvoidanceType.MedQualityObstacleAvoidance;
-            
-            // Đặt bán kính phù hợp cho đơn vị
             _navMeshAgent.radius = 0.4f;
-            
-            // Bật tự động tìm đường đi mới khi gặp chướng ngại vật
             _navMeshAgent.autoRepath = true;
-            
-            // Điều chỉnh ưu tiên tránh chướng ngại vật (số thấp = ưu tiên cao hơn)
-            // Thêm yếu tố ngẫu nhiên để tránh các agent cùng ưu tiên
-            _navMeshAgent.avoidancePriority = 50 + Random.Range(0, 10);
+            var formationComponent = Entity?.GetComponent<FormationComponent>();
+            if (formationComponent != null)
+            {
+                int squadId = formationComponent.SquadId;
+                _navMeshAgent.avoidancePriority = 50 + (squadId % 10);
+            }
+            else
+            {
+                _navMeshAgent.avoidancePriority = 50 + Random.Range(0, 10);
+            }
         }
 
         /// <summary>
-        /// Đặt điểm đến cho đơn vị
+        /// Configure formation movement parameters
+        /// </summary>
+        private void ConfigureFormationMovement()
+        {
+            if (_navMeshAgent == null) return;
+            
+            // Get information about the squad
+            var formationComponent = Entity?.GetComponent<FormationComponent>();
+            if (formationComponent != null)
+            {
+                int squadId = formationComponent.SquadId;
+                
+                // Set special avoidance parameters for units in the same squad
+                if (_ignoreSquadMemberCollision)
+                {
+                    // Higher number = lower avoidance priority
+                    _navMeshAgent.avoidancePriority = 50 + (squadId % 10);
+                }
+                
+                // Check if this is the squad leader (slot 0)
+                _isFollowingLeader = formationComponent.FormationSlotIndex > 0;
+            }
+            
+            // Adjust NavMeshAgent parameters for formation movement
+            _navMeshAgent.acceleration = 10f; // Increase acceleration and deceleration
+            _navMeshAgent.angularSpeed = 360f; // Increase rotation speed
+        }
+
+        /// <summary>
+        /// Set destination for the unit
         /// </summary>
         public void SetDestination(Vector3 destination, NavigationCommandPriority priority = NavigationCommandPriority.Normal)
         {
@@ -83,15 +109,31 @@ namespace VikingRaven.Units.Components
             
             if (priority >= _currentCommandPriority || priorityDecayed)
             {
-                // Reset trạng thái khóa vị trí
+                // Reset position lock state
                 _hasReachedExactPosition = false;
                 
-                // Kích hoạt lại NavMeshAgent
-                if (_navMeshAgent != null && _navMeshAgent.enabled)
+                // Reactivate NavMeshAgent
+                if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
                 {
                     _navMeshAgent.isStopped = false;
                     _navMeshAgent.updatePosition = true;
                     _navMeshAgent.updateRotation = true;
+                    
+                    // Apply speed adjustments if moving in formation
+                    if (_isFollowingLeader)
+                    {
+                        float distanceToDestination = Vector3.Distance(transform.position, destination);
+                        
+                        // If too far from leader, increase speed to catch up
+                        if (distanceToDestination > 3.0f)
+                        {
+                            _navMeshAgent.speed *= 1.2f;
+                        }
+                        else
+                        {
+                            _navMeshAgent.speed = 3.0f; // Reset to default speed
+                        }
+                    }
                 }
                 
                 _destination = destination;
@@ -105,40 +147,47 @@ namespace VikingRaven.Units.Components
                     _navMeshAgent.SetDestination(destination);
                 }
                 
-                Debug.Log($"NavigationComponent: Đặt điểm đến {destination}, ưu tiên: {priority}");
+                Debug.Log($"NavigationComponent: Set destination {destination}, priority: {priority}");
             }
         }
 
         /// <summary>
-        /// Đặt thông tin vị trí trong đội hình
+        /// Set information about position in formation
         /// </summary>
         public void SetFormationInfo(Vector3 squadCenter, Vector3 formationOffset, NavigationCommandPriority priority = NavigationCommandPriority.Normal)
         {
+            // Store formation information regardless of setting destination
+            _squadCenter = squadCenter;
+            _formationOffset = formationOffset;
+            _hasFormationInfo = true;
+            _useFormationPosition = true;
+            
+            // Calculate exact formation position
+            _exactPosition = _squadCenter + _formationOffset;
+            
+            // Calculate direction offset for use when reaching destination
+            if (formationOffset.magnitude > 0.01f)
+            {
+                _formationDirectionOffset = formationOffset.normalized;
+            }
+            
             if (priority >= _currentCommandPriority)
             {
-                // Reset trạng thái khóa vị trí
+                // Reset position lock state
                 _hasReachedExactPosition = false;
                 
-                // Kích hoạt lại NavMeshAgent
-                if (_navMeshAgent != null && _navMeshAgent.enabled)
+                // Reactivate NavMeshAgent
+                if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
                 {
                     _navMeshAgent.isStopped = false;
                     _navMeshAgent.updatePosition = true;
                     _navMeshAgent.updateRotation = true;
                 }
                 
-                _squadCenter = squadCenter;
-                _formationOffset = formationOffset;
-                _hasFormationInfo = true;
-                _useFormationPosition = true;
-                
-                // Tính vị trí formation chính xác
-                _exactPosition = _squadCenter + _formationOffset;
-                
-                // Đặt điểm đến là vị trí formation
+                // Set destination to formation position
                 SetDestination(_exactPosition, priority);
                 
-                Debug.Log($"NavigationComponent: Đặt thông tin formation (trung tâm: {squadCenter}, offset: {formationOffset})");
+                Debug.Log($"NavigationComponent: Set formation info (center: {squadCenter}, offset: {formationOffset})");
             }
         }
 
@@ -148,55 +197,48 @@ namespace VikingRaven.Units.Components
         }
 
         /// <summary>
-        /// Cập nhật di chuyển và xử lý định vị chính xác
+        /// Update movement and handle precise positioning
         /// </summary>
+        // In NavigationComponent.cs - UpdatePathfinding method
+
         public void UpdatePathfinding()
         {
             if (!IsActive || _navMeshAgent == null || !_navMeshAgent.isOnNavMesh)
                 return;
-            
-            // Nếu đã đến vị trí chính xác, không làm gì thêm
+    
+            // If already at exact position, don't do anything further
             if (_hasReachedExactPosition)
                 return;
-            
-            // Giảm ưu tiên theo thời gian
+    
+            // Reduce priority over time
             float timeSinceLastCommand = Time.time - _lastCommandTime;
             if (timeSinceLastCommand > _priorityDecayTime && _currentCommandPriority > NavigationCommandPriority.Low)
             {
                 _currentCommandPriority = (NavigationCommandPriority)((int)_currentCommandPriority - 1);
                 _lastCommandTime = Time.time;
             }
-            
-            // Kiểm tra nếu đã gần đến đích
-            if (_navMeshAgent.remainingDistance <= _navMeshAgent.stoppingDistance ||
-                (_navMeshAgent.pathStatus == NavMeshPathStatus.PathComplete && 
-                 _navMeshAgent.remainingDistance == 0))
+    
+            // Check if we're near destination
+            if (!_navMeshAgent.pathPending && _navMeshAgent.remainingDistance <= _navMeshAgent.stoppingDistance)
             {
-                // Nếu có thông tin đội hình, sử dụng vị trí chính xác đó
+                // Formation position handling
                 if (_useFormationPosition && _hasFormationInfo)
                 {
                     _exactPosition = _squadCenter + _formationOffset;
-                    
-                    // Nếu rất gần vị trí chính xác, snap và khóa
+            
+                    // When very close to destination, lock into exact position
                     if (Vector3.Distance(transform.position, _exactPosition) < 0.2f)
                     {
-                        // Dừng hoàn toàn NavMeshAgent
+                        // Stop the agent and snap to exact position
                         _navMeshAgent.isStopped = true;
                         _navMeshAgent.updatePosition = false;
-                        _navMeshAgent.updateRotation = false;
                         _navMeshAgent.velocity = Vector3.zero;
-                        
-                        // Snap đến vị trí chính xác
                         transform.position = _exactPosition;
-                        
-                        // Đánh dấu đã đến vị trí chính xác
                         _hasReachedExactPosition = true;
-                        
-                        Debug.Log($"Đơn vị đã khóa tại vị trí chính xác: {_exactPosition}");
                     }
                     else
                     {
-                        // Di chuyển trực tiếp đến vị trí chính xác với bước nhỏ
+                        // Move directly to exact position
                         transform.position = Vector3.MoveTowards(
                             transform.position, 
                             _exactPosition, 
@@ -205,13 +247,111 @@ namespace VikingRaven.Units.Components
                 }
                 else
                 {
-                    // Không có thông tin đội hình, chỉ dừng agent
                     _navMeshAgent.isStopped = true;
                     _hasReachedExactPosition = true;
                 }
             }
         }
 
+        /// <summary>
+        /// Handle following leader behavior
+        /// </summary>
+        private void HandleFollowLeader()
+        {
+            if (_squadLeader == null)
+                return;
+                
+            var leaderTransform = _squadLeader.GetComponent<TransformComponent>();
+            if (leaderTransform == null)
+                return;
+                
+            // Get leader position
+            Vector3 leaderPosition = leaderTransform.Position;
+            
+            // Calculate distance to leader
+            float distanceToLeader = Vector3.Distance(transform.position, leaderPosition);
+            
+            // Calculate target position based on leader and offset
+            Vector3 targetPosition = leaderPosition + _formationOffset;
+            
+            // If too far from leader, increase speed to catch up
+            if (distanceToLeader > 4.0f)
+            {
+                // Update destination directly to new position
+                _navMeshAgent.SetDestination(targetPosition);
+                
+                // Increase speed to catch up
+                _navMeshAgent.speed = 5.0f;
+            }
+            else if (distanceToLeader > 2.0f)
+            {
+                // At moderate distance, move normally
+                _navMeshAgent.SetDestination(targetPosition);
+                _navMeshAgent.speed = 3.5f;
+            }
+            else
+            {
+                // Already close to leader, maintain normal speed
+                _navMeshAgent.SetDestination(targetPosition);
+                _navMeshAgent.speed = 3.0f;
+            }
+            
+            // Update exactPosition
+            _exactPosition = targetPosition;
+        }
+
+        /// <summary>
+        /// Set the squad leader for this unit
+        /// </summary>
+        public void SetSquadLeader(IEntity leader)
+        {
+            _squadLeader = leader;
+            
+            // Update state based on whether there is a leader
+            _isFollowingLeader = (_squadLeader != null && _squadLeader != Entity);
+        }
+
+        /// <summary>
+        /// Set formation direction offset
+        /// </summary>
+        public void SetFormationDirectionOffset(Vector3 directionOffset)
+        {
+            _formationDirectionOffset = directionOffset;
+        }
+
+        /// <summary>
+        /// Temporarily disable avoidance between squad members
+        /// </summary>
+        public void DisableSquadMemberAvoidance(bool disable)
+        {
+            if (_navMeshAgent == null || !_navMeshAgent.isOnNavMesh)
+                return;
+                
+            if (disable)
+            {
+                // Save current avoidance layer
+                _avoidanceLayer = _navMeshAgent.avoidancePriority;
+                
+                // Set low avoidance priority (high number = low priority)
+                _navMeshAgent.avoidancePriority = 99;
+            }
+            else
+            {
+                // Restore original avoidance layer
+                if (_avoidanceLayer >= 0)
+                {
+                    _navMeshAgent.avoidancePriority = _avoidanceLayer;
+                }
+                else
+                {
+                    _navMeshAgent.avoidancePriority = 50;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Enable pathfinding
+        /// </summary>
         public void EnablePathfinding()
         {
             _isPathfindingActive = true;
@@ -222,6 +362,9 @@ namespace VikingRaven.Units.Components
             }
         }
 
+        /// <summary>
+        /// Disable pathfinding
+        /// </summary>
         public void DisablePathfinding()
         {
             _isPathfindingActive = false;
@@ -232,6 +375,9 @@ namespace VikingRaven.Units.Components
             }
         }
 
+        /// <summary>
+        /// Cleanup resources
+        /// </summary>
         public override void Cleanup()
         {
             if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
@@ -241,7 +387,7 @@ namespace VikingRaven.Units.Components
         }
         
         /// <summary>
-        /// Cập nhật offset trong đội hình
+        /// Update formation offset
         /// </summary>
         public void UpdateFormationOffset(Vector3 newOffset)
         {
@@ -250,10 +396,10 @@ namespace VikingRaven.Units.Components
                 _formationOffset = newOffset;
                 _exactPosition = _squadCenter + _formationOffset;
                 
-                // Nếu đã khóa vị trí, cập nhật ngay
+                // If already at locked position, update immediately
                 if (_hasReachedExactPosition)
                 {
-                    // Mở khóa, di chuyển đến vị trí mới
+                    // Unlock, move to new position
                     _hasReachedExactPosition = false;
                     SetDestination(_exactPosition, _currentCommandPriority);
                 }
@@ -261,7 +407,7 @@ namespace VikingRaven.Units.Components
         }
         
         /// <summary>
-        /// Mở khóa vị trí để cho phép di chuyển
+        /// Unlock position to allow movement
         /// </summary>
         public void UnlockPosition()
         {
@@ -276,12 +422,14 @@ namespace VikingRaven.Units.Components
         }
     }
     
-    // Enum định nghĩa mức ưu tiên cho lệnh di chuyển
+    /// <summary>
+    /// Enum defining priority levels for movement commands
+    /// </summary>
     public enum NavigationCommandPriority
     {
-        Low = 0,         // Ưu tiên thấp - dùng cho movement tự động, behavior thông thường
-        Normal = 1,      // Ưu tiên trung bình - dùng cho formation và di chuyển squad
-        High = 2,        // Ưu tiên cao - dùng cho lệnh từ người chơi
-        Critical = 3     // Ưu tiên tối đa - dùng cho state đặc biệt như stun, knockback
+        Low = 0,         // Low priority - used for automatic movement, normal behaviors
+        Normal = 1,      // Medium priority - used for formation and squad movement
+        High = 2,        // High priority - used for player commands
+        Critical = 3     // Maximum priority - used for special states like stun, knockback
     }
 }
