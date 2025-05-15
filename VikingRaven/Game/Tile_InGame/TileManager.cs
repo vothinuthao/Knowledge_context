@@ -28,9 +28,7 @@ namespace VikingRaven.Game.Tile_InGame
         // Tile collections
         private Dictionary<int, TileComponent> _tilesById = new Dictionary<int, TileComponent>();
         private Dictionary<int, TileComponent> _tilesBySquadId = new Dictionary<int, TileComponent>();
-        [SerializeField]
         private List<TileComponent> _spawnTiles = new List<TileComponent>();
-        [SerializeField]
         private List<TileComponent> _enemySpawnTiles = new List<TileComponent>();
         
         // Selected tiles

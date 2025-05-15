@@ -142,5 +142,10 @@ namespace VikingRaven.Units.Components
             
             return closestEnemy;
         }
+
+        public void SetAggroRange(float aggroRange)
+        {
+            _aggroRange = aggroRange;
+        }
     }
 }

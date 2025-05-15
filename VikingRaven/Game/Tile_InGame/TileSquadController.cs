@@ -199,11 +199,11 @@ namespace VikingRaven.Game.Tile_InGame
             }
             
             // Spawn enemy squads
-            // for (int i = 0; i < _initialEnemySquads; i++)
-            // {
-            //     UnitType unitType = (UnitType)(i % 3); // Cycle through Infantry, Archer, Pike
-            //     SpawnSquad(unitType, true);
-            // }
+            for (int i = 0; i < _initialEnemySquads; i++)
+            {
+                UnitType unitType = (UnitType)(i % 3); // Cycle through Infantry, Archer, Pike
+                SpawnSquad(unitType, true);
+            }
             
             Debug.Log($"TileSquadController: Spawned {_initialPlayerSquads} player squads and {_initialEnemySquads} enemy squads");
         }
