@@ -7,68 +7,85 @@ using VikingRaven.Core.Factory;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Models;
 using VikingRaven.Units.Systems;
+using VikingRaven.Game.Tile_InGame;
 
 namespace VikingRaven.Game.Tile_InGame
 {
     /// <summary>
     /// Controls squad movement based on tile system
-    /// Enhanced to work with the new factory and model system
+    /// Uses model-based architecture with improved organization and error handling
     /// </summary>
     public class TileSquadController : MonoBehaviour
     {
+        #region Inspector Fields
+
         [TitleGroup("References")]
         [Tooltip("Main camera in the scene")]
         [SerializeField] private Camera _mainCamera;
         
+        [TitleGroup("Layer Settings")]
         [Tooltip("Layer mask for tiles")]
-        [SerializeField] private LayerMask _tileLayer;
+        [SerializeField] 
+        private LayerMask _tileLayer = -1;
         
         [Tooltip("Layer mask for units")]
-        [SerializeField] private LayerMask _unitLayer;
-        
-        [Tooltip("Reference to squad coordination system")]
-        [SerializeField] private SquadCoordinationSystem _squadCoordinationSystem;
-        
-        [Tooltip("Reference to unit factory")]
+        [SerializeField] 
+        private LayerMask _unitLayer = -1;
+
+        [TitleGroup("Reference to unit factory")]
         [SerializeField] private UnitFactory _unitFactory;
-        
-        [Tooltip("Reference to combat system controller")]
+
+        [TitleGroup("Combat System Reference")]
         [SerializeField] private CombatSystemController _combatController;
-        
+
         [TitleGroup("Squad Settings")]
         [Tooltip("Number of troops in each squad")]
-        [SerializeField, Range(3, 12)] private int _troopsPerSquad = 9;
+        [SerializeField, Range(3, 16), ProgressBar(3, 16)] 
+        private int _troopsPerSquad = 9;
         
         [Tooltip("Currently selected squad ID")]
-        [SerializeField, ReadOnly] private int _selectedSquadId = -1;
+        [SerializeField, ReadOnly] 
+        private int _selectedSquadId = -1;
         
         [Tooltip("Current formation type")]
-        [SerializeField] private FormationType _currentFormation = FormationType.Line;
+        [SerializeField, EnumToggleButtons] 
+        private FormationType _currentFormation = FormationType.Line;
         
         [Tooltip("Prefab for the selection marker")]
-        [SerializeField] private GameObject _selectionMarkerPrefab;
+        [SerializeField, PreviewField(50), Required] 
+        private GameObject _selectionMarkerPrefab;
         
         [Tooltip("Height of the selection marker above the ground")]
-        [SerializeField, Range(0.1f, 2f)] private float _selectionMarkerHeight = 0.5f;
+        [SerializeField, Range(0.1f, 2f)] 
+        private float _selectionMarkerHeight = 0.5f;
         
         [TitleGroup("Spawn Settings")]
         [Tooltip("Whether to spawn squads at start")]
-        [SerializeField] private bool _spawnAtStart = true;
+        [SerializeField, ToggleLeft] 
+        private bool _spawnAtStart = true;
         
         [Tooltip("Number of player squads to spawn at start")]
-        [SerializeField, Range(0, 5), ShowIf("_spawnAtStart")] private int _initialPlayerSquads = 1;
+        [SerializeField, Range(0, 5), ShowIf("_spawnAtStart")] 
+        private int _initialPlayerSquads = 1;
         
         [Tooltip("Number of enemy squads to spawn at start")]
-        [SerializeField, Range(0, 5), ShowIf("_spawnAtStart")] private int _initialEnemySquads = 2;
+        [SerializeField, Range(0, 5), ShowIf("_spawnAtStart")] 
+        private int _initialEnemySquads = 2;
         
         [TitleGroup("Debug")]
         [Tooltip("Enable debug logging")]
-        [SerializeField] private bool _debugMode = false;
-        
-        // References to other systems
+        [SerializeField, ToggleLeft] 
+        private bool _debugMode = false;
+
+        #endregion
+
+        #region Private Fields
+
+        // References to singleton managers
         private TileManager _tileManager;
-        private FormationSystem _formationSystem;
         private SquadFactory _squadFactory;
+        private FormationSystem _formationSystem;
+        private SquadCoordinationSystem _squadCoordinationSystem;
         
         // UI elements
         private GameObject _selectionMarker;
@@ -78,6 +95,13 @@ namespace VikingRaven.Game.Tile_InGame
         private TileComponent _currentTileComponent; // Current tile of selected squad
         private TileComponent _targetTileComponent; // Target tile
         
+        // Dictionary to track formation settings per squad
+        private Dictionary<int, FormationType> _squadFormationTypes = new Dictionary<int, FormationType>();
+
+        #endregion
+
+        #region Unity Lifecycle Methods
+
         private void Start()
         {
             // Get references
@@ -92,123 +116,12 @@ namespace VikingRaven.Game.Tile_InGame
                 SpawnInitialSquads();
             }
             
-            Debug.Log("EnhancedTileSquadController: Initialized. Select a squad by clicking on their units, then click on any highlighted tile to move.");
-        }
-        
-        /// <summary>
-        /// Initialize all required references
-        /// </summary>
-        private void InitializeReferences()
-        {
-            // Get main camera if not assigned
-            if (_mainCamera == null)
+            if (_debugMode)
             {
-                _mainCamera = Camera.main;
-            }
-            
-            // Get TileManager
-            _tileManager = TileManager.Instance;
-            if (_tileManager == null)
-            {
-                Debug.LogError("EnhancedTileSquadController: TileManager singleton not found!");
-            }
-            
-            // Find SquadCoordinationSystem if not assigned
-            if (_squadCoordinationSystem == null)
-            {
-                _squadCoordinationSystem = FindObjectOfType<SquadCoordinationSystem>();
-                if (_squadCoordinationSystem == null)
-                {
-                    Debug.LogWarning("EnhancedTileSquadController: SquadCoordinationSystem not found!");
-                }
-            }
-            
-            // Find FormationSystem
-            _formationSystem = FindObjectOfType<FormationSystem>();
-            if (_formationSystem == null)
-            {
-                Debug.LogWarning("EnhancedTileSquadController: FormationSystem not found!");
-            }
-            
-            // Check UnitFactory
-            if (_unitFactory == null)
-            {
-                _unitFactory = FindObjectOfType<UnitFactory>();
-                if (_unitFactory == null)
-                {
-                    Debug.LogError("EnhancedTileSquadController: EnhancedUnitFactory not found!");
-                }
-            }
-            
-            // Get SquadFactory
-            _squadFactory = SquadFactory.Instance;
-            if (_squadFactory == null)
-            {
-                Debug.LogError("EnhancedTileSquadController: EnhancedSquadFactory singleton not found!");
-            }
-            
-            // Check CombatController
-            if (_combatController == null)
-            {
-                _combatController = FindObjectOfType<CombatSystemController>();
-                if (_combatController == null)
-                {
-                    Debug.LogWarning("EnhancedTileSquadController: CombatSystemController not found!");
-                }
-            }
-            
-            // Set up layer masks if not assigned
-            if (_tileLayer == 0)
-            {
-                _tileLayer = LayerMask.GetMask("Tile", "Default");
-                Debug.Log("EnhancedTileSquadController: Tile layer not specified, using default layers");
-            }
-            
-            if (_unitLayer == 0)
-            {
-                _unitLayer = LayerMask.GetMask("Unit", "Enemy");
-                Debug.Log("EnhancedTileSquadController: Unit layer not specified, using default layers");
+                Debug.Log("TileSquadController: Initialized. Select a squad by clicking on their units, then click on any highlighted tile to move.");
             }
         }
-        
-        /// <summary>
-        /// Create the selection marker for visual feedback
-        /// </summary>
-        private void CreateSelectionMarker()
-        {
-            if (_selectionMarkerPrefab != null)
-            {
-                _selectionMarker = Instantiate(_selectionMarkerPrefab);
-                _selectionMarker.SetActive(false);
-            }
-            else
-            {
-                Debug.LogWarning("EnhancedTileSquadController: No selection marker prefab assigned");
-            }
-        }
-        
-        /// <summary>
-        /// Spawn initial squads based on settings
-        /// </summary>
-        private void SpawnInitialSquads()
-        {
-            // Spawn player squads
-            for (int i = 0; i < _initialPlayerSquads; i++)
-            {
-                UnitType unitType = (UnitType)(i % 3); // Cycle through Infantry, Archer, Pike
-                SpawnSquad(unitType, false);
-            }
-            
-            // Spawn enemy squads
-            // for (int i = 0; i < _initialEnemySquads; i++)
-            // {
-            //     UnitType unitType = (UnitType)(i % 3); // Cycle through Infantry, Archer, Pike
-            //     SpawnSquad(unitType, true);
-            // }
-            
-            Debug.Log($"EnhancedTileSquadController: Spawned {_initialPlayerSquads} player squads and {_initialEnemySquads} enemy squads");
-        }
-        
+
         private void Update()
         {
             // Handle input for squad selection and movement
@@ -223,15 +136,153 @@ namespace VikingRaven.Game.Tile_InGame
             // Debug info
             if (_debugMode && _selectedSquadId >= 0)
             {
-                TileComponent squadTileComponent = _tileManager.GetTileBySquadId(_selectedSquadId);
+                TileComponent squadTileComponent = _tileManager?.GetTileBySquadId(_selectedSquadId);
                 string tileInfo = squadTileComponent != null ? $"on Tile {squadTileComponent.TileId}" : "not on any tile";
                 
                 Debug.Log($"Selected Squad: {_selectedSquadId}, Formation: {_currentFormation}, {tileInfo}");
             }
         }
+
+        #endregion
+
+        #region Initialization Methods
+
+        /// <summary>
+        /// Initialize all required references
+        /// </summary>
+        private void InitializeReferences()
+        {
+            // Get main camera if not assigned
+            if (_mainCamera == null)
+            {
+                _mainCamera = Camera.main;
+                if (_mainCamera == null && _debugMode)
+                {
+                    Debug.LogWarning("TileSquadController: No main camera found!");
+                }
+            }
+            
+            // Get TileManager singleton
+            _tileManager = TileManager.Instance;
+            if (_tileManager == null && _debugMode)
+            {
+                Debug.LogError("TileSquadController: TileManager singleton not found!");
+            }
+            
+            // Get SquadFactory singleton
+            _squadFactory = SquadFactory.Instance;
+            if (_squadFactory == null && _debugMode)
+            {
+                Debug.LogError("TileSquadController: SquadFactory singleton not found!");
+            }
+            
+            // Find SquadCoordinationSystem if needed
+            _squadCoordinationSystem = FindObjectOfType<SquadCoordinationSystem>();
+            if (_squadCoordinationSystem == null && _debugMode)
+            {
+                Debug.LogWarning("TileSquadController: SquadCoordinationSystem not found!");
+            }
+            
+            // Find FormationSystem
+            _formationSystem = FindObjectOfType<FormationSystem>();
+            if (_formationSystem == null && _debugMode)
+            {
+                Debug.LogWarning("TileSquadController: FormationSystem not found!");
+            }
+            
+            // Check UnitFactory
+            if (_unitFactory == null)
+            {
+                _unitFactory = FindObjectOfType<UnitFactory>();
+                if (_unitFactory == null && _debugMode)
+                {
+                    Debug.LogError("TileSquadController: UnitFactory not found!");
+                }
+            }
+            
+            // Check CombatController
+            if (_combatController == null)
+            {
+                _combatController = FindObjectOfType<CombatSystemController>();
+                if (_combatController == null && _debugMode)
+                {
+                    Debug.LogWarning("TileSquadController: CombatSystemController not found!");
+                }
+            }
+            
+            // Set up layer masks if not assigned
+            if (_tileLayer == 0)
+            {
+                _tileLayer = LayerMask.GetMask("Tile", "Default");
+                if (_debugMode)
+                {
+                    Debug.Log("TileSquadController: Tile layer not specified, using default layers");
+                }
+            }
+            
+            if (_unitLayer == 0)
+            {
+                _unitLayer = LayerMask.GetMask("Unit", "Enemy");
+                if (_debugMode)
+                {
+                    Debug.Log("TileSquadController: Unit layer not specified, using default layers");
+                }
+            }
+        }
         
         /// <summary>
-        /// Handle player input
+        /// Create the selection marker for visual feedback
+        /// </summary>
+        private void CreateSelectionMarker()
+        {
+            if (_selectionMarkerPrefab != null)
+            {
+                _selectionMarker = Instantiate(_selectionMarkerPrefab);
+                _selectionMarker.SetActive(false);
+            }
+            else if (_debugMode)
+            {
+                Debug.LogWarning("TileSquadController: No selection marker prefab assigned");
+            }
+        }
+        
+        /// <summary>
+        /// Spawn initial squads based on settings
+        /// </summary>
+        private void SpawnInitialSquads()
+        {
+            if (_squadFactory == null || _tileManager == null)
+            {
+                Debug.LogError("TileSquadController: Cannot spawn initial squads - required managers not available");
+                return;
+            }
+
+            // Spawn player squads
+            for (int i = 0; i < _initialPlayerSquads; i++)
+            {
+                UnitType unitType = (UnitType)(i % 3); // Cycle through Infantry, Archer, Pike
+                SpawnSquad(unitType, false);
+            }
+            
+            // Spawn enemy squads
+            for (int i = 0; i < _initialEnemySquads; i++)
+            {
+                UnitType unitType = (UnitType)(i % 3); // Cycle through Infantry, Archer, Pike
+                SpawnSquad(unitType, true);
+            }
+            
+            if (_debugMode)
+            {
+                Debug.Log($"TileSquadController: Spawned {_initialPlayerSquads} player squads and {_initialEnemySquads} enemy squads");
+            }
+        }
+
+        #endregion
+
+        #region Input Handling
+
+        /// <summary>
+        /// Handle player input for squad selection and movement
         /// </summary>
         private void HandleInput()
         {
@@ -260,10 +311,9 @@ namespace VikingRaven.Game.Tile_InGame
                 }
             }
             
-            // Right click for alternative actions (can be set to different formations)
+            // Right click for alternative actions (cycles formations)
             if (Input.GetMouseButtonDown(1))
             {
-                // Toggle formations
                 if (_selectedSquadId >= 0)
                 {
                     CycleFormation();
@@ -271,6 +321,19 @@ namespace VikingRaven.Game.Tile_InGame
             }
             
             // Number keys to change formation
+            HandleFormationKeyInput();
+            
+            // Spawn hotkeys (I, A, P keys)
+            HandleSpawnKeyInput();
+        }
+        
+        /// <summary>
+        /// Handle numeric key input for formation changes
+        /// </summary>
+        private void HandleFormationKeyInput()
+        {
+            if (_selectedSquadId < 0) return;
+            
             if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
             {
                 ChangeFormation(FormationType.Line);
@@ -291,8 +354,13 @@ namespace VikingRaven.Game.Tile_InGame
             {
                 ChangeFormation(FormationType.Column);
             }
-            
-            // Spawn hotkeys (for testing)
+        }
+        
+        /// <summary>
+        /// Handle spawn hotkey input for debugging/testing
+        /// </summary>
+        private void HandleSpawnKeyInput()
+        {
             if (Input.GetKeyDown(KeyCode.I))
             {
                 SpawnSquad(UnitType.Infantry, false);
@@ -305,14 +373,35 @@ namespace VikingRaven.Game.Tile_InGame
             {
                 SpawnSquad(UnitType.Pike, false);
             }
+            
+            // With Shift key to spawn enemy units
+            if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+            {
+                if (Input.GetKeyDown(KeyCode.I))
+                {
+                    SpawnSquad(UnitType.Infantry, true);
+                }
+                else if (Input.GetKeyDown(KeyCode.A))
+                {
+                    SpawnSquad(UnitType.Archer, true);
+                }
+                else if (Input.GetKeyDown(KeyCode.P))
+                {
+                    SpawnSquad(UnitType.Pike, true);
+                }
+            }
         }
-        
+
+        #endregion
+
+        #region Squad Selection and Movement
+
         /// <summary>
         /// Select a squad from a unit GameObject
         /// </summary>
         private void SelectSquad(GameObject unitObject)
         {
-            if (unitObject == null) return;
+            if (unitObject == null || _squadFactory == null || _unitFactory == null) return;
             
             // Get the entity and unit model
             var baseEntity = unitObject.GetComponent<BaseEntity>();
@@ -329,27 +418,40 @@ namespace VikingRaven.Game.Tile_InGame
             SquadModel squadModel = _squadFactory.GetSquad(squadId);
             if (squadModel == null) return;
             
-            // Check if this is an enemy squad (skip for simplicity since we can check faction in the squad model)
+            // Check if this is an enemy squad
             if (squadModel.Data != null && squadModel.Data.Faction == "Enemy")
             {
-                Debug.Log($"Selected enemy Squad ID: {squadId}. Cannot control enemy squads.");
+                if (_debugMode)
+                {
+                    Debug.Log($"Selected enemy Squad ID: {squadId}. Cannot control enemy squads.");
+                }
                 return;
             }
             
             // Get current tile
-            TileComponent squadTileComponent = _tileManager.GetTileBySquadId(squadId);
+            TileComponent squadTileComponent = _tileManager?.GetTileBySquadId(squadId);
             
             // Process selection
             _selectedSquadId = squadId;
             _currentTileComponent = squadTileComponent;
-            _currentFormation = squadModel.CurrentFormation;
+            
+            // Get current formation from dictionary or from squad model
+            if (_squadFormationTypes.TryGetValue(squadId, out FormationType formation))
+            {
+                _currentFormation = formation;
+            }
+            else
+            {
+                _currentFormation = squadModel.CurrentFormation;
+                _squadFormationTypes[squadId] = _currentFormation;
+            }
             
             // Update selection marker
             if (_selectionMarker != null)
             {
                 _selectionMarker.SetActive(true);
                 Vector3 markerPosition = unitObject.transform.position;
-                markerPosition.y = _selectionMarkerHeight;
+                markerPosition.y += _selectionMarkerHeight;
                 _selectionMarker.transform.position = markerPosition;
             }
             
@@ -359,7 +461,10 @@ namespace VikingRaven.Game.Tile_InGame
                 _tileManager.HighlightAllValidTiles(_selectedSquadId);
             }
             
-            Debug.Log($"Selected Squad ID: {_selectedSquadId}, on Tile: {(_currentTileComponent != null ? _currentTileComponent.TileId.ToString() : "none")}");
+            if (_debugMode)
+            {
+                Debug.Log($"Selected Squad ID: {_selectedSquadId}, on Tile: {(_currentTileComponent != null ? _currentTileComponent.TileId.ToString() : "none")}");
+            }
         }
         
         /// <summary>
@@ -370,7 +475,10 @@ namespace VikingRaven.Game.Tile_InGame
             // If no squad selected, do nothing
             if (_selectedSquadId < 0)
             {
-                Debug.Log("No squad selected. Select a squad first.");
+                if (_debugMode)
+                {
+                    Debug.Log("No squad selected. Select a squad first.");
+                }
                 return;
             }
             
@@ -381,12 +489,12 @@ namespace VikingRaven.Game.Tile_InGame
                 return;
             }
             
-            // Check if tile is valid for movement (always allowed, no neighbor constraint)
+            // Check if tile is valid for movement
             if (selectedTileComponent.IsValidDestination(_selectedSquadId))
             {
                 MoveSquadToTile(selectedTileComponent);
             }
-            else
+            else if (_debugMode)
             {
                 Debug.Log($"Cannot move to Tile {selectedTileComponent.TileId}. It's occupied by another squad.");
             }
@@ -397,10 +505,7 @@ namespace VikingRaven.Game.Tile_InGame
         /// </summary>
         private void MoveSquadToTile(TileComponent destinationTileComponent)
         {
-            if (_selectedSquadId < 0 || destinationTileComponent == null)
-            {
-                return;
-            }
+            if (_selectedSquadId < 0 || destinationTileComponent == null || _squadFactory == null) return;
             
             // Get the squad model
             SquadModel squadModel = _squadFactory.GetSquad(_selectedSquadId);
@@ -420,31 +525,32 @@ namespace VikingRaven.Game.Tile_InGame
             _isMoving = true;
             
             // Register squad as moving to the new tile
-            _tileManager.RegisterSquadOnTile(_selectedSquadId, _targetTileComponent.TileId);
+            if (_tileManager != null)
+            {
+                _tileManager.RegisterSquadOnTile(_selectedSquadId, _targetTileComponent.TileId);
+            }
             
-            // Set formation directly on the squad model
+            // Update formation tracking
+            _currentFormation = optimalFormation;
+            _squadFormationTypes[_selectedSquadId] = optimalFormation;
+            
+            // Apply to Squad Model
             squadModel.SetFormation(optimalFormation);
-            
-            // Set the target position
+            squadModel.SetFormationSpacing(formationScale);
             squadModel.SetTargetPosition(_targetTileComponent.CenterPosition);
             
-            // Use CombatController if available as a backup (uses squad model internally)
-            // if (_combatController != null)
-            // {
-            //     _combatController.MoveSquad(_selectedSquadId, _targetTileComponent.CenterPosition);
-            //     Debug.Log($"Moving Squad {_selectedSquadId} to Tile {_targetTileComponent.TileId} with formation {optimalFormation}");
-            // }
-            // else if (_squadCoordinationSystem != null)
-            // {
-            //     // Fallback to old system
-            //     _squadCoordinationSystem.MoveSquadToPosition(_selectedSquadId, _targetTileComponent.CenterPosition);
-            //     _squadCoordinationSystem.SetSquadFormation(_selectedSquadId, optimalFormation);
-            //     Debug.Log($"Moving Squad {_selectedSquadId} to Tile {_targetTileComponent.TileId} with formation {optimalFormation} via SquadCoordinationSystem");
-            // }
-            // else
-            // {
-            //     Debug.LogError("Neither CombatController nor SquadCoordinationSystem available, cannot move squad");
-            // }
+            // Use CombatController as backup if direct model update doesn't work
+            if (_combatController != null)
+            {
+                _combatController.MoveSquad(_selectedSquadId, _targetTileComponent.CenterPosition);
+                _combatController.SetSquadFormation(_selectedSquadId, optimalFormation);
+            }
+            else if (_squadCoordinationSystem != null)
+            {
+                // Fallback to old system
+                _squadCoordinationSystem.MoveSquadToPosition(_selectedSquadId, _targetTileComponent.CenterPosition);
+                _squadCoordinationSystem.SetSquadFormation(_selectedSquadId, optimalFormation);
+            }
             
             // Update current tile reference
             _currentTileComponent = _targetTileComponent;
@@ -456,7 +562,15 @@ namespace VikingRaven.Game.Tile_InGame
             }
             
             // Clear tile highlights
-            _tileManager.ClearHighlights();
+            if (_tileManager != null)
+            {
+                _tileManager.ClearHighlights();
+            }
+            
+            if (_debugMode)
+            {
+                Debug.Log($"Moving Squad {_selectedSquadId} to Tile {_targetTileComponent.TileId} with formation {optimalFormation}");
+            }
         }
         
         /// <summary>
@@ -464,7 +578,7 @@ namespace VikingRaven.Game.Tile_InGame
         /// </summary>
         private void UpdateMovementState()
         {
-            if (_selectedSquadId < 0) return;
+            if (_selectedSquadId < 0 || _squadFactory == null) return;
             
             // Get the squad model
             SquadModel squadModel = _squadFactory.GetSquad(_selectedSquadId);
@@ -484,7 +598,7 @@ namespace VikingRaven.Game.Tile_InGame
         {
             _isMoving = false;
             
-            if (_selectedSquadId < 0) return;
+            if (_selectedSquadId < 0 || _squadFactory == null) return;
             
             // Get the squad model
             SquadModel squadModel = _squadFactory.GetSquad(_selectedSquadId);
@@ -495,7 +609,10 @@ namespace VikingRaven.Game.Tile_InGame
             {
                 squadModel.SetTargetPosition(_targetTileComponent.CenterPosition);
                 
-                Debug.Log($"Squad {_selectedSquadId} movement to Tile {_targetTileComponent.TileId} completed");
+                if (_debugMode)
+                {
+                    Debug.Log($"Squad {_selectedSquadId} movement to Tile {_targetTileComponent.TileId} completed");
+                }
             }
             
             // Update current tile reference
@@ -507,82 +624,48 @@ namespace VikingRaven.Game.Tile_InGame
                 _tileManager.HighlightAllValidTiles(_selectedSquadId);
             }
         }
-        
-        /// <summary>
-        /// Spawn a new squad of the specified type
-        /// </summary>
-        [Button("Spawn Squad")]
-        public int SpawnSquad(UnitType unitType, bool isEnemy = false)
-        {
-            // Find appropriate spawn tile
-            TileComponent spawnTileComponent = _tileManager.GetSpawnTileByUnitType(unitType, isEnemy);
-            
-            if (spawnTileComponent == null)
-            {
-                Debug.LogError($"EnhancedTileSquadController: No spawn tile available for {unitType}");
-                return -1;
-            }
-            
-            // Create squad using enhanced squad factory
-            SquadModel squadModel = _squadFactory.CreateSquad(unitType, _troopsPerSquad, spawnTileComponent.CenterPosition, Quaternion.identity, isEnemy);
-            
-            if (squadModel != null && squadModel.UnitCount > 0)
-            {
-                int squadId = squadModel.SquadId;
-                
-                // Register squad on tile
-                _tileManager.RegisterSquadOnTile(squadId, spawnTileComponent.TileId);
-                
-                // Set initial formation based on tile
-                FormationType initialFormation = spawnTileComponent.GetOptimalFormation(squadModel.UnitCount);
-                squadModel.SetFormation(initialFormation);
-                
-                Debug.Log($"EnhancedTileSquadController: Spawned {(isEnemy ? "enemy" : "player")} {unitType} squad with ID {squadId} at Tile {spawnTileComponent.TileId}");
-                
-                return squadId;
-            }
-            else
-            {
-                Debug.LogError($"EnhancedTileSquadController: Failed to create squad at {spawnTileComponent.CenterPosition}");
-                return -1;
-            }
-        }
-        
+
+        #endregion
+
+        #region Formation Management
+
         /// <summary>
         /// Change the formation of the selected squad
         /// </summary>
         private void ChangeFormation(FormationType formation)
         {
-            if (_selectedSquadId < 0)
+            if (_selectedSquadId < 0 || _squadFactory == null)
             {
-                Debug.LogWarning("No squad selected to change formation");
+                if (_debugMode)
+                {
+                    Debug.LogWarning("No squad selected to change formation");
+                }
                 return;
             }
             
             _currentFormation = formation;
+            _squadFormationTypes[_selectedSquadId] = formation;
             
             // Set formation using squad model
             SquadModel squadModel = _squadFactory.GetSquad(_selectedSquadId);
             if (squadModel != null)
             {
                 squadModel.SetFormation(formation);
-                Debug.Log($"Changed Squad {_selectedSquadId} formation to {formation}");
+                
+                if (_debugMode)
+                {
+                    Debug.Log($"Changed Squad {_selectedSquadId} formation to {formation}");
+                }
             }
             else if (_combatController != null)
             {
                 // Fallback to combat controller
                 _combatController.SetSquadFormation(_selectedSquadId, formation);
-                Debug.Log($"Changed Squad {_selectedSquadId} formation to {formation} via CombatController");
             }
             else if (_squadCoordinationSystem != null)
             {
                 // Second fallback to old system
                 _squadCoordinationSystem.SetSquadFormation(_selectedSquadId, formation);
-                Debug.Log($"Changed Squad {_selectedSquadId} formation to {formation} via SquadCoordinationSystem");
-            }
-            else
-            {
-                Debug.LogError("No system available to change formation");
             }
         }
         
@@ -620,10 +703,7 @@ namespace VikingRaven.Game.Tile_InGame
         /// </summary>
         private void UpdateFormationInPlace()
         {
-            if (_selectedSquadId < 0 || _currentTileComponent == null)
-            {
-                return;
-            }
+            if (_selectedSquadId < 0 || _currentTileComponent == null || _squadFactory == null) return;
             
             // Get the squad model
             SquadModel squadModel = _squadFactory.GetSquad(_selectedSquadId);
@@ -635,9 +715,169 @@ namespace VikingRaven.Game.Tile_InGame
             // Apply formation
             ChangeFormation(optimalFormation);
             
-            Debug.Log($"Updated Squad {_selectedSquadId} formation to {optimalFormation} in place");
+            if (_debugMode)
+            {
+                Debug.Log($"Updated Squad {_selectedSquadId} formation to {optimalFormation} in place");
+            }
+        }
+
+        #endregion
+
+        #region Squad Creation and Management
+
+        /// <summary>
+        /// Spawn a squad of the specified type
+        /// </summary>
+        [Button("Spawn Squad")]
+        public int SpawnSquad(UnitType unitType, bool isEnemy = false)
+        {
+            if (_tileManager == null || _squadFactory == null)
+            {
+                Debug.LogError("TileSquadController: Cannot spawn squad - required managers not available");
+                return -1;
+            }
+            
+            // Find appropriate spawn tile
+            TileComponent spawnTileComponent = _tileManager.GetSpawnTileByUnitType(unitType, isEnemy);
+            
+            if (spawnTileComponent == null)
+            {
+                Debug.LogError($"TileSquadController: No spawn tile available for {unitType}");
+                return -1;
+            }
+            
+            // Create squad using squad factory
+            SquadModel squadModel = _squadFactory.CreateSquad(
+                unitType, 
+                _troopsPerSquad, 
+                spawnTileComponent.CenterPosition, 
+                Quaternion.identity, 
+                isEnemy
+            );
+            
+            if (squadModel == null || squadModel.UnitCount == 0)
+            {
+                Debug.LogError($"TileSquadController: Failed to create squad at {spawnTileComponent.CenterPosition}");
+                return -1;
+            }
+            
+            int squadId = squadModel.SquadId;
+            
+            // Register squad on tile
+            _tileManager.RegisterSquadOnTile(squadId, spawnTileComponent.TileId);
+            
+            // Set initial formation based on tile
+            FormationType initialFormation = spawnTileComponent.GetOptimalFormation(squadModel.UnitCount);
+            squadModel.SetFormation(initialFormation);
+            
+            // Store in formation tracking
+            _squadFormationTypes[squadId] = initialFormation;
+            
+            if (_debugMode)
+            {
+                Debug.Log($"TileSquadController: Spawned {(isEnemy ? "enemy" : "player")} {unitType} squad with ID {squadId} at Tile {spawnTileComponent.TileId}");
+            }
+            
+            return squadId;
         }
         
+        /// <summary>
+        /// Create a mixed squad with different unit types
+        /// </summary>
+        [Button("Spawn Mixed Squad")]
+        public int SpawnMixedSquad(bool isEnemy = false)
+        {
+            if (_tileManager == null || _squadFactory == null)
+            {
+                Debug.LogError("TileSquadController: Cannot spawn mixed squad - required managers not available");
+                return -1;
+            }
+            
+            // Find appropriate spawn tile
+            TileComponent spawnTileComponent = isEnemy 
+                ? _tileManager.GetFreeEnemySpawnTile() 
+                : _tileManager.GetFreePlayerSpawnTile();
+            
+            if (spawnTileComponent == null)
+            {
+                Debug.LogError("TileSquadController: No spawn tile available for mixed squad");
+                return -1;
+            }
+            
+            // Define unit composition
+            Dictionary<UnitType, int> unitCounts = new Dictionary<UnitType, int>
+            {
+                { UnitType.Infantry, 4 },
+                { UnitType.Archer, 3 },
+                { UnitType.Pike, 2 }
+            };
+            
+            // Create squad using squad factory
+            SquadModel squadModel = _squadFactory.CreateMixedSquad(
+                unitCounts, 
+                spawnTileComponent.CenterPosition, 
+                Quaternion.identity, 
+                isEnemy
+            );
+            
+            if (squadModel == null || squadModel.UnitCount == 0)
+            {
+                Debug.LogError($"TileSquadController: Failed to create mixed squad at {spawnTileComponent.CenterPosition}");
+                return -1;
+            }
+            
+            int squadId = squadModel.SquadId;
+            
+            // Register squad on tile
+            _tileManager.RegisterSquadOnTile(squadId, spawnTileComponent.TileId);
+            
+            // Set initial formation based on tile
+            FormationType initialFormation = spawnTileComponent.GetOptimalFormation(squadModel.UnitCount);
+            squadModel.SetFormation(initialFormation);
+            
+            // Store in formation tracking
+            _squadFormationTypes[squadId] = initialFormation;
+            
+            if (_debugMode)
+            {
+                Debug.Log($"TileSquadController: Spawned {(isEnemy ? "enemy" : "player")} mixed squad with ID {squadId} at Tile {spawnTileComponent.TileId}");
+            }
+            
+            return squadId;
+        }
+        
+        /// <summary>
+        /// Disband the currently selected squad
+        /// </summary>
+        [Button("Disband Selected Squad")]
+        public void DisbandSelectedSquad()
+        {
+            if (_selectedSquadId < 0 || _squadFactory == null) return;
+            
+            // Disband the squad
+            _squadFactory.DisbandSquad(_selectedSquadId);
+            
+            // Clear selection
+            _selectionMarker?.SetActive(false);
+            _selectedSquadId = -1;
+            _currentTileComponent = null;
+            
+            // Clear highlights
+            if (_tileManager != null)
+            {
+                _tileManager.ClearHighlights();
+            }
+            
+            if (_debugMode)
+            {
+                Debug.Log("Disbanded selected squad");
+            }
+        }
+
+        #endregion
+
+        #region Public Interface
+
         /// <summary>
         /// Called from the UI to set formation
         /// </summary>
@@ -678,7 +918,7 @@ namespace VikingRaven.Game.Tile_InGame
         [Button("Debug Game State")]
         private void DebugGameState()
         {
-            if (_squadFactory == null) return;
+            if (_squadFactory == null || _tileManager == null) return;
             
             Debug.Log($"--- Game State Debug ---");
             
@@ -688,7 +928,7 @@ namespace VikingRaven.Game.Tile_InGame
             foreach (var squadId in playerSquadIds)
             {
                 SquadModel squad = _squadFactory.GetSquad(squadId);
-                TileComponent tileComponent = _tileManager?.GetTileBySquadId(squadId);
+                TileComponent tileComponent = _tileManager.GetTileBySquadId(squadId);
                 string tileInfo = tileComponent != null ? $"on Tile {tileComponent.TileId}" : "not on any tile";
                 
                 if (squad != null)
@@ -703,7 +943,7 @@ namespace VikingRaven.Game.Tile_InGame
             foreach (var squadId in enemySquadIds)
             {
                 SquadModel squad = _squadFactory.GetSquad(squadId);
-                TileComponent tileComponent = _tileManager?.GetTileBySquadId(squadId);
+                TileComponent tileComponent = _tileManager.GetTileBySquadId(squadId);
                 string tileInfo = tileComponent != null ? $"on Tile {tileComponent.TileId}" : "not on any tile";
                 
                 if (squad != null)
@@ -712,5 +952,7 @@ namespace VikingRaven.Game.Tile_InGame
                 }
             }
         }
+
+        #endregion
     }
 }

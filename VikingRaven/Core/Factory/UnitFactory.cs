@@ -1,29 +1,72 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
-using VikingRaven.Core.Data;
-using VikingRaven.Core.ECS;
+using Sirenix.OdinInspector;
 using VikingRaven.Core.ObjectPooling;
-using VikingRaven.Units.Components;
+using VikingRaven.Core.ECS;
+using VikingRaven.Core.Data;
 using VikingRaven.Units.Data;
 using VikingRaven.Units.Models;
-using Random = UnityEngine.Random;
+using VikingRaven.Units.Components;
 
 namespace VikingRaven.Core.Factory
 {
-    public class UnitFactory : MonoBehaviour, IEntityFactory
+    /// <summary>
+    /// Factory for creating and managing units from pools
+    /// Uses unit data to dynamically create and configure units
+    /// </summary>
+    public class UnitFactory : MonoBehaviour
     {
-        // References to unit prefabs
-        [SerializeField] private GameObject _infantryPrefab;
-        [SerializeField] private GameObject _archerPrefab;
-        [SerializeField] private GameObject _pikePrefab;
+        #region Inspector Fields
+
+        [TitleGroup("Prefab References")]
+        [Tooltip("Infantry unit prefab reference")]
+        [SerializeField, PreviewField(50)] 
+        private GameObject _infantryPrefab;
         
-        // Initial pool sizes for each unit type
-        [SerializeField] private int _infantryPoolSize = 20;
-        [SerializeField] private int _archerPoolSize = 10;
-        [SerializeField] private int _pikePoolSize = 10;
+        [Tooltip("Archer unit prefab reference")]
+        [SerializeField, PreviewField(50)] 
+        private GameObject _archerPrefab;
         
-        [SerializeField] private bool _preloadOnAwake = true;
+        [Tooltip("Pike unit prefab reference")]
+        [SerializeField, PreviewField(50)] 
+        private GameObject _pikePrefab;
         
+        [TitleGroup("Pool Settings")]
+        [Tooltip("Initial pool size for Infantry units")]
+        [SerializeField, Range(5, 50), ProgressBar(5, 50, 0, 1, Height = 15)] 
+        private int _infantryPoolSize = 20;
+        
+        [Tooltip("Initial pool size for Archer units")]
+        [SerializeField, Range(5, 50), ProgressBar(5, 50, 0, 1, Height = 15)] 
+        private int _archerPoolSize = 10;
+        
+        [Tooltip("Initial pool size for Pike units")]
+        [SerializeField, Range(5, 50), ProgressBar(5, 50, 0, 1, Height = 15)] 
+        private int _pikePoolSize = 10;
+        
+        [TitleGroup("Initialization Settings")]
+        [Tooltip("Whether to preload unit models on Awake")]
+        [SerializeField, ToggleLeft] 
+        private bool _preloadOnAwake = true;
+        
+        [Tooltip("Whether pools can expand when empty")]
+        [SerializeField, ToggleLeft] 
+        private bool _expandPoolsWhenEmpty = true;
+        
+        [TitleGroup("Debug Information")]
+        [ShowInInspector, ReadOnly] 
+        private int _activeEntitiesCount => _activeEntities?.Count ?? 0;
+        
+        [ShowInInspector, ReadOnly] 
+        private int _unitModelsCount => _unitModelsById?.Count ?? 0;
+        
+        [ShowInInspector, ReadOnly] 
+        private int _templateModelsCount => _unitModelTemplates?.Count ?? 0;
+
+        #endregion
+
+        #region Private Fields
+
         // Object pools for each unit type
         private ObjectPool<BaseEntity> _infantryPool;
         private ObjectPool<BaseEntity> _archerPool;
@@ -41,7 +84,16 @@ namespace VikingRaven.Core.Factory
         // Next entity ID to assign
         private int _nextEntityId = 1000;
         
-        // Reference to EntityRegistry
+        // Parent transforms for pool organization
+        private Transform _infantryPoolParent;
+        private Transform _archerPoolParent;
+        private Transform _pikePoolParent;
+
+        #endregion
+
+        #region Properties
+
+        // References to other managers
         private EntityRegistry EntityRegistry => EntityRegistry.Instance;
         private DataManager DataManager => DataManager.Instance;
         
@@ -50,9 +102,10 @@ namespace VikingRaven.Core.Factory
         public event UnitEvent OnUnitCreated;
         public event UnitEvent OnUnitReturned;
 
-        /// <summary>
-        /// Initialize the factory and object pools
-        /// </summary>
+        #endregion
+
+        #region Unity Lifecycle Methods
+
         private void Awake()
         {
             // Initialize object pools
@@ -64,16 +117,32 @@ namespace VikingRaven.Core.Factory
                 PreloadUnitModels();
             }
         }
-        
+
+        private void OnDestroy()
+        {
+            // Clean up all unit models
+            foreach (var unitModel in _unitModelsById.Values)
+            {
+                unitModel.Cleanup();
+            }
+            
+            // Clear pools
+            ClearAllPools();
+        }
+
+        #endregion
+
+        #region Initialization Methods
+
         /// <summary>
         /// Initialize object pools for each unit type
         /// </summary>
         private void InitializeObjectPools()
         {
-            // Create parent transform for each pool
-            Transform infantryPoolParent = CreatePoolParent("InfantryPool");
-            Transform archerPoolParent = CreatePoolParent("ArcherPool");
-            Transform pikePoolParent = CreatePoolParent("PikePool");
+            // Create parent transforms for each pool
+            _infantryPoolParent = CreatePoolParent("InfantryPool");
+            _archerPoolParent = CreatePoolParent("ArcherPool");
+            _pikePoolParent = CreatePoolParent("PikePool");
             
             // Create the object pools
             if (_infantryPrefab != null)
@@ -81,8 +150,8 @@ namespace VikingRaven.Core.Factory
                 _infantryPool = new ObjectPool<BaseEntity>(
                     _infantryPrefab.GetComponent<BaseEntity>(),
                     _infantryPoolSize,
-                    infantryPoolParent,
-                    true,
+                    _infantryPoolParent,
+                    _expandPoolsWhenEmpty,
                     OnReturnUnit,
                     OnGetUnit
                 );
@@ -94,8 +163,8 @@ namespace VikingRaven.Core.Factory
                 _archerPool = new ObjectPool<BaseEntity>(
                     _archerPrefab.GetComponent<BaseEntity>(),
                     _archerPoolSize,
-                    archerPoolParent,
-                    true,
+                    _archerPoolParent,
+                    _expandPoolsWhenEmpty,
                     OnReturnUnit,
                     OnGetUnit
                 );
@@ -107,8 +176,8 @@ namespace VikingRaven.Core.Factory
                 _pikePool = new ObjectPool<BaseEntity>(
                     _pikePrefab.GetComponent<BaseEntity>(),
                     _pikePoolSize,
-                    pikePoolParent,
-                    true,
+                    _pikePoolParent,
+                    _expandPoolsWhenEmpty,
                     OnReturnUnit,
                     OnGetUnit
                 );
@@ -147,6 +216,20 @@ namespace VikingRaven.Core.Factory
         }
         
         /// <summary>
+        /// Create a parent transform for a pool
+        /// </summary>
+        private Transform CreatePoolParent(string name)
+        {
+            GameObject parent = new GameObject(name);
+            parent.transform.SetParent(transform);
+            return parent.transform;
+        }
+
+        #endregion
+
+        #region Pool Callbacks
+
+        /// <summary>
         /// Callback when a unit is returned to the pool
         /// </summary>
         private void OnReturnUnit(BaseEntity entity)
@@ -154,8 +237,7 @@ namespace VikingRaven.Core.Factory
             if (entity == null) return;
             
             // Get the unit model
-            UnitModel unitModel = null;
-            if (_unitModelsById.TryGetValue(entity.Id, out unitModel))
+            if (_unitModelsById.TryGetValue(entity.Id, out UnitModel unitModel))
             {
                 // Clean up model
                 unitModel.Cleanup();
@@ -187,7 +269,6 @@ namespace VikingRaven.Core.Factory
             // Unregister from EntityRegistry if needed
             if (EntityRegistry != null)
             {
-                // We don't actually destroy the entity, just unregister it
                 // EntityRegistry.UnregisterEntity(entity);
             }
             
@@ -219,16 +300,12 @@ namespace VikingRaven.Core.Factory
             Debug.Log($"UnitFactory: Got entity {entity.Id} from pool");
         }
 
+        #endregion
+
+        #region Factory Methods
+
         /// <summary>
-        /// Create a generic entity (default implementation for IEntityFactory)
-        /// </summary>
-        public IEntity CreateEntity(Vector3 position, Quaternion rotation)
-        {
-            return CreateUnit(UnitType.Infantry, position, rotation);
-        }
-        
-        /// <summary>
-        /// Create a unit of a specific type without a UnitModel
+        /// Create a unit of a specific type
         /// </summary>
         public IEntity CreateUnit(UnitType unitType, Vector3 position, Quaternion rotation)
         {
@@ -271,12 +348,8 @@ namespace VikingRaven.Core.Factory
             entity.transform.position = position;
             entity.transform.rotation = rotation;
             
-            // Configure unit type if component exists
-            var unitTypeComponent = entity.GetComponent<UnitTypeComponent>();
-            if (unitTypeComponent != null)
-            {
-                unitTypeComponent.SetUnitType(unitData.UnitType);
-            }
+            // Apply the unit data
+            unitData.ApplyToUnit(entity.gameObject);
             
             // Create UnitModel
             UnitModel unitModel = new UnitModel(entity, unitData);
@@ -353,7 +426,7 @@ namespace VikingRaven.Core.Factory
                 var unitDataList = DataManager.GetUnitDataByType(unitType);
                 if (unitDataList.Count > 0)
                 {
-                    // Return a random unit data
+                    // Return a random unit data from the available options
                     return unitDataList[Random.Range(0, unitDataList.Count)];
                 }
             }
@@ -374,7 +447,11 @@ namespace VikingRaven.Core.Factory
             
             // Determine which pool this unit belongs to
             var unitTypeComponent = baseEntity.GetComponent<UnitTypeComponent>();
-            if (unitTypeComponent == null) return;
+            if (unitTypeComponent == null) 
+            {
+                Debug.LogError($"UnitFactory: Entity {entity.Id} has no UnitTypeComponent, cannot return to pool");
+                return;
+            }
             
             UnitType unitType = unitTypeComponent.UnitType;
             ObjectPool<BaseEntity> pool = GetPoolForUnitType(unitType);
@@ -385,27 +462,61 @@ namespace VikingRaven.Core.Factory
                 pool.Return(baseEntity);
                 Debug.Log($"UnitFactory: Returned unit ID {entity.Id} of type {unitType} to pool");
             }
+            else
+            {
+                Debug.LogError($"UnitFactory: No pool found for unit type {unitType}, cannot return entity {entity.Id}");
+            }
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        /// <summary>
+        /// Initialize components on a unit entity
+        /// </summary>
+        private void InitializeEntityComponents(IEntity entity)
+        {
+            // Get the MonoBehaviour
+            var entityTransform = entity as MonoBehaviour;
+            if (entityTransform == null) return;
+            
+            // Ensure all components are properly initialized
+            var components = entityTransform.GetComponents<IComponent>();
+            foreach (var component in components)
+            {
+                if (component.Entity == null)
+                {
+                    component.Entity = entity;
+                }
+                
+                component.Initialize();
+            }
         }
         
         /// <summary>
-        /// Return all units to their pools
+        /// Assign a unique entity ID
         /// </summary>
-        public void ReturnAllUnits()
+        private void AssignEntityId(BaseEntity entity)
         {
-            // Create a copy of the keys to avoid modification during iteration
-            List<int> entityIds = new List<int>(_activeEntities.Keys);
+            if (entity == null) return;
             
-            foreach (int id in entityIds)
+            // Use reflection to set the ID field
+            var idField = typeof(BaseEntity).GetField("_id", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (idField != null)
             {
-                if (_activeEntities.TryGetValue(id, out BaseEntity entity))
-                {
-                    ReturnUnit(entity);
-                }
+                idField.SetValue(entity, _nextEntityId++);
             }
-            
-            Debug.Log($"UnitFactory: Returned all {entityIds.Count} units to pool");
+            else
+            {
+                Debug.LogError("UnitFactory: Cannot find _id field in BaseEntity");
+            }
         }
-        
+
+        #endregion
+
+        #region Public API
+
         /// <summary>
         /// Get a unit model by entity ID
         /// </summary>
@@ -473,59 +584,29 @@ namespace VikingRaven.Core.Factory
         }
         
         /// <summary>
-        /// Initialize components on a unit entity
+        /// Return all units to their pools
         /// </summary>
-        private void InitializeEntityComponents(IEntity entity)
+        [Button("Return All Units"), TitleGroup("Debug Tools")]
+        public void ReturnAllUnits()
         {
-            // Get the MonoBehaviour
-            var entityTransform = entity as MonoBehaviour;
-            if (entityTransform == null) return;
+            // Create a copy of the keys to avoid modification during iteration
+            List<int> entityIds = new List<int>(_activeEntities.Keys);
             
-            // Ensure all components are properly initialized
-            var components = entityTransform.GetComponents<IComponent>();
-            foreach (var component in components)
+            foreach (int id in entityIds)
             {
-                if (component.Entity == null)
+                if (_activeEntities.TryGetValue(id, out BaseEntity entity))
                 {
-                    component.Entity = entity;
+                    ReturnUnit(entity);
                 }
-                
-                component.Initialize();
             }
-        }
-        
-        /// <summary>
-        /// Assign a unique entity ID
-        /// </summary>
-        private void AssignEntityId(BaseEntity entity)
-        {
-            if (entity == null) return;
             
-            // Use reflection to set the ID field
-            var idField = typeof(BaseEntity).GetField("_id", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (idField != null)
-            {
-                idField.SetValue(entity, _nextEntityId++);
-            }
-            else
-            {
-                Debug.LogError("UnitFactory: Cannot find _id field in BaseEntity");
-            }
-        }
-        
-        /// <summary>
-        /// Create a parent transform for a pool
-        /// </summary>
-        private Transform CreatePoolParent(string name)
-        {
-            GameObject parent = new GameObject(name);
-            parent.transform.SetParent(transform);
-            return parent.transform;
+            Debug.Log($"UnitFactory: Returned all {entityIds.Count} units to pool");
         }
         
         /// <summary>
         /// Clear all pools and reset the factory
         /// </summary>
+        [Button("Clear All Pools"), TitleGroup("Debug Tools")]
         public void ClearAllPools()
         {
             // Return all active units first
@@ -546,20 +627,26 @@ namespace VikingRaven.Core.Factory
         /// <summary>
         /// Get statistics about the pools
         /// </summary>
+        [Button("Show Pool Stats"), TitleGroup("Debug Tools")]
         public string GetPoolStats()
         {
-            return $"UnitFactory Stats:\n" +
-                   $"Infantry Pool: {_infantryPool?.CountInactive}/{_infantryPool?.CountAll} inactive/total\n" +
-                   $"Archer Pool: {_archerPool?.CountInactive}/{_archerPool?.CountAll} inactive/total\n" +
-                   $"Pike Pool: {_pikePool?.CountInactive}/{_pikePool?.CountAll} inactive/total\n" +
-                   $"Active Entities: {_activeEntities.Count}\n" +
-                   $"Unit Models: {_unitModelsById.Count}\n" +
-                   $"Unit Templates: {_unitModelTemplates.Count}";
+            string stats = "UnitFactory Stats:\n";
+            
+            stats += $"Infantry Pool: {_infantryPool?.CountInactive}/{_infantryPool?.CountAll} inactive/total\n";
+            stats += $"Archer Pool: {_archerPool?.CountInactive}/{_archerPool?.CountAll} inactive/total\n";
+            stats += $"Pike Pool: {_pikePool?.CountInactive}/{_pikePool?.CountAll} inactive/total\n";
+            stats += $"Active Entities: {_activeEntities.Count}\n";
+            stats += $"Unit Models: {_unitModelsById.Count}\n";
+            stats += $"Unit Templates: {_unitModelTemplates.Count}";
+            
+            Debug.Log(stats);
+            return stats;
         }
         
         /// <summary>
         /// Refresh all unit models by reapplying their data
         /// </summary>
+        [Button("Refresh All Units"), TitleGroup("Debug Tools")]
         public void RefreshAllUnits()
         {
             foreach (var unitModel in _unitModelsById.Values)
@@ -569,20 +656,7 @@ namespace VikingRaven.Core.Factory
             
             Debug.Log($"UnitFactory: Refreshed all {_unitModelsById.Count} unit models");
         }
-        
-        /// <summary>
-        /// Handle unit model cleanup on destroy
-        /// </summary>
-        private void OnDestroy()
-        {
-            // Clean up all unit models
-            foreach (var unitModel in _unitModelsById.Values)
-            {
-                unitModel.Cleanup();
-            }
-            
-            // Clear pools
-            ClearAllPools();
-        }
+
+        #endregion
     }
 }
