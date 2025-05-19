@@ -6,13 +6,10 @@ using VikingRaven.Core.ObjectPooling;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Data;
 using VikingRaven.Units.Models;
+using Random = UnityEngine.Random;
 
 namespace VikingRaven.Core.Factory
 {
-    /// <summary>
-    /// Enhanced factory responsible for creating and managing units and their models
-    /// Uses object pooling for efficient unit management
-    /// </summary>
     public class UnitFactory : MonoBehaviour, IEntityFactory
     {
         // References to unit prefabs
@@ -36,10 +33,10 @@ namespace VikingRaven.Core.Factory
         private Dictionary<int, BaseEntity> _activeEntities = new Dictionary<int, BaseEntity>();
         
         // Dictionary to track unit models by entity ID
-        private Dictionary<int, UnitModel> _unitModels = new Dictionary<int, UnitModel>();
+        private Dictionary<int, UnitModel> _unitModelsById = new Dictionary<int, UnitModel>();
         
-        // Data cache for performance
-        private Dictionary<UnitType, List<UnitDataSO>> _unitDataCache = new Dictionary<UnitType, List<UnitDataSO>>();
+        // Dictionary to cache unit models by unit data ID
+        private Dictionary<string, UnitModel> _unitModelTemplates = new Dictionary<string, UnitModel>();
         
         // Next entity ID to assign
         private int _nextEntityId = 1000;
@@ -64,7 +61,7 @@ namespace VikingRaven.Core.Factory
             // Preload data cache
             if (_preloadOnAwake)
             {
-                PreloadDataCache();
+                PreloadUnitModels();
             }
         }
         
@@ -89,7 +86,7 @@ namespace VikingRaven.Core.Factory
                     OnReturnUnit,
                     OnGetUnit
                 );
-                Debug.Log($"EnhancedUnitFactory: Created infantry pool with {_infantryPoolSize} units");
+                Debug.Log($"UnitFactory: Created infantry pool with {_infantryPoolSize} units");
             }
             
             if (_archerPrefab != null)
@@ -102,7 +99,7 @@ namespace VikingRaven.Core.Factory
                     OnReturnUnit,
                     OnGetUnit
                 );
-                Debug.Log($"EnhancedUnitFactory: Created archer pool with {_archerPoolSize} units");
+                Debug.Log($"UnitFactory: Created archer pool with {_archerPoolSize} units");
             }
             
             if (_pikePrefab != null)
@@ -115,51 +112,38 @@ namespace VikingRaven.Core.Factory
                     OnReturnUnit,
                     OnGetUnit
                 );
-                Debug.Log($"EnhancedUnitFactory: Created pike pool with {_pikePoolSize} units");
+                Debug.Log($"UnitFactory: Created pike pool with {_pikePoolSize} units");
             }
         }
         
         /// <summary>
-        /// Preload unit data from DataManager
+        /// Preload unit models from DataManager
         /// </summary>
-        private void PreloadDataCache()
+        private void PreloadUnitModels()
         {
             if (DataManager == null || !DataManager.IsInitialized)
             {
-                Debug.LogWarning("EnhancedUnitFactory: DataManager not available for preloading data");
+                Debug.LogWarning("UnitFactory: DataManager not available for preloading data");
                 return;
             }
             
             // Clear existing cache
-            _unitDataCache.Clear();
+            _unitModelTemplates.Clear();
             
-            // Initialize cache for each unit type
-            _unitDataCache[UnitType.Infantry] = new List<UnitDataSO>();
-            _unitDataCache[UnitType.Archer] = new List<UnitDataSO>();
-            _unitDataCache[UnitType.Pike] = new List<UnitDataSO>();
-            
-            // Load all unit data
+            // Get all unit data from DataManager
             List<UnitDataSO> allUnitData = DataManager.GetAllUnitData();
             
             foreach (var unitData in allUnitData)
             {
-                if (_unitDataCache.TryGetValue(unitData.UnitType, out var list))
+                if (!string.IsNullOrEmpty(unitData.UnitId))
                 {
-                    list.Add(unitData);
+                    // Create a template UnitModel (without a real entity)
+                    UnitModel templateModel = new UnitModel(null, unitData);
+                    _unitModelTemplates[unitData.UnitId] = templateModel;
                 }
             }
             
-            Debug.Log($"EnhancedUnitFactory: Preloaded {allUnitData.Count} unit data templates");
-        }
-        
-        /// <summary>
-        /// Create a parent transform for a pool
-        /// </summary>
-        private Transform CreatePoolParent(string name)
-        {
-            GameObject parent = new GameObject(name);
-            parent.transform.SetParent(transform);
-            return parent.transform;
+            Debug.Log($"UnitFactory: Preloaded {_unitModelTemplates.Count} unit model templates");
         }
         
         /// <summary>
@@ -171,7 +155,7 @@ namespace VikingRaven.Core.Factory
             
             // Get the unit model
             UnitModel unitModel = null;
-            if (_unitModels.TryGetValue(entity.Id, out unitModel))
+            if (_unitModelsById.TryGetValue(entity.Id, out unitModel))
             {
                 // Clean up model
                 unitModel.Cleanup();
@@ -180,7 +164,7 @@ namespace VikingRaven.Core.Factory
                 OnUnitReturned?.Invoke(unitModel);
                 
                 // Remove from tracking dictionaries
-                _unitModels.Remove(entity.Id);
+                _unitModelsById.Remove(entity.Id);
             }
             
             // Reset the unit's state
@@ -207,7 +191,7 @@ namespace VikingRaven.Core.Factory
                 // EntityRegistry.UnregisterEntity(entity);
             }
             
-            Debug.Log($"EnhancedUnitFactory: Returned entity {entity.Id} to pool");
+            Debug.Log($"UnitFactory: Returned entity {entity.Id} to pool");
         }
         
         /// <summary>
@@ -232,7 +216,7 @@ namespace VikingRaven.Core.Factory
             // Initialize components
             InitializeEntityComponents(entity);
             
-            Debug.Log($"EnhancedUnitFactory: Got entity {entity.Id} from pool");
+            Debug.Log($"UnitFactory: Got entity {entity.Id} from pool");
         }
 
         /// <summary>
@@ -262,7 +246,7 @@ namespace VikingRaven.Core.Factory
         {
             if (unitData == null)
             {
-                Debug.LogError("dUnitFactory: Cannot create unit - unitData is null");
+                Debug.LogError("UnitFactory: Cannot create unit - unitData is null");
                 return null;
             }
             
@@ -271,7 +255,7 @@ namespace VikingRaven.Core.Factory
             
             if (pool == null)
             {
-                Debug.LogError($"EnhancedUnitFactory: No pool available for unit type {unitData.UnitType}");
+                Debug.LogError($"UnitFactory: No pool available for unit type {unitData.UnitType}");
                 return null;
             }
             
@@ -279,7 +263,7 @@ namespace VikingRaven.Core.Factory
             BaseEntity entity = pool.Get();
             if (entity == null)
             {
-                Debug.LogError($"EnhancedUnitFactory: Failed to get unit from pool for type {unitData.UnitType}");
+                Debug.LogError($"UnitFactory: Failed to get unit from pool for type {unitData.UnitType}");
                 return null;
             }
             
@@ -298,12 +282,44 @@ namespace VikingRaven.Core.Factory
             UnitModel unitModel = new UnitModel(entity, unitData);
             
             // Store in dictionary
-            _unitModels[entity.Id] = unitModel;
+            _unitModelsById[entity.Id] = unitModel;
             
             // Trigger event
             OnUnitCreated?.Invoke(unitModel);
             
-            Debug.Log($"EnhancedUnitFactory: Created unit ID {entity.Id} of type {unitData.UnitType} at position {position}");
+            Debug.Log($"UnitFactory: Created unit ID {entity.Id} of type {unitData.UnitType} at position {position}");
+            
+            return entity;
+        }
+        
+        /// <summary>
+        /// Create a unit from a template UnitModel in cache
+        /// </summary>
+        public IEntity CreateUnitFromTemplate(string unitId, Vector3 position, Quaternion rotation)
+        {
+            // Check if template exists
+            if (!_unitModelTemplates.TryGetValue(unitId, out UnitModel templateModel))
+            {
+                // If not in cache, try to get from DataManager
+                UnitDataSO unitData = DataManager.GetUnitData(unitId);
+                if (unitData == null)
+                {
+                    Debug.LogError($"UnitFactory: Cannot create unit - template with ID {unitId} not found");
+                    return null;
+                }
+                
+                // Create a new template
+                templateModel = new UnitModel(null, unitData);
+                _unitModelTemplates[unitId] = templateModel;
+                
+                Debug.Log($"UnitFactory: Created new template for unit ID {unitId}");
+            }
+            
+            // Get the unit data from the template
+            UnitDataSO templateData = templateModel.Data;
+            
+            // Create entity
+            IEntity entity = CreateUnitFromData(templateData, position, rotation);
             
             return entity;
         }
@@ -331,33 +347,18 @@ namespace VikingRaven.Core.Factory
         /// </summary>
         private UnitDataSO GetUnitData(UnitType unitType)
         {
-            // Check cache first
-            if (_unitDataCache.TryGetValue(unitType, out var dataList) && dataList.Count > 0)
-            {
-                // Return a random unit data of the requested type
-                return dataList[Random.Range(0, dataList.Count)];
-            }
-            
-            // Otherwise, try to get from DataManager
+            // Get data from DataManager if available
             if (DataManager != null && DataManager.IsInitialized)
             {
                 var unitDataList = DataManager.GetUnitDataByType(unitType);
                 if (unitDataList.Count > 0)
                 {
-                    // Cache for future use
-                    if (!_unitDataCache.ContainsKey(unitType))
-                    {
-                        _unitDataCache[unitType] = new List<UnitDataSO>();
-                    }
-                    
-                    _unitDataCache[unitType].AddRange(unitDataList);
-                    
                     // Return a random unit data
                     return unitDataList[Random.Range(0, unitDataList.Count)];
                 }
             }
             
-            Debug.LogWarning($"EnhancedUnitFactory: No unit data found for type {unitType}");
+            Debug.LogWarning($"UnitFactory: No unit data found for type {unitType}");
             return null;
         }
         
@@ -382,7 +383,7 @@ namespace VikingRaven.Core.Factory
             {
                 // Return to the appropriate pool
                 pool.Return(baseEntity);
-                Debug.Log($"EnhancedUnitFactory: Returned unit ID {entity.Id} of type {unitType} to pool");
+                Debug.Log($"UnitFactory: Returned unit ID {entity.Id} of type {unitType} to pool");
             }
         }
         
@@ -402,7 +403,7 @@ namespace VikingRaven.Core.Factory
                 }
             }
             
-            Debug.Log($"EnhancedUnitFactory: Returned all {entityIds.Count} units to pool");
+            Debug.Log($"UnitFactory: Returned all {entityIds.Count} units to pool");
         }
         
         /// <summary>
@@ -410,7 +411,7 @@ namespace VikingRaven.Core.Factory
         /// </summary>
         public UnitModel GetUnitModel(int entityId)
         {
-            if (_unitModels.TryGetValue(entityId, out UnitModel model))
+            if (_unitModelsById.TryGetValue(entityId, out UnitModel model))
             {
                 return model;
             }
@@ -428,11 +429,31 @@ namespace VikingRaven.Core.Factory
         }
         
         /// <summary>
+        /// Get a unit template from cache by ID
+        /// </summary>
+        public UnitModel GetUnitTemplate(string unitId)
+        {
+            if (_unitModelTemplates.TryGetValue(unitId, out UnitModel template))
+            {
+                return template;
+            }
+            return null;
+        }
+        
+        /// <summary>
+        /// Get all unit templates
+        /// </summary>
+        public Dictionary<string, UnitModel> GetAllUnitTemplates()
+        {
+            return new Dictionary<string, UnitModel>(_unitModelTemplates);
+        }
+        
+        /// <summary>
         /// Get all unit models
         /// </summary>
         public List<UnitModel> GetAllUnitModels()
         {
-            return new List<UnitModel>(_unitModels.Values);
+            return new List<UnitModel>(_unitModelsById.Values);
         }
         
         /// <summary>
@@ -441,15 +462,13 @@ namespace VikingRaven.Core.Factory
         public List<UnitModel> GetUnitModelsByType(UnitType unitType)
         {
             List<UnitModel> result = new List<UnitModel>();
-            
-            foreach (var model in _unitModels.Values)
+            foreach (var unitModel in _unitModelsById.Values)
             {
-                if (model.UnitType == unitType)
+                if (unitModel.UnitType == unitType)
                 {
-                    result.Add(model);
+                    result.Add(unitModel);
                 }
             }
-            
             return result;
         }
         
@@ -490,8 +509,18 @@ namespace VikingRaven.Core.Factory
             }
             else
             {
-                Debug.LogError("EnhancedUnitFactory: Cannot find _id field in BaseEntity");
+                Debug.LogError("UnitFactory: Cannot find _id field in BaseEntity");
             }
+        }
+        
+        /// <summary>
+        /// Create a parent transform for a pool
+        /// </summary>
+        private Transform CreatePoolParent(string name)
+        {
+            GameObject parent = new GameObject(name);
+            parent.transform.SetParent(transform);
+            return parent.transform;
         }
         
         /// <summary>
@@ -509,9 +538,9 @@ namespace VikingRaven.Core.Factory
             
             // Clear dictionaries
             _activeEntities.Clear();
-            _unitModels.Clear();
+            _unitModelsById.Clear();
             
-            Debug.Log("EnhancedUnitFactory: Cleared all unit pools");
+            Debug.Log("UnitFactory: Cleared all unit pools");
         }
         
         /// <summary>
@@ -519,12 +548,13 @@ namespace VikingRaven.Core.Factory
         /// </summary>
         public string GetPoolStats()
         {
-            return $"EnhancedUnitFactory Stats:\n" +
+            return $"UnitFactory Stats:\n" +
                    $"Infantry Pool: {_infantryPool?.CountInactive}/{_infantryPool?.CountAll} inactive/total\n" +
                    $"Archer Pool: {_archerPool?.CountInactive}/{_archerPool?.CountAll} inactive/total\n" +
                    $"Pike Pool: {_pikePool?.CountInactive}/{_pikePool?.CountAll} inactive/total\n" +
                    $"Active Entities: {_activeEntities.Count}\n" +
-                   $"Unit Models: {_unitModels.Count}";
+                   $"Unit Models: {_unitModelsById.Count}\n" +
+                   $"Unit Templates: {_unitModelTemplates.Count}";
         }
         
         /// <summary>
@@ -532,12 +562,12 @@ namespace VikingRaven.Core.Factory
         /// </summary>
         public void RefreshAllUnits()
         {
-            foreach (var unitModel in _unitModels.Values)
+            foreach (var unitModel in _unitModelsById.Values)
             {
                 unitModel.ApplyData();
             }
             
-            Debug.Log($"EnhancedUnitFactory: Refreshed all {_unitModels.Count} unit models");
+            Debug.Log($"UnitFactory: Refreshed all {_unitModelsById.Count} unit models");
         }
         
         /// <summary>
@@ -546,7 +576,7 @@ namespace VikingRaven.Core.Factory
         private void OnDestroy()
         {
             // Clean up all unit models
-            foreach (var unitModel in _unitModels.Values)
+            foreach (var unitModel in _unitModelsById.Values)
             {
                 unitModel.Cleanup();
             }

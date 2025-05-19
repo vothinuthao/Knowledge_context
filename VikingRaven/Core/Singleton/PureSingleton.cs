@@ -88,6 +88,11 @@ namespace Core.Utils
             _isInitialized = true;
             return true;
         }
+
+        public virtual void OnInitialize()
+        {
+            
+        }
         
         /// <summary>
         /// Ensure that this singleton is initialized before use

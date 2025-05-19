@@ -1,5 +1,8 @@
 ﻿// GameBootstrapper.cs - cập nhật để sử dụng Singleton thay vì DI
+
+using System;
 using UnityEngine;
+using VikingRaven.Core.Data;
 using VikingRaven.Core.ECS;
 using VikingRaven.Game;
 using VikingRaven.Core.Factory;
@@ -15,7 +18,12 @@ namespace VikingRaven.Core
         private SquadFactory SquadFactory => SquadFactory.Instance;
         private GameManager GameManager => GameManager.Instance;
         private LevelManager LevelManager => LevelManager.Instance;
-        
+
+        private void Awake()
+        {
+            DataManager.Instance.OnInitialize();
+        }
+
         private void Start()
         {
             Debug.Log("GameBootstrapper: Initializing game...");

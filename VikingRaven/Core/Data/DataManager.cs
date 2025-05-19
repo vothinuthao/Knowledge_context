@@ -1,202 +1,144 @@
 ﻿using System.Collections.Generic;
-using UnityEngine;
 using Core.Utils;
+using UnityEngine;
+using VikingRaven.Core.Utils;
 using VikingRaven.Units.Data;
+using VikingRaven.Units.Models;
+using VikingRaven.Units.Components;
 
 namespace VikingRaven.Core.Data
 {
     /// <summary>
-    /// Manages loading and accessing game data from ScriptableObjects
+    /// Trung tâm quản lý và lưu trữ tất cả dữ liệu game
     /// </summary>
     public class DataManager : PureSingleton<DataManager>
     {
-        // Dictionary for caching unit data, accessed by unit ID
-        private Dictionary<string, UnitDataSO> _unitDataDict = new Dictionary<string, UnitDataSO>();
+        private Dictionary<string, UnitDataSO> _unitDataCache = new Dictionary<string, UnitDataSO>();
+        private Dictionary<string, SquadDataSO> _squadDataCache = new Dictionary<string, SquadDataSO>();
+
+        private string UNIT_LOADING_PATH = "Units";
+        private string SQUAD_LOADING_PATH = "Squads";
+        private bool _isInitialized = false;
         
-        // Dictionary for caching squad data, accessed by squad ID
-        private Dictionary<string, SquadDataSO> _squadDataDict = new Dictionary<string, SquadDataSO>();
+        public bool IsInitialized => _isInitialized;
         
-        // Flag to track if data has been loaded
-        private bool _dataLoaded = false;
-        
-        /// <summary>
-        /// Load all game data from Resources folders
-        /// </summary>
-        /// <returns>True if data was loaded successfully</returns>
-        public override bool Initialize()
+        public override void OnInitialize()
         {
-            if (_dataLoaded) 
-                return true;
-                
-            // Call base implementation first
-            base.Initialize();
-            
-            // Load unit data
-            LoadUnitData();
-            
-            // Load squad data
-            LoadSquadData();
-            
-            // Set flag to indicate data is loaded
-            _dataLoaded = true;
-            
-            Debug.Log($"DataManager: Initialized with {_unitDataDict.Count} units and {_squadDataDict.Count} squads");
-            return true;
+            base.OnInitialize();
+            LoadAllData();
+        }
+        
+        private void LoadAllData()
+        {
+            Debug.Log("DataManager: Loading all data...");
+            LoadAllUnitData();
+            LoadAllSquadData();
+            _isInitialized = true;
+            Debug.Log($"DataManager: Data loaded successfully. {_unitDataCache.Count} unit types, {_squadDataCache.Count} squad types.");
         }
         
         /// <summary>
-        /// Load all unit data from Resources
+        /// Load tất cả UnitDataSO
         /// </summary>
-        private void LoadUnitData()
+        private void LoadAllUnitData()
         {
-            // Clear existing cache
-            _unitDataDict.Clear();
-            
-            // Load all UnitData assets from Resources/Units folder
-            UnitDataSO[] unitDataArray = Resources.LoadAll<UnitDataSO>("Units");
+            _unitDataCache.Clear();
+            UnitDataSO[] unitDataArray = Resources.LoadAll<UnitDataSO>(UNIT_LOADING_PATH);
             
             foreach (var unitData in unitDataArray)
             {
                 if (!string.IsNullOrEmpty(unitData.UnitId))
                 {
-                    // Create a clone to avoid shared references
-                    _unitDataDict[unitData.UnitId] = unitData.Clone();
-                    Debug.Log($"DataManager: Loaded UnitData [{unitData.UnitId}] - {unitData.DisplayName}");
+                    _unitDataCache[unitData.UnitId] = unitData;
                 }
                 else
                 {
-                    Debug.LogWarning($"DataManager: Skipping UnitData with empty ID: {unitData.name}");
+                    Debug.LogWarning($"DataManager: UnitData with empty ID found: {unitData.name}");
                 }
             }
             
-            Debug.Log($"DataManager: Loaded {_unitDataDict.Count} unit data assets");
+            Debug.Log($"DataManager: Loaded {_unitDataCache.Count} unit data types.");
         }
         
-        /// <summary>
-        /// Load all squad data from Resources
-        /// </summary>
-        private void LoadSquadData()
+        private void LoadAllSquadData()
         {
-            // Clear existing cache
-            _squadDataDict.Clear();
-            
-            // Load all SquadData assets from Resources/Squads folder
-            SquadDataSO[] squadDataArray = Resources.LoadAll<SquadDataSO>("Squads");
+            _squadDataCache.Clear();
+            SquadDataSO[] squadDataArray = Resources.LoadAll<SquadDataSO>(SQUAD_LOADING_PATH);
             
             foreach (var squadData in squadDataArray)
             {
                 if (!string.IsNullOrEmpty(squadData.SquadId))
                 {
-                    // Create a clone to avoid shared references
-                    _squadDataDict[squadData.SquadId] = squadData.Clone();
-                    Debug.Log($"DataManager: Loaded SquadData [{squadData.SquadId}] - {squadData.DisplayName}");
+                    _squadDataCache[squadData.SquadId] = squadData;
                 }
                 else
                 {
-                    Debug.LogWarning($"DataManager: Skipping SquadData with empty ID: {squadData.name}");
+                    Debug.LogWarning($"DataManager: SquadData with empty ID found: {squadData.name}");
                 }
             }
             
-            Debug.Log($"DataManager: Loaded {_squadDataDict.Count} squad data assets");
+            Debug.Log($"DataManager: Loaded {_squadDataCache.Count} squad data types.");
         }
-        
-        /// <summary>
-        /// Get unit data by ID
-        /// </summary>
-        /// <param name="unitId">Unit ID</param>
-        /// <returns>UnitData or null if not found</returns>
         public UnitDataSO GetUnitData(string unitId)
         {
-            if (_unitDataDict.TryGetValue(unitId, out UnitDataSO unitData))
+            if (_unitDataCache.TryGetValue(unitId, out UnitDataSO unitData))
             {
                 return unitData;
             }
             
-            Debug.LogWarning($"DataManager: UnitData not found for ID: {unitId}");
+            Debug.LogWarning($"DataManager: UnitData with ID {unitId} not found!");
             return null;
         }
         
-        /// <summary>
-        /// Get squad data by ID
-        /// </summary>
-        /// <param name="squadId">Squad ID</param>
-        /// <returns>SquadData or null if not found</returns>
         public SquadDataSO GetSquadData(string squadId)
         {
-            if (_squadDataDict.TryGetValue(squadId, out SquadDataSO squadData))
+            if (_squadDataCache.TryGetValue(squadId, out SquadDataSO squadData))
             {
                 return squadData;
             }
             
-            Debug.LogWarning($"DataManager: SquadData not found for ID: {squadId}");
+            Debug.LogWarning($"DataManager: SquadData with ID {squadId} not found!");
             return null;
         }
         
-        /// <summary>
-        /// Get all available unit data
-        /// </summary>
-        /// <returns>List of all unit data</returns>
         public List<UnitDataSO> GetAllUnitData()
         {
-            List<UnitDataSO> result = new List<UnitDataSO>();
-            foreach (var unitData in _unitDataDict.Values)
-            {
-                result.Add(unitData);
-            }
-            return result;
+            return new List<UnitDataSO>(_unitDataCache.Values);
         }
         
-        /// <summary>
-        /// Get all available squad data
-        /// </summary>
-        /// <returns>List of all squad data</returns>
         public List<SquadDataSO> GetAllSquadData()
         {
-            List<SquadDataSO> result = new List<SquadDataSO>();
-            foreach (var squadData in _squadDataDict.Values)
-            {
-                result.Add(squadData);
-            }
-            return result;
+            return new List<SquadDataSO>(_squadDataCache.Values);
         }
         
-        /// <summary>
-        /// Get all unit data of a specific type
-        /// </summary>
-        /// <param name="unitType">Type of unit to filter by</param>
-        /// <returns>List of unit data matching the type</returns>
-        public List<UnitDataSO> GetUnitDataByType(Units.Components.UnitType unitType)
+        public List<UnitDataSO> GetUnitDataByType(UnitType unitType)
         {
             List<UnitDataSO> result = new List<UnitDataSO>();
-            foreach (var unitData in _unitDataDict.Values)
+            
+            foreach (var unitData in _unitDataCache.Values)
             {
                 if (unitData.UnitType == unitType)
                 {
                     result.Add(unitData);
                 }
             }
+            
             return result;
         }
         
-        /// <summary>
-        /// Reload all data from resources
-        /// </summary>
-        public void ReloadData()
+        public List<SquadDataSO> GetSquadDataByFaction(string faction)
         {
-            _dataLoaded = false;
-            Initialize();
-            Debug.Log("DataManager: All data reloaded");
-        }
-        
-        /// <summary>
-        /// Clean up resources
-        /// </summary>
-        public override void Cleanup()
-        {
-            _unitDataDict.Clear();
-            _squadDataDict.Clear();
-            _dataLoaded = false;
-            base.Cleanup();
+            List<SquadDataSO> result = new List<SquadDataSO>();
+            
+            foreach (var squadData in _squadDataCache.Values)
+            {
+                if (squadData.Faction == faction)
+                {
+                    result.Add(squadData);
+                }
+            }
+            
+            return result;
         }
     }
 }

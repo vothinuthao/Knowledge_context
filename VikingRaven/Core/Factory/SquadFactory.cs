@@ -12,8 +12,7 @@ using Random = UnityEngine.Random;
 namespace VikingRaven.Core.Factory
 {
     /// <summary>
-    /// Enhanced factory for creating and managing squads of units
-    /// Uses the EnhancedUnitFactory to create units and SquadModel to manage them
+    /// Factory cho việc tạo và quản lý Squad, lưu trữ SquadModel cache
     /// </summary>
     public class SquadFactory : Singleton<SquadFactory>
     {
@@ -26,13 +25,13 @@ namespace VikingRaven.Core.Factory
         // Dictionary to store active squads by ID
         private Dictionary<int, SquadModel> _activeSquads = new Dictionary<int, SquadModel>();
         
+        // Dictionary to cache squad templates by ID
+        private Dictionary<string, SquadModel> _squadModelTemplates = new Dictionary<string, SquadModel>();
+        
         // Categorized squad lists
         private List<int> _playerSquadIds = new List<int>();
         private List<int> _enemySquadIds = new List<int>();
         private List<int> _neutralSquadIds = new List<int>();
-        
-        // Data cache
-        private Dictionary<string, SquadDataSO> _squadDataCache = new Dictionary<string, SquadDataSO>();
         
         // References to other systems
         private DataManager DataManager => DataManager.Instance;
@@ -43,11 +42,10 @@ namespace VikingRaven.Core.Factory
         public event SquadEvent OnSquadDisbanded;
         
         
-        [Obsolete("Obsolete")]
         protected override void OnInitialize()
         {
             base.OnInitialize();
-            Debug.Log("EnhancedSquadFactory initialized as singleton");
+            Debug.Log("SquadFactory initialized as singleton");
             
             // Auto-initialize unit factory reference if not set
             if (_unitFactory == null)
@@ -55,27 +53,27 @@ namespace VikingRaven.Core.Factory
                 _unitFactory = FindObjectOfType<UnitFactory>();
                 if (_unitFactory == null)
                 {
-                    Debug.LogError("EnhancedSquadFactory: UnitFactory reference is not set and couldn't be found");
+                    Debug.LogError("SquadFactory: UnitFactory reference is not set and couldn't be found");
                 }
             }
             
             // Preload data cache
-            PreloadDataCache();
+            PreloadSquadModels();
         }
         
         /// <summary>
-        /// Preload squad data from DataManager
+        /// Preload squad models from DataManager
         /// </summary>
-        private void PreloadDataCache()
+        private void PreloadSquadModels()
         {
             if (DataManager == null || !DataManager.IsInitialized)
             {
-                Debug.LogWarning("EnhancedSquadFactory: DataManager not available for preloading data");
+                Debug.LogWarning("SquadFactory: DataManager not available for preloading data");
                 return;
             }
             
             // Clear existing cache
-            _squadDataCache.Clear();
+            _squadModelTemplates.Clear();
             
             // Load all squad data
             List<SquadDataSO> allSquadData = DataManager.GetAllSquadData();
@@ -84,26 +82,53 @@ namespace VikingRaven.Core.Factory
             {
                 if (!string.IsNullOrEmpty(squadData.SquadId))
                 {
-                    _squadDataCache[squadData.SquadId] = squadData;
+                    // Create a template SquadModel (without actual units)
+                    SquadModel templateModel = new SquadModel(-1, squadData, Vector3.zero, Quaternion.identity);
+                    _squadModelTemplates[squadData.SquadId] = templateModel;
                 }
             }
             
-            Debug.Log($"EnhancedSquadFactory: Preloaded {_squadDataCache.Count} squad data templates");
+            Debug.Log($"SquadFactory: Preloaded {_squadModelTemplates.Count} squad templates");
+        }
+        
+        /// <summary>
+        /// Create a squad based on a template ID from cache
+        /// </summary>
+        public SquadModel CreateSquadFromTemplate(string squadTemplateId, Vector3 position, Quaternion rotation, bool isEnemy = false)
+        {
+            // Check if template exists
+            if (!_squadModelTemplates.TryGetValue(squadTemplateId, out SquadModel templateModel))
+            {
+                // If not in cache, try to get from DataManager
+                SquadDataSO squadDataSo = DataManager.GetSquadData(squadTemplateId);
+                if (squadDataSo == null)
+                {
+                    Debug.LogError($"SquadFactory: Cannot create squad - template with ID {squadTemplateId} not found");
+                    return null;
+                }
+                
+                // Create a new template
+                templateModel = new SquadModel(-1, squadDataSo, Vector3.zero, Quaternion.identity);
+                _squadModelTemplates[squadTemplateId] = templateModel;
+                
+                Debug.Log($"SquadFactory: Created new template for squad ID {squadTemplateId}");
+            }
+            
+            // Get squad data from template
+            SquadDataSO squadData = templateModel.Data;
+            
+            // Create an actual squad using the template's data
+            return CreateSquadFromData(squadData, position, rotation, isEnemy);
         }
         
         /// <summary>
         /// Create a squad based on SquadData
         /// </summary>
-        /// <param name="squadData">Data defining the squad composition</param>
-        /// <param name="position">Position in world space</param>
-        /// <param name="rotation">Rotation in world space</param>
-        /// <param name="isEnemy">Whether this is an enemy squad</param>
-        /// <returns>The created squad model</returns>
         public SquadModel CreateSquadFromData(SquadDataSO squadData, Vector3 position, Quaternion rotation, bool isEnemy = false)
         {
             if (squadData == null)
             {
-                Debug.LogError("EnhancedSquadFactory: Cannot create squad - squadData is null");
+                Debug.LogError("SquadFactory: Cannot create squad - squadData is null");
                 return null;
             }
             
@@ -121,6 +146,8 @@ namespace VikingRaven.Core.Factory
                 if (composition.UnitData == null || composition.Count <= 0)
                     continue;
                     
+                string unitId = composition.UnitData.UnitId;
+                
                 for (int i = 0; i < composition.Count; i++)
                 {
                     // Add a small random offset to avoid units spawning at exactly the same position
@@ -130,12 +157,26 @@ namespace VikingRaven.Core.Factory
                         Random.Range(-0.5f, 0.5f)
                     );
                     
-                    // Create unit from data
-                    IEntity unitEntity = _unitFactory.CreateUnitFromData(
-                        composition.UnitData,
-                        position + spawnOffset,
-                        rotation
-                    );
+                    // Create unit from template or data
+                    IEntity unitEntity;
+                    if (!string.IsNullOrEmpty(unitId) && _unitFactory != null)
+                    {
+                        // Use template if available
+                        unitEntity = _unitFactory.CreateUnitFromTemplate(
+                            unitId,
+                            position + spawnOffset,
+                            rotation
+                        );
+                    }
+                    else
+                    {
+                        // Fallback to direct creation
+                        unitEntity = _unitFactory.CreateUnitFromData(
+                            composition.UnitData,
+                            position + spawnOffset,
+                            rotation
+                        );
+                    }
                     
                     if (unitEntity != null)
                     {
@@ -172,7 +213,7 @@ namespace VikingRaven.Core.Factory
             // Trigger event
             OnSquadCreated?.Invoke(squadModel);
             
-            Debug.Log($"EnhancedSquadFactory: Created {(isEnemy ? "enemy" : "player")} squad {squadId} with {squadUnits.Count} units based on {squadData.DisplayName}");
+            Debug.Log($"SquadFactory: Created {(isEnemy ? "enemy" : "player")} squad {squadId} with {squadUnits.Count} units based on {squadData.DisplayName}");
             
             return squadModel;
         }
@@ -180,15 +221,9 @@ namespace VikingRaven.Core.Factory
         /// <summary>
         /// Create a squad with a single unit type
         /// </summary>
-        /// <param name="unitType">Type of unit</param>
-        /// <param name="unitCount">Number of units to create</param>
-        /// <param name="position">Position in world space</param>
-        /// <param name="rotation">Rotation in world space</param>
-        /// <param name="isEnemy">Whether this is an enemy squad</param>
-        /// <returns>The created squad model</returns>
         public SquadModel CreateSquad(UnitType unitType, int unitCount, Vector3 position, Quaternion rotation, bool isEnemy = false)
         {
-            // Try to find a matching squad data first
+            // Try to find a matching squad template first
             SquadDataSO matchingData = FindMatchingSquadData(unitType);
             
             if (matchingData != null)
@@ -248,7 +283,7 @@ namespace VikingRaven.Core.Factory
             // Trigger event
             OnSquadCreated?.Invoke(squadModel);
             
-            Debug.Log($"EnhancedSquadFactory: Created {(isEnemy ? "enemy" : "player")} squad {squadId} with {squadUnits.Count} units of type {unitType}");
+            Debug.Log($"SquadFactory: Created {(isEnemy ? "enemy" : "player")} squad {squadId} with {squadUnits.Count} units of type {unitType}");
             
             return squadModel;
         }
@@ -330,11 +365,6 @@ namespace VikingRaven.Core.Factory
         /// <summary>
         /// Create a mixed squad with different unit types
         /// </summary>
-        /// <param name="unitCounts">Dictionary mapping unit types to counts</param>
-        /// <param name="position">Position in world space</param>
-        /// <param name="rotation">Rotation in world space</param>
-        /// <param name="isEnemy">Whether this is an enemy squad</param>
-        /// <returns>The created squad model</returns>
         public SquadModel CreateMixedSquad(Dictionary<UnitType, int> unitCounts, Vector3 position, Quaternion rotation, bool isEnemy = false)
         {
             // Try to find a matching squad data first
@@ -402,48 +432,14 @@ namespace VikingRaven.Core.Factory
             // Trigger event
             OnSquadCreated?.Invoke(squadModel);
             
-            Debug.Log($"EnhancedSquadFactory: Created {(isEnemy ? "enemy" : "player")} mixed squad {squadId} with {squadUnits.Count} units");
+            Debug.Log($"SquadFactory: Created {(isEnemy ? "enemy" : "player")} mixed squad {squadId} with {squadUnits.Count} units");
             
             return squadModel;
         }
         
         /// <summary>
-        /// Create a squad by ID from DataManager
-        /// </summary>
-        /// <param name="squadDataId">ID of the squad data in DataManager</param>
-        /// <param name="position">Position in world space</param>
-        /// <param name="rotation">Rotation in world space</param>
-        /// <param name="isEnemy">Whether this is an enemy squad</param>
-        /// <returns>The created squad model</returns>
-        public SquadModel CreateNamedSquad(string squadDataId, Vector3 position, Quaternion rotation, bool isEnemy = false)
-        {
-            // Check cache first
-            if (_squadDataCache.TryGetValue(squadDataId, out SquadDataSO squadData))
-            {
-                return CreateSquadFromData(squadData, position, rotation, isEnemy);
-            }
-            
-            // Not in cache, try to get from DataManager
-            if (DataManager != null && DataManager.IsInitialized)
-            {
-                squadData = DataManager.GetSquadData(squadDataId);
-                if (squadData != null)
-                {
-                    // Cache for future use
-                    _squadDataCache[squadDataId] = squadData;
-                    
-                    return CreateSquadFromData(squadData, position, rotation, isEnemy);
-                }
-            }
-            
-            Debug.LogError($"EnhancedSquadFactory: Cannot create named squad - SquadData not found for ID: {squadDataId}");
-            return null;
-        }
-        
-        /// <summary>
         /// Disband a squad (return all its units to pools)
         /// </summary>
-        /// <param name="squadId">ID of the squad to disband</param>
         public void DisbandSquad(int squadId)
         {
             if (_activeSquads.TryGetValue(squadId, out SquadModel squadModel))
@@ -472,7 +468,7 @@ namespace VikingRaven.Core.Factory
                 _enemySquadIds.Remove(squadId);
                 _neutralSquadIds.Remove(squadId);
                 
-                Debug.Log($"EnhancedSquadFactory: Disbanded squad {squadId} with {unitEntities.Count} units");
+                Debug.Log($"SquadFactory: Disbanded squad {squadId} with {unitEntities.Count} units");
             }
         }
         
@@ -489,14 +485,12 @@ namespace VikingRaven.Core.Factory
                 DisbandSquad(squadId);
             }
             
-            Debug.Log($"EnhancedSquadFactory: Disbanded all {squadIds.Count} squads");
+            Debug.Log($"SquadFactory: Disbanded all {squadIds.Count} squads");
         }
         
         /// <summary>
         /// Get a squad model by ID
         /// </summary>
-        /// <param name="squadId">Squad ID</param>
-        /// <returns>Squad model or null if not found</returns>
         public SquadModel GetSquad(int squadId)
         {
             if (_activeSquads.TryGetValue(squadId, out SquadModel squadModel))
@@ -507,9 +501,28 @@ namespace VikingRaven.Core.Factory
         }
         
         /// <summary>
+        /// Get a squad template by ID
+        /// </summary>
+        public SquadModel GetSquadTemplate(string squadId)
+        {
+            if (_squadModelTemplates.TryGetValue(squadId, out SquadModel template))
+            {
+                return template;
+            }
+            return null;
+        }
+        
+        /// <summary>
+        /// Get all squad templates
+        /// </summary>
+        public Dictionary<string, SquadModel> GetAllSquadTemplates()
+        {
+            return new Dictionary<string, SquadModel>(_squadModelTemplates);
+        }
+        
+        /// <summary>
         /// Get all squad models
         /// </summary>
-        /// <returns>List of all active squad models</returns>
         public List<SquadModel> GetAllSquads()
         {
             return new List<SquadModel>(_activeSquads.Values);
@@ -518,7 +531,6 @@ namespace VikingRaven.Core.Factory
         /// <summary>
         /// Get all player squad models
         /// </summary>
-        /// <returns>List of player squad models</returns>
         public List<SquadModel> GetPlayerSquads()
         {
             List<SquadModel> result = new List<SquadModel>();
@@ -537,7 +549,6 @@ namespace VikingRaven.Core.Factory
         /// <summary>
         /// Get all enemy squad models
         /// </summary>
-        /// <returns>List of enemy squad models</returns>
         public List<SquadModel> GetEnemySquads()
         {
             List<SquadModel> result = new List<SquadModel>();
@@ -556,7 +567,6 @@ namespace VikingRaven.Core.Factory
         /// <summary>
         /// Get all squad IDs
         /// </summary>
-        /// <returns>List of all active squad IDs</returns>
         public List<int> GetAllSquadIds()
         {
             return new List<int>(_activeSquads.Keys);
@@ -565,7 +575,6 @@ namespace VikingRaven.Core.Factory
         /// <summary>
         /// Get all player squad IDs
         /// </summary>
-        /// <returns>List of player squad IDs</returns>
         public List<int> GetPlayerSquadIds()
         {
             return new List<int>(_playerSquadIds);
@@ -574,7 +583,6 @@ namespace VikingRaven.Core.Factory
         /// <summary>
         /// Get all enemy squad IDs
         /// </summary>
-        /// <returns>List of enemy squad IDs</returns>
         public List<int> GetEnemySquadIds()
         {
             return new List<int>(_enemySquadIds);
