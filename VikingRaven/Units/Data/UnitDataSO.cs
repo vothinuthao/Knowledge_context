@@ -1,14 +1,16 @@
 ﻿using UnityEngine;
 using Sirenix.OdinInspector;
 using VikingRaven.Units.Components;
+using System.Collections.Generic;
+using VikingRaven.Core.ECS;
 
 namespace VikingRaven.Units.Data
 {
     /// <summary>
-    /// ScriptableObject that defines data for a unit type with extended properties
+    /// Enhanced ScriptableObject that defines data for a unit type with comprehensive properties
     /// </summary>
     [CreateAssetMenu(fileName = "NewUnitData", menuName = "VikingRaven/Unit Data SO")]
-    public class UnitDataSO : SerializedScriptableObject // Using Odin's SerializedScriptableObject
+    public class UnitDataSO : SerializedScriptableObject
     {
         [FoldoutGroup("Basic Information")]
         [Tooltip("Unique identifier for this unit type")]
@@ -25,66 +27,68 @@ namespace VikingRaven.Units.Data
         
         [FoldoutGroup("Basic Information")]
         [Tooltip("The prefab for this unit type")]
-        [SerializeField, PreviewField(60)]
+        [SerializeField, PreviewField(60), Required]
         private GameObject _prefab;
         
         [FoldoutGroup("Basic Information")]
         [Tooltip("Type of unit (Infantry, Archer, Pike)")]
-        [SerializeField] private UnitType _unitType;
+        [SerializeField, EnumToggleButtons]
+        private UnitType _unitType;
         
-        [FoldoutGroup("Combat Stats")]
+        [TitleGroup("Combat Stats", "Combat Statistics and Abilities")]
+        [FoldoutGroup("Combat Stats/Health")]
         [Tooltip("Base health points")]
-        [SerializeField, Range(50, 500)]
+        [SerializeField, Range(50, 500), ProgressBar(50, 500, ColorGetter = "GetHealthColor")]
         private float _hitPoints = 100f;
         
-        [FoldoutGroup("Combat Stats")]
+        [FoldoutGroup("Combat Stats/Health")]
         [Tooltip("Shield or armor points")]
-        [SerializeField, Range(0, 100)]
+        [SerializeField, Range(0, 100), ProgressBar(0, 100, ColorGetter = "GetShieldColor")]
         private float _shield = 0f;
         
-        [FoldoutGroup("Combat Stats")]
+        [FoldoutGroup("Combat Stats/Health")]
         [Tooltip("Unit mass (affects knockback)")]
         [SerializeField, Range(1, 100)]
         private float _mass = 10f;
         
-        [FoldoutGroup("Combat Stats")]
+        [FoldoutGroup("Combat Stats/Damage")]
         [Tooltip("Melee damage")]
-        [SerializeField, Range(1, 100)]
+        [SerializeField, Range(1, 100), ProgressBar(1, 100, ColorGetter = "GetDamageColor")]
         private float _damage = 10f;
         
-        [FoldoutGroup("Combat Stats")]
+        [FoldoutGroup("Combat Stats/Damage")]
         [Tooltip("Ranged damage")]
-        [SerializeField, Range(0, 100)]
+        [SerializeField, Range(0, 100), ProgressBar(0, 100, ColorGetter = "GetDamageColor")]
         private float _damageRanged = 0f;
         
-        [FoldoutGroup("Combat Stats")]
+        [FoldoutGroup("Combat Stats/Damage")]
         [Tooltip("Damage per second (calculated)")]
-        [ReadOnly, ShowInInspector]
+        [ReadOnly, ShowInInspector, ProgressBar(0, 50, ColorGetter = "GetDPSColor")]
         private float _damagePerSecond;
         
-        [FoldoutGroup("Combat Stats")]
+        [FoldoutGroup("Combat Stats/Attack Parameters")]
         [Tooltip("Attack range in units")]
         [SerializeField, Range(1, 20)]
         private float _range = 2f;
         
-        [FoldoutGroup("Combat Stats")]
+        [FoldoutGroup("Combat Stats/Attack Parameters")]
         [Tooltip("Projectile range (for ranged units)")]
-        [SerializeField, Range(0, 50)]
+        [SerializeField, Range(0, 50), ShowIf("HasRangedDamage")]
         private float _projectileRange = 0f;
         
-        [FoldoutGroup("Combat Stats")]
+        [FoldoutGroup("Combat Stats/Attack Parameters")]
         [Tooltip("Time between attacks in seconds")]
         [SerializeField, Range(0.1f, 5f)]
         private float _hitSpeed = 1.5f;
         
-        [FoldoutGroup("Combat Stats")]
+        [FoldoutGroup("Combat Stats/Attack Parameters")]
         [Tooltip("Time to load/prepare attack")]
-        [SerializeField, Range(0, 3f)]
+        [SerializeField, Range(0, 3f), ShowIf("HasRangedDamage")]
         private float _loadTime = 0f;
         
         [FoldoutGroup("Movement Stats")]
         [Tooltip("Speed at which the unit moves")]
-        [SerializeField, Range(1, 10)]
+        [SerializeField, Range(1, 10), ProgressBar(1, 10, ColorGetter = "GetSpeedColor")]
         private float _moveSpeed = 3.0f;
         
         [FoldoutGroup("Movement Stats")]
@@ -122,14 +126,45 @@ namespace VikingRaven.Units.Data
         [SerializeField, TextArea(2, 5), EnableIf("HasAbility")]
         private string _abilityParameters = "";
         
+        [FoldoutGroup("Visual Settings")]
+        [Tooltip("Unit's icon for UI")]
+        [SerializeField, PreviewField(80)]
+        private Sprite _icon;
+        
+        [FoldoutGroup("Visual Settings")]
+        [Tooltip("Color to represent this unit type")]
+        [SerializeField, ColorUsage(true)]
+        private Color _unitColor = Color.white;
+        
+        [TabGroup("Components", "Required Components")]
+        [SerializeField]
+        private List<string> _requiredComponents = new List<string>
+        {
+            "TransformComponent",
+            "HealthComponent",
+            "CombatComponent",
+            "AggroDetectionComponent",
+            "StateComponent", 
+            "FormationComponent",
+            "NavigationComponent"
+        };
+        
         // Dropdown options for abilities
         private string[] GetAvailableAbilities()
         {
             return new string[] { "", "Charge", "Heal", "RangedAttack", "Shield", "Stealth", "Taunt" };
         }
         
-        // Helper method for Odin Inspector
+        // Helper methods for Odin Inspector
         private bool HasAbility => !string.IsNullOrEmpty(_ability);
+        private bool HasRangedDamage => _damageRanged > 0;
+        
+        // Color getters for progress bars
+        private Color GetHealthColor => new Color(0.2f, 0.6f, 0.2f);
+        private Color GetShieldColor => new Color(0.2f, 0.2f, 0.8f);
+        private Color GetDamageColor => new Color(0.8f, 0.2f, 0.2f);
+        private Color GetDPSColor => new Color(0.8f, 0.4f, 0.0f);
+        private Color GetSpeedColor => new Color(0.8f, 0.8f, 0.0f);
         
         // Public properties for all fields
         public string UnitId => _unitId;
@@ -155,6 +190,9 @@ namespace VikingRaven.Units.Data
         public float AbilityCost => _abilityCost;
         public float AbilityCooldown => _abilityCooldown;
         public string AbilityParameters => _abilityParameters;
+        public Sprite Icon => _icon;
+        public Color UnitColor => _unitColor;
+        public IReadOnlyList<string> RequiredComponents => _requiredComponents;
 
         // Odin Inspector method to calculate DPS whenever relevant values change
         [Button("Calculate DPS"), PropertyTooltip("Recalculate damage per second")]
@@ -185,9 +223,17 @@ namespace VikingRaven.Units.Data
             
             // Calculate damage per second
             CalculateDamagePerSecond();
+            
+            // Add AbilityComponent to required components if there's an ability
+            if (!string.IsNullOrEmpty(_ability) && !_requiredComponents.Contains("AbilityComponent"))
+            {
+                _requiredComponents.Add("AbilityComponent");
+            }
         }
 
-        // Method to apply unit data to an entity's components
+        /// <summary>
+        /// Method to apply unit data to an entity's components
+        /// </summary>
         public void ApplyToUnit(GameObject unitObject)
         {
             if (unitObject == null)
@@ -205,7 +251,7 @@ namespace VikingRaven.Units.Data
             if (healthComponent != null)
             {
                 healthComponent.SetMaxHealth(_hitPoints);
-                // healthComponent.SetShield(_shield);
+                healthComponent.SetArmor(_shield);
             }
             
             // Apply to CombatComponent
@@ -213,12 +259,21 @@ namespace VikingRaven.Units.Data
             if (combatComponent != null)
             {
                 combatComponent.SetAttackDamage(_damage);
-                // combatComponent.SetRangedDamage(_damageRanged);
                 combatComponent.SetAttackRange(_range);
                 combatComponent.SetAttackCooldown(_hitSpeed);
-                // combatComponent.SetLoadTime(_loadTime);
-                // combatComponent.SetProjectileRange(_projectileRange);
                 combatComponent.SetMoveSpeed(_moveSpeed);
+                
+                // Configure ranged attack if available
+                if (_damageRanged > 0)
+                {
+                    combatComponent.ConfigureSecondaryAttack(
+                        true, 
+                        AttackType.Ranged, 
+                        _damageRanged, 
+                        _projectileRange, 
+                        _loadTime > 0 ? _loadTime * 3 : 3f
+                    );
+                }
             }
             
             // Apply to AggroDetectionComponent
@@ -236,7 +291,9 @@ namespace VikingRaven.Units.Data
             }
         }
         
-        // Method to create a clone of this data
+        /// <summary>
+        /// Method to create a clone of this data
+        /// </summary>
         public UnitDataSO Clone()
         {
             var clone = CreateInstance<UnitDataSO>();
@@ -247,6 +304,8 @@ namespace VikingRaven.Units.Data
             clone._description = this._description;
             clone._prefab = this._prefab;
             clone._unitType = this._unitType;
+            clone._icon = this._icon;
+            clone._unitColor = this._unitColor;
             
             // Copy all combat stats
             clone._hitPoints = this._hitPoints;
@@ -276,12 +335,18 @@ namespace VikingRaven.Units.Data
             clone._abilityCooldown = this._abilityCooldown;
             clone._abilityParameters = this._abilityParameters;
             
+            // Copy required components
+            clone._requiredComponents = new List<string>(this._requiredComponents);
+            
             return clone;
         }
         
 #if UNITY_EDITOR
-        // Method to add required components to a prefab in the editor
+        /// <summary>
+        /// Setup prefab with all required components
+        /// </summary>
         [Button("Setup Prefab Components"), PropertyTooltip("Add required components to the prefab")]
+        [FoldoutGroup("Basic Information")]
         public void SetupPrefabComponents()
         {
             if (_prefab == null)
@@ -294,18 +359,25 @@ namespace VikingRaven.Units.Data
             UnityEditor.AssetDatabase.OpenAsset(_prefab);
             GameObject prefabInstance = UnityEditor.PrefabUtility.LoadPrefabContents(UnityEditor.AssetDatabase.GetAssetPath(_prefab));
             
-            // Add required components if they don't exist
-            EnsureComponent<UnitTypeComponent>(prefabInstance);
-            EnsureComponent<HealthComponent>(prefabInstance);
-            EnsureComponent<CombatComponent>(prefabInstance);
-            EnsureComponent<AggroDetectionComponent>(prefabInstance);
-            EnsureComponent<TransformComponent>(prefabInstance);
-            EnsureComponent<StateComponent>(prefabInstance);
-            EnsureComponent<FormationComponent>(prefabInstance);
-            EnsureComponent<NavigationComponent>(prefabInstance);
+            // Add base entity if not exists
+            EnsureComponent<BaseEntity>(prefabInstance);
+            
+            // Add required components from the list
+            foreach (var componentName in _requiredComponents)
+            {
+                System.Type componentType = System.Type.GetType("VikingRaven.Units.Components." + componentName);
+                if (componentType != null)
+                {
+                    EnsureComponent(prefabInstance, componentType);
+                }
+                else
+                {
+                    Debug.LogWarning($"UnitDataSO: Component type {componentName} not found");
+                }
+            }
             
             // Add ability component if an ability is specified
-            if (!string.IsNullOrEmpty(_ability))
+            if (!string.IsNullOrEmpty(_ability) && !_requiredComponents.Contains("AbilityComponent"))
             {
                 EnsureComponent<AbilityComponent>(prefabInstance);
             }
@@ -317,7 +389,50 @@ namespace VikingRaven.Units.Data
             Debug.Log($"UnitDataSO: Setup components for prefab {_prefab.name}");
         }
         
-        // Helper method to ensure a component exists
+        /// <summary>
+        /// Add missing components to the prefab
+        /// </summary>
+        [Button("Check Missing Components"), PropertyTooltip("Check which required components are missing")]
+        [TabGroup("Components")]
+        public void CheckMissingComponents()
+        {
+            if (_prefab == null)
+            {
+                Debug.LogError("UnitDataSO: Cannot check components - prefab is null");
+                return;
+            }
+            
+            List<string> missingComponents = new List<string>();
+            
+            foreach (var componentName in _requiredComponents)
+            {
+                System.Type componentType = System.Type.GetType("VikingRaven.Units.Components." + componentName);
+                if (componentType != null)
+                {
+                    if (_prefab.GetComponent(componentType) == null)
+                    {
+                        missingComponents.Add(componentName);
+                    }
+                }
+                else
+                {
+                    missingComponents.Add(componentName + " (Type not found)");
+                }
+            }
+            
+            if (missingComponents.Count > 0)
+            {
+                Debug.LogWarning($"UnitDataSO: Prefab {_prefab.name} is missing these components: " + string.Join(", ", missingComponents));
+            }
+            else
+            {
+                Debug.Log($"UnitDataSO: Prefab {_prefab.name} has all required components");
+            }
+        }
+        
+        /// <summary>
+        /// Helper method to ensure a component exists
+        /// </summary>
         private T EnsureComponent<T>(GameObject gameObject) where T : Component
         {
             T component = gameObject.GetComponent<T>();
@@ -327,6 +442,38 @@ namespace VikingRaven.Units.Data
                 Debug.Log($"UnitDataSO: Added {typeof(T).Name} to prefab {gameObject.name}");
             }
             return component;
+        }
+        
+        /// <summary>
+        /// Helper method to ensure a component exists using Type
+        /// </summary>
+        private Component EnsureComponent(GameObject gameObject, System.Type componentType)
+        {
+            Component component = gameObject.GetComponent(componentType);
+            if (component == null)
+            {
+                component = gameObject.AddComponent(componentType);
+                Debug.Log($"UnitDataSO: Added {componentType.Name} to prefab {gameObject.name}");
+            }
+            return component;
+        }
+        
+        /// <summary>
+        /// Estimate unit balancing score
+        /// </summary>
+        [Button("Calculate Unit Balance Score"), PropertyTooltip("Calculate a rough balance score")]
+        [TabGroup("Components", "Balance")]
+        public void CalculateBalanceScore()
+        {
+            float healthScore = _hitPoints * 0.02f + _shield * 0.05f;
+            float damageScore = _damage * 0.1f + _damageRanged * 0.15f;
+            float speedScore = _moveSpeed * 0.8f;
+            float specialScore = !string.IsNullOrEmpty(_ability) ? 10f : 0f;
+            
+            float totalScore = healthScore + damageScore + speedScore + specialScore;
+            
+            Debug.Log($"UnitDataSO: {_displayName} balance score: {totalScore:F2}");
+            Debug.Log($"- Health: {healthScore:F2}, Damage: {damageScore:F2}, Speed: {speedScore:F2}, Special: {specialScore:F2}");
         }
 #endif
     }

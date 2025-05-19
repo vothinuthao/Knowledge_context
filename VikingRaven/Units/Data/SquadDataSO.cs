@@ -3,11 +3,12 @@ using System.Collections.Generic;
 using UnityEngine;
 using Sirenix.OdinInspector;
 using VikingRaven.Units.Components;
+using VikingRaven.Units.Data;
 
 namespace VikingRaven.Units.Data
 {
     /// <summary>
-    /// ScriptableObject defining squad composition and properties
+    /// Enhanced ScriptableObject defining squad composition and properties
     /// </summary>
     [CreateAssetMenu(fileName = "NewSquadData", menuName = "VikingRaven/Squad Data SO")]
     public class SquadDataSO : SerializedScriptableObject
@@ -25,60 +26,76 @@ namespace VikingRaven.Units.Data
         [TextArea(3, 5)]
         [SerializeField] private string _description;
         
-        [FoldoutGroup("Squad Composition")]
+        [FoldoutGroup("Basic Information")]
+        [Tooltip("Squad icon for UI")]
+        [SerializeField, PreviewField(80)]
+        private Sprite _icon;
+        
+        [TitleGroup("Squad Composition")]
         [Tooltip("Units in this squad and their quantities")]
-        [TableList]
+        [TableList(ShowIndexLabels = true)]
         [SerializeField] private List<UnitComposition> _unitCompositions = new List<UnitComposition>();
         
-        [FoldoutGroup("Formation Settings")]
+        [TitleGroup("Formation Settings")]
         [Tooltip("Default formation type for this squad")]
         [SerializeField, EnumPaging]
         private FormationType _defaultFormationType = FormationType.Line;
         
-        [FoldoutGroup("Formation Settings")]
+        [TitleGroup("Formation Settings")]
         [Tooltip("Special formation types available to this squad")]
         [SerializeField, EnumToggleButtons]
         private List<FormationType> _availableFormations = new List<FormationType>();
         
-        [FoldoutGroup("Tactical Settings")]
+        [TitleGroup("Tactical Settings")]
         [Tooltip("Default aggression level (0-1)")]
-        [Range(0, 1)]
+        [Range(0, 1), PropertyRange(0, 1)]
         [SerializeField] private float _aggressionLevel = 0.5f;
         
-        [FoldoutGroup("Tactical Settings")]
+        [TitleGroup("Tactical Settings")]
         [Tooltip("Default cohesion level (0-1)")]
-        [Range(0, 1)]
+        [Range(0, 1), PropertyRange(0, 1)]
         [SerializeField] private float _cohesionLevel = 0.7f;
         
-        [FoldoutGroup("Tactical Settings")]
+        [TitleGroup("Tactical Settings")]
         [Tooltip("Default spacing between units")]
         [SerializeField, Range(0.5f, 2.0f)]
         private float _spacingMultiplier = 1.0f;
         
-        [FoldoutGroup("Tactical Settings")]
+        [TitleGroup("Tactical Settings")]
         [Tooltip("Preferred attack strategy")]
         [SerializeField, EnumToggleButtons]
         private AttackStrategy _preferredAttackStrategy = AttackStrategy.Balanced;
         
-        [FoldoutGroup("Economy")]
+        [TitleGroup("Economy")]
         [Tooltip("Gold cost to create this squad")]
-        [SerializeField, Range(50, 1000)]
+        [SerializeField, Range(50, 1000), PropertyRange(50, 1000), SuffixLabel("gold")]
         private int _goldCost = 100;
         
-        [FoldoutGroup("Economy")]
-        [Tooltip("Food cost to maintain this squad")]
-        [SerializeField, Range(1, 100)]
+        [TitleGroup("Economy")]
+        [Tooltip("Food upkeep to maintain this squad")]
+        [SerializeField, Range(1, 100), PropertyRange(1, 100), SuffixLabel("food/min")]
         private int _foodUpkeep = 10;
         
-        [FoldoutGroup("Economy")]
+        [TitleGroup("Economy")]
         [Tooltip("Time to train this squad (in seconds)")]
-        [SerializeField, Range(5, 120)]
+        [SerializeField, Range(5, 120), SuffixLabel("seconds")]
         private float _trainingTime = 30f;
+        
+        [TitleGroup("Tags and Categories")]
+        [Tooltip("Tags for categorizing squads")]
+        [SerializeField]
+        private List<string> _squadTags = new List<string>();
+        
+        [TitleGroup("Tags and Categories")]
+        [Tooltip("Faction that this squad belongs to")]
+        [SerializeField, ValueDropdown("GetAvailableFactions")]
+        private string _faction = "Player";
 
         // Properties for accessing data
         public string SquadId => _squadId;
         public string DisplayName => _displayName;
         public string Description => _description;
+        public Sprite Icon => _icon;
         public IReadOnlyList<UnitComposition> UnitCompositions => _unitCompositions;
         public FormationType DefaultFormationType => _defaultFormationType;
         public IReadOnlyList<FormationType> AvailableFormations => _availableFormations;
@@ -89,6 +106,14 @@ namespace VikingRaven.Units.Data
         public int GoldCost => _goldCost;
         public int FoodUpkeep => _foodUpkeep;
         public float TrainingTime => _trainingTime;
+        public IReadOnlyList<string> SquadTags => _squadTags;
+        public string Faction => _faction;
+
+        // Helper for dropdown menu
+        private string[] GetAvailableFactions()
+        {
+            return new string[] { "Player", "Enemy", "Neutral", "Mercenary", "Rebel" };
+        }
 
         /// <summary>
         /// Get total unit count in this squad
@@ -157,7 +182,38 @@ namespace VikingRaven.Units.Data
             }
         }
         
-        // Odin helper for progress bar color
+        /// <summary>
+        /// Estimate squad mobility
+        /// </summary>
+        [ShowInInspector, ReadOnly]
+        [FoldoutGroup("Squad Statistics"), ProgressBar(0, 10, ColorMember = "GetMobilityColor")]
+        public float SquadMobility
+        {
+            get
+            {
+                if (TotalUnitCount == 0) return 0f;
+                
+                float totalMoveSpeed = 0;
+                int unitCount = 0;
+                
+                foreach (var composition in _unitCompositions)
+                {
+                    if (composition.UnitData != null)
+                    {
+                        totalMoveSpeed += composition.UnitData.MoveSpeed * composition.Count;
+                        unitCount += composition.Count;
+                    }
+                }
+                
+                // Average move speed, adjusted by squad size (larger squads are less mobile)
+                float averageMoveSpeed = unitCount > 0 ? totalMoveSpeed / unitCount : 0;
+                float sizePenalty = Mathf.Clamp01(1.0f - (unitCount / 20f) * 0.3f); // 30% penalty for 20 units
+                
+                return averageMoveSpeed * sizePenalty;
+            }
+        }
+        
+        // Odin helper for progress bar colors
         private Color GetStrengthColor
         {
             get
@@ -168,6 +224,8 @@ namespace VikingRaven.Units.Data
                 return Color.green;
             }
         }
+        
+        private Color GetMobilityColor => new Color(0.3f, 0.7f, 1.0f);
 
         /// <summary>
         /// Create a dictionary mapping unit types to counts
@@ -223,6 +281,9 @@ namespace VikingRaven.Units.Data
             clone._squadId = this._squadId;
             clone._displayName = this._displayName;
             clone._description = this._description;
+            clone._icon = this._icon;
+            clone._faction = this._faction;
+            clone._squadTags = new List<string>(this._squadTags);
             
             // Copy unit compositions
             clone._unitCompositions = new List<UnitComposition>();
@@ -231,7 +292,8 @@ namespace VikingRaven.Units.Data
                 clone._unitCompositions.Add(new UnitComposition
                 {
                     UnitData = composition.UnitData,
-                    Count = composition.Count
+                    Count = composition.Count,
+                    FormationPosition = composition.FormationPosition
                 });
             }
             
@@ -335,6 +397,124 @@ namespace VikingRaven.Units.Data
             _foodUpkeep = Mathf.Max(5, foodCost);
             _trainingTime = Mathf.Min(120, 10 + TotalUnitCount * 2);
         }
+        
+        [Button("Validate Squad Composition"), FoldoutGroup("Squad Composition")]
+        private void ValidateSquadComposition()
+        {
+            bool hasIssues = false;
+            
+            // Check for empty compositions
+            for (int i = _unitCompositions.Count - 1; i >= 0; i--)
+            {
+                if (_unitCompositions[i].UnitData == null || _unitCompositions[i].Count <= 0)
+                {
+                    Debug.LogWarning($"Squad {_displayName}: Removing invalid composition at index {i}");
+                    _unitCompositions.RemoveAt(i);
+                    hasIssues = true;
+                }
+            }
+            
+            // Check for duplicate unit types that could be merged
+            Dictionary<UnitDataSO, int> unitCounts = new Dictionary<UnitDataSO, int>();
+            
+            foreach (var composition in _unitCompositions)
+            {
+                if (composition.UnitData != null)
+                {
+                    if (unitCounts.ContainsKey(composition.UnitData))
+                    {
+                        unitCounts[composition.UnitData] += composition.Count;
+                        hasIssues = true;
+                    }
+                    else
+                    {
+                        unitCounts[composition.UnitData] = composition.Count;
+                    }
+                }
+            }
+            
+            if (hasIssues)
+            {
+                Debug.LogWarning($"Squad {_displayName} has composition issues that should be fixed");
+            }
+            else
+            {
+                Debug.Log($"Squad {_displayName} composition is valid");
+            }
+        }
+        
+        /// <summary>
+        /// Generate unique formation positions for each unit
+        /// </summary>
+        [Button("Generate Formation Positions"), FoldoutGroup("Formation Settings")]
+        private void GenerateFormationPositions()
+        {
+            int totalUnits = TotalUnitCount;
+            if (totalUnits == 0) return;
+            
+            // Reset all existing positions
+            foreach (var composition in _unitCompositions)
+            {
+                composition.FormationPosition = FormationPosition.Auto;
+            }
+            
+            // Setup automatic formation positions based on unit types
+            if (HasUnitType(UnitType.Pike))
+            {
+                // Pikes go in front
+                SetFormationPosition(UnitType.Pike, FormationPosition.Front);
+            }
+            
+            if (HasUnitType(UnitType.Infantry))
+            {
+                // Infantry behind pikes or in front if no pikes
+                if (HasUnitType(UnitType.Pike))
+                {
+                    SetFormationPosition(UnitType.Infantry, FormationPosition.Middle);
+                }
+                else
+                {
+                    SetFormationPosition(UnitType.Infantry, FormationPosition.Front);
+                }
+            }
+            
+            if (HasUnitType(UnitType.Archer))
+            {
+                // Archers in the back
+                SetFormationPosition(UnitType.Archer, FormationPosition.Back);
+            }
+            
+            Debug.Log($"Generated formation positions for {_displayName}");
+        }
+        
+        /// <summary>
+        /// Helper to set formation position for a unit type
+        /// </summary>
+        private void SetFormationPosition(UnitType unitType, FormationPosition position)
+        {
+            foreach (var composition in _unitCompositions)
+            {
+                if (composition.UnitData != null && composition.UnitData.UnitType == unitType)
+                {
+                    composition.FormationPosition = position;
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Check if the squad has a specific unit type
+        /// </summary>
+        private bool HasUnitType(UnitType unitType)
+        {
+            foreach (var composition in _unitCompositions)
+            {
+                if (composition.UnitData != null && composition.UnitData.UnitType == unitType)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
     }
     
     /// <summary>
@@ -349,9 +529,33 @@ namespace VikingRaven.Units.Data
         [Tooltip("Number of units of this type"), Range(1, 20)]
         public int Count = 1;
         
+        [Tooltip("Position in formation")]
+        [EnumToggleButtons]
+        public FormationPosition FormationPosition = FormationPosition.Auto;
+        
         [ShowInInspector, ReadOnly]
         public float TotalStrength => UnitData != null ? 
             (UnitData.HitPoints * 0.1f + UnitData.Damage * 0.3f + UnitData.DamageRanged * 0.3f + UnitData.Shield * 0.2f) * Count : 0;
+            
+        /// <summary>
+        /// Get a user-friendly name for display
+        /// </summary>
+        public string DisplayName => UnitData != null ? 
+            $"{UnitData.DisplayName} x{Count}" : 
+            $"Unknown Unit x{Count}";
+    }
+    
+    /// <summary>
+    /// Position in formation
+    /// </summary>
+    public enum FormationPosition
+    {
+        Auto,   // Automatically determined
+        Front,  // Front line
+        Middle, // Middle line
+        Back,   // Back line
+        Left,   // Left flank
+        Right   // Right flank
     }
     
     /// <summary>

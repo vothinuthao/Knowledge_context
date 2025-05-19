@@ -2,12 +2,13 @@
 using VikingRaven.Core.ECS;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Data;
+using System;
 
 namespace VikingRaven.Units.Models
 {
     /// <summary>
-    /// Model class for managing unit data and state
-    /// Serves as the bridge between UnitData (ScriptableObject) and the Entity components
+    /// Enhanced model class for managing unit data and state
+    /// Serves as the bridge between UnitDataSO (ScriptableObject) and the Entity components
     /// </summary>
     public class UnitModel
     {
@@ -25,12 +26,23 @@ namespace VikingRaven.Units.Models
         private FormationComponent _formationComponent;
         private UnitTypeComponent _unitTypeComponent;
         private AggroDetectionComponent _aggroComponent;
+        private NavigationComponent _navigationComponent;
+        private AbilityComponent _abilityComponent;
         
         // Dynamic properties that can change during gameplay
         private int _experiencePoints = 0;
         private int _killCount = 0;
         private float _damageDealt = 0;
         private float _damageReceived = 0;
+        private int _attacksPerformed = 0;
+        private bool _isInitialized = false;
+        
+        // Events
+        public event Action<float, IEntity> OnDamageTaken;
+        public event Action OnDeath;
+        public event Action<IEntity, float> OnAttackPerformed;
+        public event Action<UnitType> OnUnitTypeChanged;
+        public event Action<int> OnSquadAssigned;
         
         // Constructor
         public UnitModel(IEntity entity, UnitDataSO unitData)
@@ -41,8 +53,16 @@ namespace VikingRaven.Units.Models
             // Cache components
             CacheComponents();
             
+            // Apply initial data
+            if (_unitData != null)
+            {
+                ApplyData();
+            }
+            
             // Subscribe to events
             SubscribeToEvents();
+            
+            _isInitialized = true;
         }
         
         // Properties to access data
@@ -55,12 +75,19 @@ namespace VikingRaven.Units.Models
         public float MaxHealth => _healthComponent?.MaxHealth ?? 0f;
         public bool IsDead => _healthComponent?.IsDead ?? false;
         public Vector3 Position => _transformComponent?.Position ?? Vector3.zero;
+        public float AttackDamage => _combatComponent?.AttackDamage ?? 0f;
+        public float AttackRange => _combatComponent?.AttackRange ?? 0f;
+        public float MoveSpeed => _combatComponent?.MoveSpeed ?? 0f;
+        public bool IsInitialized => _isInitialized;
+        public bool HasReachedDestination => _navigationComponent?.HasReachedDestination ?? true;
         
         // Game statistics
         public int ExperiencePoints => _experiencePoints;
         public int KillCount => _killCount;
         public float DamageDealt => _damageDealt;
         public float DamageReceived => _damageReceived;
+        public int AttacksPerformed => _attacksPerformed;
+        public float DamagePerAttack => _attacksPerformed > 0 ? _damageDealt / _attacksPerformed : 0f;
         
         /// <summary>
         /// Cache components for quick access
@@ -76,6 +103,8 @@ namespace VikingRaven.Units.Models
             _formationComponent = _entity.GetComponent<FormationComponent>();
             _unitTypeComponent = _entity.GetComponent<UnitTypeComponent>();
             _aggroComponent = _entity.GetComponent<AggroDetectionComponent>();
+            _navigationComponent = _entity.GetComponent<NavigationComponent>();
+            _abilityComponent = _entity.GetComponent<AbilityComponent>();
         }
         
         /// <summary>
@@ -92,6 +121,12 @@ namespace VikingRaven.Units.Models
             if (_combatComponent != null)
             {
                 _combatComponent.OnAttackPerformed += HandleAttackPerformed;
+                _combatComponent.OnDamageDealt += HandleDamageDealt;
+            }
+            
+            if (_formationComponent != null)
+            {
+                // TODO: Add formation changed event
             }
         }
         
@@ -109,7 +144,10 @@ namespace VikingRaven.Units.Models
             if (_combatComponent != null)
             {
                 _combatComponent.OnAttackPerformed -= HandleAttackPerformed;
+                _combatComponent.OnDamageDealt -= HandleDamageDealt;
             }
+            
+            _isInitialized = false;
         }
         
         /// <summary>
@@ -118,6 +156,7 @@ namespace VikingRaven.Units.Models
         private void HandleDamageTaken(float amount, IEntity source)
         {
             _damageReceived += amount;
+            OnDamageTaken?.Invoke(amount, source);
         }
         
         /// <summary>
@@ -125,7 +164,7 @@ namespace VikingRaven.Units.Models
         /// </summary>
         private void HandleDeath()
         {
-            // Could trigger other game systems here
+            OnDeath?.Invoke();
             Debug.Log($"Unit {_entity.Id} of type {UnitType} has died");
         }
         
@@ -134,9 +173,11 @@ namespace VikingRaven.Units.Models
         /// </summary>
         private void HandleAttackPerformed(IEntity target)
         {
+            _attacksPerformed++;
+            
             if (_combatComponent != null)
             {
-                _damageDealt += _combatComponent.AttackDamage;
+                OnAttackPerformed?.Invoke(target, _combatComponent.AttackDamage);
             }
             
             // Check if target died from this attack
@@ -146,6 +187,14 @@ namespace VikingRaven.Units.Models
                 _killCount++;
                 _experiencePoints += 10; // Simple XP reward
             }
+        }
+        
+        /// <summary>
+        /// Handle damage dealt event
+        /// </summary>
+        private void HandleDamageDealt(IEntity target, float amount)
+        {
+            _damageDealt += amount;
         }
         
         /// <summary>
@@ -162,8 +211,13 @@ namespace VikingRaven.Units.Models
             // Apply data to components
             _unitData.ApplyToUnit(entityObject);
             
-            // Refresh cached components
+            // Refresh cached components in case new ones were added
             CacheComponents();
+            
+            // Resubscribe to events
+            SubscribeToEvents();
+            
+            Debug.Log($"UnitModel: Applied data from {_unitData.DisplayName} to entity {_entity.Id}");
         }
         
         /// <summary>
@@ -174,8 +228,22 @@ namespace VikingRaven.Units.Models
         {
             if (newData == null) return;
             
+            UnitDataSO oldData = _unitData;
             _unitData = newData;
+            
+            // Check if unit type has changed
+            UnitType oldType = oldData?.UnitType ?? UnitType.Infantry;
+            UnitType newType = newData.UnitType;
+            
             ApplyData();
+            
+            // Trigger unit type changed event if needed
+            if (oldType != newType)
+            {
+                OnUnitTypeChanged?.Invoke(newType);
+            }
+            
+            Debug.Log($"UnitModel: Updated data for entity {_entity.Id} from {oldData?.DisplayName ?? "none"} to {newData.DisplayName}");
         }
         
         /// <summary>
@@ -188,9 +256,64 @@ namespace VikingRaven.Units.Models
         {
             if (_formationComponent == null) return;
             
+            int oldSquadId = _formationComponent.SquadId;
+            
             _formationComponent.SetSquadId(squadId);
             _formationComponent.SetFormationSlot(slotIndex);
             _formationComponent.SetFormationType(formationType);
+            
+            // Trigger squad assigned event if squad changed
+            if (oldSquadId != squadId)
+            {
+                OnSquadAssigned?.Invoke(squadId);
+            }
+            
+            Debug.Log($"UnitModel: Set formation info for entity {_entity.Id} - Squad: {squadId}, Slot: {slotIndex}, Formation: {formationType}");
+        }
+        
+        /// <summary>
+        /// Move the unit to a position
+        /// </summary>
+        /// <param name="position">Target position</param>
+        /// <param name="priority">Navigation priority</param>
+        public void MoveTo(Vector3 position, NavigationCommandPriority priority = NavigationCommandPriority.Normal)
+        {
+            if (_navigationComponent == null) return;
+            
+            _navigationComponent.SetDestination(position, priority);
+            
+            Debug.Log($"UnitModel: Moving entity {_entity.Id} to position {position} with priority {priority}");
+        }
+        
+        /// <summary>
+        /// Attack a target entity
+        /// </summary>
+        /// <param name="target">Target entity</param>
+        /// <returns>True if attack was initiated</returns>
+        public bool Attack(IEntity target)
+        {
+            if (_combatComponent == null || target == null) return false;
+            
+            if (_combatComponent.CanAttack() && _combatComponent.IsInAttackRange(target))
+            {
+                _combatComponent.Attack(target);
+                return true;
+            }
+            
+            return false;
+        }
+        
+        /// <summary>
+        /// Use the unit's ability
+        /// </summary>
+        /// <param name="targetPosition">Target position for the ability</param>
+        /// <param name="targetEntity">Optional target entity</param>
+        /// <returns>True if ability was activated</returns>
+        public bool UseAbility(Vector3 targetPosition, IEntity targetEntity = null)
+        {
+            if (_abilityComponent == null) return false;
+            
+            return _abilityComponent.ActivateAbility(targetPosition, targetEntity);
         }
         
         /// <summary>
@@ -227,11 +350,61 @@ namespace VikingRaven.Units.Models
         }
         
         /// <summary>
+        /// Check if the unit is in combat
+        /// </summary>
+        /// <returns>True if the unit is in combat</returns>
+        public bool IsInCombat()
+        {
+            if (_aggroComponent == null) return false;
+            
+            return _aggroComponent.HasEnemyInRange();
+        }
+        
+        /// <summary>
+        /// Reset the unit's stats
+        /// </summary>
+        public void ResetStats()
+        {
+            _experiencePoints = 0;
+            _killCount = 0;
+            _damageDealt = 0;
+            _damageReceived = 0;
+            _attacksPerformed = 0;
+            
+            // Also reset health if available
+            if (_healthComponent != null)
+            {
+                _healthComponent.Revive();
+            }
+            
+            Debug.Log($"UnitModel: Reset stats for entity {_entity.Id}");
+        }
+        
+        /// <summary>
         /// Create a string representation of the unit
         /// </summary>
         public override string ToString()
         {
             return $"UnitModel(ID: {_entity?.Id}, Type: {UnitType}, HP: {CurrentHealth}/{MaxHealth}, Squad: {SquadId}, Slot: {FormationSlot})";
+        }
+        
+        /// <summary>
+        /// Create a deep copy of this unit model with a new entity
+        /// </summary>
+        /// <param name="newEntity">New entity to use</param>
+        /// <returns>Clone of this unit model</returns>
+        public UnitModel Clone(IEntity newEntity)
+        {
+            if (newEntity == null) return null;
+            
+            // Create a new model with the same data
+            UnitModel clone = new UnitModel(newEntity, _unitData);
+            
+            // Copy statistics if needed
+            // clone._experiencePoints = this._experiencePoints;
+            // clone._killCount = this._killCount;
+            
+            return clone;
         }
     }
 }

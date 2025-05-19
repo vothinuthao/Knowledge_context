@@ -4,28 +4,53 @@ using VikingRaven.Units.Components;
 
 namespace VikingRaven.Game.Tile_InGame
 {
+    /// <summary>
+    /// Represents a single tile in the game world that can contain squad units
+    /// </summary>
     public class TileComponent : MonoBehaviour
     {
-        [TitleGroup("Tile Identity")]
+        [TitleGroup("Tile Identification")]
+        [Tooltip("Unique identifier for this tile")]
         [SerializeField] private int _tileId;
-        
-        [TitleGroup("Appearance")]
+
+        [TitleGroup("Visual Settings")]
+        [Tooltip("Color when the tile is in default state")]
         [SerializeField] private Color _defaultColor = new Color(0.8f, 0.8f, 0.8f, 0.5f);
+        
+        [Tooltip("Color when the tile is highlighted as a valid move destination")]
         [SerializeField] private Color _highlightColor = new Color(0.2f, 0.8f, 0.2f, 0.7f);
+        
+        [Tooltip("Color when the tile is occupied by a squad")]
         [SerializeField] private Color _occupiedColor = new Color(0.8f, 0.2f, 0.2f, 0.6f);
+        
+        [Tooltip("Color when the tile is currently selected")]
         [SerializeField] private Color _selectedColor = new Color(0.2f, 0.2f, 0.8f, 0.7f);
+        
+        [Tooltip("Color when the tile is a spawn point")]
         [SerializeField] private Color _spawnPointColor = new Color(0.8f, 0.8f, 0.2f, 0.6f);
         
         [TitleGroup("Tile Properties")]
-        [SerializeField] private float _tileSize = 4f; // Size of the tile
-        [SerializeField] private bool _isWalkable = true; // Whether units can walk on this tile
-        [SerializeField] private bool _isOccupied = false; // Whether the tile is currently occupied
-        [SerializeField] private int _occupyingSquadId = -1; // ID of the squad currently occupying the tile
+        [Tooltip("Size of the tile for formation calculations")]
+        [SerializeField] private float _tileSize = 4f;
+        
+        [Tooltip("Whether units can walk on this tile")]
+        [SerializeField] private bool _isWalkable = true;
+        
+        [Tooltip("Whether the tile is currently occupied by a squad")]
+        [SerializeField, ReadOnly] private bool _isOccupied = false;
+        
+        [Tooltip("ID of the squad currently occupying the tile")]
+        [SerializeField, ReadOnly] private int _occupyingSquadId = -1;
         
         [TitleGroup("Spawn Settings")]
+        [Tooltip("Whether this tile is a spawn point for troops")]
         [SerializeField] private bool _isSpawnPoint = false;
-        [SerializeField] private UnitType _spawnUnitType = UnitType.Infantry;
-        [SerializeField] private bool _isEnemySpawn = false;
+        
+        [Tooltip("Type of unit to spawn at this point")]
+        [SerializeField, ShowIf("_isSpawnPoint")] private UnitType _spawnUnitType = UnitType.Infantry;
+        
+        [Tooltip("Whether this spawns enemy units")]
+        [SerializeField, ShowIf("_isSpawnPoint")] private bool _isEnemySpawn = false;
         
         // References
         private MeshRenderer _meshRenderer;
@@ -64,7 +89,6 @@ namespace VikingRaven.Game.Tile_InGame
         /// Occupy this tile with a squad
         /// </summary>
         /// <param name="squadId">ID of the squad occupying the tile</param>
-        [Button("Occupy With Squad")]
         public void OccupyTile(int squadId)
         {
             _isOccupied = true;
@@ -77,7 +101,6 @@ namespace VikingRaven.Game.Tile_InGame
         /// <summary>
         /// Release this tile (no longer occupied)
         /// </summary>
-        [Button("Release Tile")]
         public void ReleaseTile()
         {
             _isOccupied = false;
@@ -90,7 +113,6 @@ namespace VikingRaven.Game.Tile_InGame
         /// <summary>
         /// Highlight this tile (for valid movement destination)
         /// </summary>
-        [Button("Highlight")]
         public void HighlightTile()
         {
             if (_meshRenderer != null)
@@ -102,7 +124,6 @@ namespace VikingRaven.Game.Tile_InGame
         /// <summary>
         /// Select this tile (for currently selected squad)
         /// </summary>
-        [Button("Select")]
         public void SelectTile()
         {
             if (_meshRenderer != null)
@@ -114,7 +135,6 @@ namespace VikingRaven.Game.Tile_InGame
         /// <summary>
         /// Reset tile appearance to default
         /// </summary>
-        [Button("Reset Appearance")]
         public void ResetTileAppearance()
         {
             UpdateTileAppearance();
@@ -149,6 +169,7 @@ namespace VikingRaven.Game.Tile_InGame
         public void ToggleWalkable()
         {
             _isWalkable = !_isWalkable;
+            Debug.Log($"Tile {_tileId} walkable set to {_isWalkable}");
         }
 
         /// <summary>
@@ -161,30 +182,35 @@ namespace VikingRaven.Game.Tile_InGame
         }
 
         /// <summary>
-        /// Set this tile as a spawn point
+        /// Toggle spawn point status
         /// </summary>
         [Button("Toggle Spawn Point")]
         public void ToggleSpawnPoint()
         {
             _isSpawnPoint = !_isSpawnPoint;
             UpdateTileAppearance();
+            Debug.Log($"Tile {_tileId} spawn point set to {_isSpawnPoint}");
         }
 
         /// <summary>
-        /// Set the spawn unit type
+        /// Toggle enemy spawn status
         /// </summary>
-        public void SetSpawnUnitType(UnitType unitType)
-        {
-            _spawnUnitType = unitType;
-        }
-
-        /// <summary>
-        /// Toggle enemy spawn
-        /// </summary>
-        [Button("Toggle Enemy Spawn")]
+        [Button("Toggle Enemy Spawn"), ShowIf("_isSpawnPoint")]
         public void ToggleEnemySpawn()
         {
             _isEnemySpawn = !_isEnemySpawn;
+            UpdateTileAppearance();
+            Debug.Log($"Tile {_tileId} enemy spawn set to {_isEnemySpawn}");
+        }
+
+        /// <summary>
+        /// Set this tile as a spawn point
+        /// </summary>
+        public void SetAsSpawnPoint(bool isSpawnPoint, UnitType unitType = UnitType.Infantry, bool isEnemy = false)
+        {
+            _isSpawnPoint = isSpawnPoint;
+            _spawnUnitType = unitType;
+            _isEnemySpawn = isEnemy;
             UpdateTileAppearance();
         }
 
@@ -251,15 +277,11 @@ namespace VikingRaven.Game.Tile_InGame
             if (_isSpawnPoint)
             {
                 Gizmos.color = _isEnemySpawn ? Color.red : Color.yellow;
-                Gizmos.DrawSphere(transform.position + Vector3.up * 0.5f, 0.3f);
-                
-                // Draw unit type text
-                #if UNITY_EDITOR
-                UnityEditor.Handles.Label(transform.position + Vector3.up * 0.7f, _spawnUnitType.ToString());
-                #endif
+                Gizmos.DrawSphere(transform.position + Vector3.up * 0.5f, 0.5f);
             }
             
             // Draw tile ID
+            Gizmos.color = Color.black;
             #if UNITY_EDITOR
             UnityEditor.Handles.Label(transform.position + Vector3.up * 0.2f, $"Tile {_tileId}");
             #endif
