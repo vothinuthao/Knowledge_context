@@ -117,7 +117,6 @@ namespace VikingRaven.Units.Components
             if (!IsReady || string.IsNullOrEmpty(_abilityName))
                 return false;
                 
-            // Execute ability based on name
             bool success = ExecuteAbilityLogic(targetPosition, targetEntity);
             
             if (success)
@@ -129,7 +128,6 @@ namespace VikingRaven.Units.Components
                 // Trigger event
                 OnAbilityActivated?.Invoke(_abilityName, targetPosition, targetEntity);
                 
-                // Start ability duration coroutine if this is a duration-based ability
                 if (_abilityDuration > 0)// && IsActiveAndEnabled)
                 {
                     StartCoroutine(AbilityDurationRoutine(targetPosition, targetEntity));

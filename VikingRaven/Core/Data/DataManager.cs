@@ -11,7 +11,7 @@ namespace VikingRaven.Core.Data
     /// <summary>
     /// Trung tâm quản lý và lưu trữ tất cả dữ liệu game
     /// </summary>
-    public class DataManager : PureSingleton<DataManager>
+    public class DataManager : Singleton<DataManager>
     {
         private Dictionary<string, UnitDataSO> _unitDataCache = new Dictionary<string, UnitDataSO>();
         private Dictionary<string, SquadDataSO> _squadDataCache = new Dictionary<string, SquadDataSO>();
@@ -22,9 +22,9 @@ namespace VikingRaven.Core.Data
         
         public bool IsInitialized => _isInitialized;
         
-        public override void OnInitialize()
+        protected override void Awake()
         {
-            base.OnInitialize();
+            base.Awake();
             LoadAllData();
         }
         

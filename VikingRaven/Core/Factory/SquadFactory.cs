@@ -159,24 +159,11 @@ namespace VikingRaven.Core.Factory
                     
                     // Create unit from template or data
                     IEntity unitEntity;
-                    if (!string.IsNullOrEmpty(unitId) && _unitFactory != null)
-                    {
-                        // Use template if available
-                        unitEntity = _unitFactory.CreateUnitFromTemplate(
-                            unitId,
-                            position + spawnOffset,
-                            rotation
-                        );
-                    }
-                    else
-                    {
-                        // Fallback to direct creation
-                        unitEntity = _unitFactory.CreateUnitFromData(
-                            composition.UnitData,
-                            position + spawnOffset,
-                            rotation
-                        );
-                    }
+                    unitEntity = _unitFactory.CreateUnitFromData(
+                        composition.UnitData,
+                        position + spawnOffset,
+                        rotation
+                    );
                     
                     if (unitEntity != null)
                     {

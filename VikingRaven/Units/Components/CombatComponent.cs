@@ -37,6 +37,7 @@ namespace VikingRaven.Units.Components
         private float _lastSecondaryAttackTime = -100f;
         private int _attackCount = 0;
         private float _totalDamageDealt = 0f;
+        private bool _isInCombat = false;
         
         // Public properties
         public float AttackDamage => _attackDamage;
@@ -49,6 +50,7 @@ namespace VikingRaven.Units.Components
         public AttackType SecondaryAttackType => _secondaryAttackType;
         public int AttackCount => _attackCount;
         public float TotalDamageDealt => _totalDamageDealt;
+        public bool IsInCombat => _isInCombat;
         
         // Events
         public event Action<IEntity> OnAttackPerformed;

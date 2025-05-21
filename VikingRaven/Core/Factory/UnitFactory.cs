@@ -366,38 +366,6 @@ namespace VikingRaven.Core.Factory
         }
         
         /// <summary>
-        /// Create a unit from a template UnitModel in cache
-        /// </summary>
-        public IEntity CreateUnitFromTemplate(string unitId, Vector3 position, Quaternion rotation)
-        {
-            // Check if template exists
-            if (!_unitModelTemplates.TryGetValue(unitId, out UnitModel templateModel))
-            {
-                // If not in cache, try to get from DataManager
-                UnitDataSO unitData = DataManager.GetUnitData(unitId);
-                if (unitData == null)
-                {
-                    Debug.LogError($"UnitFactory: Cannot create unit - template with ID {unitId} not found");
-                    return null;
-                }
-                
-                // Create a new template
-                templateModel = new UnitModel(null, unitData);
-                _unitModelTemplates[unitId] = templateModel;
-                
-                Debug.Log($"UnitFactory: Created new template for unit ID {unitId}");
-            }
-            
-            // Get the unit data from the template
-            UnitDataSO templateData = templateModel.Data;
-            
-            // Create entity
-            IEntity entity = CreateUnitFromData(templateData, position, rotation);
-            
-            return entity;
-        }
-        
-        /// <summary>
         /// Get the appropriate pool for a unit type
         /// </summary>
         private ObjectPool<BaseEntity> GetPoolForUnitType(UnitType unitType)

@@ -1,410 +1,505 @@
-﻿using UnityEngine;
+﻿using System;
+using System.Collections.Generic;
+using UnityEngine;
 using VikingRaven.Core.ECS;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Data;
-using System;
 
 namespace VikingRaven.Units.Models
 {
     /// <summary>
-    /// Enhanced model class for managing unit data and state
-    /// Serves as the bridge between UnitDataSO (ScriptableObject) and the Entity components
+    /// Model class for managing unit data and state
+    /// Provides a high-level API for unit operations
     /// </summary>
     public class UnitModel
     {
-        // Reference to the entity
+        // Entity reference
         private IEntity _entity;
         
-        // Reference to the data
-        private UnitDataSO _unitData;
+        // Cached components
+        private Dictionary<Type, IComponent> _componentCache = new Dictionary<Type, IComponent>();
         
-        // Cached components for quick access
-        private TransformComponent _transformComponent;
-        private HealthComponent _healthComponent;
-        private CombatComponent _combatComponent;
-        private StateComponent _stateComponent;
-        private FormationComponent _formationComponent;
-        private UnitTypeComponent _unitTypeComponent;
-        private AggroDetectionComponent _aggroComponent;
-        private NavigationComponent _navigationComponent;
-        private AbilityComponent _abilityComponent;
+        private UnitType _unitType;
+        private string _unitId;
+        private string _displayName;
+        private string _description;
         
-        // Dynamic properties that can change during gameplay
-        private int _experiencePoints = 0;
-        private int _killCount = 0;
-        private float _damageDealt = 0;
-        private float _damageReceived = 0;
-        private int _attacksPerformed = 0;
-        private bool _isInitialized = false;
+        private float _hitPoints = 100f;          // Máu cơ bản
+        private float _shieldHitPoints = 0f;      // Máu khiên (Shield Hitpoints)
+        private float _mass = 10f;                // Khối lượng (ảnh hưởng đến knockback)
+        private float _damage = 10f;              // Sát thương cận chiến
+        private float _damageRanged = 0f;         // Sát thương tầm xa
+        private float _damagePerSecond = 0f;      // DPS (tính toán)
+        private float _moveSpeed = 3f;            // Tốc độ di chuyển
+        private float _hitSpeed = 1.5f;           // Tốc độ đánh (giây)
+        private float _loadTime = 0f;             // Thời gian nạp (đạn, kỹ năng)
+        private float _range = 2f;                // Tầm đánh
+        private float _projectileRange = 0f;      // Tầm bắn của đạn
+        private float _deployTime = 1f;           // Thời gian triển khai
+        private int _count = 1;                   // Số lượng
+        private float _detectionRange = 10f;      // Tầm phát hiện kẻ địch
+        
+        // Ability properties
+        private string _ability = "";             // Tên kỹ năng
+        private float _abilityCost = 0f;          // Chi phí kỹ năng
+        private float _abilityCooldown = 0f;      // Hồi chiêu kỹ năng
+        private string _abilityParameters = "";   // Tham số kỹ năng
+        
+        // Visual properties
+        private Color _unitColor = Color.white; // Màu đại diện
+
+        // State tracking
+        private float _currentHealth;             // Máu hiện tại
+        private float _currentShield;             // Khiên hiện tại
+        private int _squadId = -1;                // ID của đội hình
+        private bool _isInCombat = false;         // Đang trong chiến đấu?
+        private Vector3 _position;                // Vị trí
+        private Quaternion _rotation;             // Hướng
+        private bool _hasReachedDestination = true; // Đã đến đích?
         
         // Events
-        public event Action<float, IEntity> OnDamageTaken;
         public event Action OnDeath;
+        public event Action<float, IEntity> OnDamageTaken;
         public event Action<IEntity, float> OnAttackPerformed;
-        public event Action<UnitType> OnUnitTypeChanged;
-        public event Action<int> OnSquadAssigned;
+        public event Action<float> OnHealthChanged;
+        public event Action<float> OnShieldChanged;
         
-        // Constructor
+        // Properties
+        public IEntity Entity => _entity;
+        public UnitType UnitType => _unitType;
+        public string UnitId => _unitId;
+        public string DisplayName => _displayName;
+        public string Description => _description;
+        
+        // Health & Shield properties
+        public float CurrentHealth 
+        { 
+            get => _currentHealth; 
+            set 
+            { 
+                float oldHealth = _currentHealth;
+                _currentHealth = Mathf.Clamp(value, 0, _hitPoints);
+                
+                if (_currentHealth != oldHealth)
+                {
+                    OnHealthChanged?.Invoke(_currentHealth);
+                    
+                    // Check for death
+                    if (_currentHealth <= 0 && oldHealth > 0)
+                    {
+                        OnDeath?.Invoke();
+                    }
+                }
+            }
+        }
+        
+        public float CurrentShield
+        {
+            get => _currentShield;
+            set
+            {
+                float oldShield = _currentShield;
+                _currentShield = Mathf.Clamp(value, 0, _shieldHitPoints);
+                
+                if (_currentShield != oldShield)
+                {
+                    OnShieldChanged?.Invoke(_currentShield);
+                }
+            }
+        }
+        
+        // Combat stats properties
+        public float MaxHealth => _hitPoints;
+        public float MaxShield => _shieldHitPoints;
+        public float Mass => _mass;
+        public float Damage => _damage;
+        public float DamageRanged => _damageRanged;
+        public float DamagePerSecond => _damagePerSecond;
+        public float MoveSpeed => _moveSpeed;
+        public float HitSpeed => _hitSpeed;
+        public float LoadTime => _loadTime;
+        public float Range => _range;
+        public float ProjectileRange => _projectileRange;
+        public float DeployTime => _deployTime;
+        public int Count => _count;
+        public float DetectionRange => _detectionRange;
+        
+        // Ability properties
+        public string Ability => _ability;
+        public float AbilityCost => _abilityCost;
+        public float AbilityCooldown => _abilityCooldown;
+        public string AbilityParameters => _abilityParameters;
+        
+        // Squad properties
+        public int SquadId => _squadId;
+        
+        public Vector3 Position 
+        {
+            get
+            {
+                var transform = (_entity as MonoBehaviour)?.transform;
+                if (transform != null)
+                    return (Vector3)(_entity != null ? transform?.position : _position);
+                return default;
+            }
+        }
+        public Quaternion Rotation
+        {
+            get
+            {
+                var transform = (_entity as MonoBehaviour)?.transform;
+                if (transform != null)
+                    return (Quaternion)(_entity != null ? transform?.rotation : _rotation);
+                return default;
+            }
+        }
+        public bool HasReachedDestination => _hasReachedDestination;
+        
         public UnitModel(IEntity entity, UnitDataSO unitData)
         {
             _entity = entity;
-            _unitData = unitData;
             
-            // Cache components
-            CacheComponents();
-            
-            // Apply initial data
-            if (_unitData != null)
+            if (unitData != null)
             {
-                ApplyData();
+                _unitType = unitData.UnitType;
+                _unitId = unitData.UnitId;
+                _displayName = unitData.DisplayName;
+                _description = unitData.Description;
+                _hitPoints = unitData.HitPoints;
+                _shieldHitPoints = unitData.Shield;
+                _mass = unitData.Mass;
+                _damage = unitData.Damage;
+                _damageRanged = unitData.DamageRanged;
+                _damagePerSecond = unitData.DamagePerSecond;
+                _moveSpeed = unitData.MoveSpeed;
+                _hitSpeed = unitData.HitSpeed;
+                _loadTime = unitData.LoadTime;
+                _range = unitData.Range;
+                _projectileRange = unitData.ProjectileRange;
+                _deployTime = unitData.DeployTime;
+                _count = unitData.Count;
+                _detectionRange = unitData.DetectionRange;
+                _ability = unitData.Ability;
+                _abilityCost = unitData.AbilityCost;
+                _abilityCooldown = unitData.AbilityCooldown;
+                _abilityParameters = unitData.AbilityParameters;
+                _unitColor = unitData.UnitColor;
+                _currentHealth = _hitPoints;
+                _currentShield = _shieldHitPoints;
+            }
+            else
+            {
+                _unitType = UnitType.Infantry;
+                _unitId = "unknown";
+                _displayName = "Unknown Unit";
+                _description = "No description available";
+                _currentHealth = _hitPoints;
+                _currentShield = _shieldHitPoints;
             }
             
-            // Subscribe to events
-            SubscribeToEvents();
-            
-            _isInitialized = true;
+            if (_entity != null)
+            {
+                RegisterEvents();
+                UpdateComponentReferences();
+            }
         }
         
-        // Properties to access data
-        public IEntity Entity => _entity;
-        public UnitDataSO Data => _unitData;
-        public UnitType UnitType => _unitTypeComponent?.UnitType ?? UnitType.Infantry;
-        public int SquadId => _formationComponent?.SquadId ?? -1;
-        public int FormationSlot => _formationComponent?.FormationSlotIndex ?? -1;
-        public float CurrentHealth => _healthComponent?.CurrentHealth ?? 0f;
-        public float MaxHealth => _healthComponent?.MaxHealth ?? 0f;
-        public bool IsDead => _healthComponent?.IsDead ?? false;
-        public Vector3 Position => _transformComponent?.Position ?? Vector3.zero;
-        public float AttackDamage => _combatComponent?.AttackDamage ?? 0f;
-        public float AttackRange => _combatComponent?.AttackRange ?? 0f;
-        public float MoveSpeed => _combatComponent?.MoveSpeed ?? 0f;
-        public bool IsInitialized => _isInitialized;
-        public bool HasReachedDestination => _navigationComponent?.HasReachedDestination ?? true;
+        private float CalculateDps()
+        {
+            float effectiveDamage = Mathf.Max(_damage, _damageRanged);
+            return _hitSpeed > 0 ? effectiveDamage / _hitSpeed : 0;
+        }
         
-        // Game statistics
-        public int ExperiencePoints => _experiencePoints;
-        public int KillCount => _killCount;
-        public float DamageDealt => _damageDealt;
-        public float DamageReceived => _damageReceived;
-        public int AttacksPerformed => _attacksPerformed;
-        public float DamagePerAttack => _attacksPerformed > 0 ? _damageDealt / _attacksPerformed : 0f;
+        private void RegisterEvents()
+        {
+            var healthComponent = GetComponent<HealthComponent>();
+            if (healthComponent != null)
+            {
+                // healthComponent.OnDamage += HandleDamage;
+                healthComponent.OnDeath += HandleDeath;
+                _currentHealth = healthComponent.CurrentHealth;
+                
+                // Lấy thông tin khiên nếu có
+                // _currentShield = healthComponent.CurrentArmor;
+            }
+            
+            var combatComponent = GetComponent<CombatComponent>();
+            if (combatComponent != null)
+            {
+                // combatComponent.OnAttackPerformed += HandleAttackPerformed;
+            }
+            
+            var navigationComponent = GetComponent<NavigationComponent>();
+            if (navigationComponent != null)
+            {
+                // navigationComponent.OnDestinationReached += HandleDestinationReached;
+                _hasReachedDestination = navigationComponent.HasReachedDestination;
+            }
+            
+            var formationComponent = GetComponent<FormationComponent>();
+            if (formationComponent != null)
+            {
+                _squadId = formationComponent.SquadId;
+            }
+        }
         
         /// <summary>
-        /// Cache components for quick access
+        /// Cập nhật các tham chiếu component
         /// </summary>
-        private void CacheComponents()
+        private void UpdateComponentReferences()
         {
             if (_entity == null) return;
             
-            _transformComponent = _entity.GetComponent<TransformComponent>();
-            _healthComponent = _entity.GetComponent<HealthComponent>();
-            _combatComponent = _entity.GetComponent<CombatComponent>();
-            _stateComponent = _entity.GetComponent<StateComponent>();
-            _formationComponent = _entity.GetComponent<FormationComponent>();
-            _unitTypeComponent = _entity.GetComponent<UnitTypeComponent>();
-            _aggroComponent = _entity.GetComponent<AggroDetectionComponent>();
-            _navigationComponent = _entity.GetComponent<NavigationComponent>();
-            _abilityComponent = _entity.GetComponent<AbilityComponent>();
+            // Xóa cache hiện tại
+            _componentCache.Clear();
+            
+            // Cập nhật giá trị thiết lập cho các component
+            var healthComponent = GetComponent<HealthComponent>();
+            if (healthComponent != null)
+            {
+                healthComponent.SetMaxHealth(_hitPoints);
+                // healthComponent.SetCurrentHealth(_currentHealth);
+                healthComponent.SetArmor(_shieldHitPoints);
+            }
+            
+            var combatComponent = GetComponent<CombatComponent>();
+            if (combatComponent != null)
+            {
+                combatComponent.SetAttackDamage(_damage);
+                combatComponent.SetAttackCooldown(_hitSpeed);
+                combatComponent.SetAttackRange(_range);
+                combatComponent.SetMoveSpeed(_moveSpeed);
+                
+                // Cấu hình tấn công tầm xa nếu có
+                if (_damageRanged > 0)
+                {
+                    combatComponent.ConfigureSecondaryAttack(
+                        true, 
+                        AttackType.Ranged, 
+                        _damageRanged, 
+                        _projectileRange, 
+                        _loadTime > 0 ? _loadTime * 3 : 3f
+                    );
+                }
+            }
+            
+            var unitTypeComponent = GetComponent<UnitTypeComponent>();
+            if (unitTypeComponent != null)
+            {
+                unitTypeComponent.SetUnitType(_unitType);
+            }
+            
+            var navigationComponent = GetComponent<NavigationComponent>();
+            if (navigationComponent != null)
+            {
+                // navigationComponent.SetMoveSpeed(_moveSpeed);
+            }
+            
+            var aggroComponent = GetComponent<AggroDetectionComponent>();
+            if (aggroComponent != null)
+            {
+                aggroComponent.SetAggroRange(_detectionRange);
+            }
+            
+            var abilityComponent = GetComponent<AbilityComponent>();
+            if (abilityComponent != null && !string.IsNullOrEmpty(_ability))
+            {
+                abilityComponent.SetAbility(_ability, _abilityCost, _abilityCooldown, _abilityParameters);
+            }
         }
         
         /// <summary>
-        /// Subscribe to component events
+        /// Xử lý sự kiện khi bị tấn công
         /// </summary>
-        private void SubscribeToEvents()
+        private void HandleDamage(float amount, IEntity source)
         {
-            if (_healthComponent != null)
+            // Ưu tiên trừ khiên trước, sau đó mới trừ máu
+            if (_currentShield > 0)
             {
-                _healthComponent.OnDamageTaken += HandleDamageTaken;
-                _healthComponent.OnDeath += HandleDeath;
+                float shieldDamage = Mathf.Min(_currentShield, amount);
+                _currentShield -= shieldDamage;
+                amount -= shieldDamage;
+                
+                OnShieldChanged?.Invoke(_currentShield);
             }
             
-            if (_combatComponent != null)
+            if (amount > 0)
             {
-                _combatComponent.OnAttackPerformed += HandleAttackPerformed;
-                _combatComponent.OnDamageDealt += HandleDamageDealt;
-            }
-            
-            if (_formationComponent != null)
-            {
-                // TODO: Add formation changed event
+                _currentHealth = Mathf.Max(0, _currentHealth - amount);
+                OnDamageTaken?.Invoke(amount, source);
+                OnHealthChanged?.Invoke(_currentHealth);
             }
         }
         
         /// <summary>
-        /// Unsubscribe from all events
-        /// </summary>
-        public void Cleanup()
-        {
-            if (_healthComponent != null)
-            {
-                _healthComponent.OnDamageTaken -= HandleDamageTaken;
-                _healthComponent.OnDeath -= HandleDeath;
-            }
-            
-            if (_combatComponent != null)
-            {
-                _combatComponent.OnAttackPerformed -= HandleAttackPerformed;
-                _combatComponent.OnDamageDealt -= HandleDamageDealt;
-            }
-            
-            _isInitialized = false;
-        }
-        
-        /// <summary>
-        /// Handle damage taken event
-        /// </summary>
-        private void HandleDamageTaken(float amount, IEntity source)
-        {
-            _damageReceived += amount;
-            OnDamageTaken?.Invoke(amount, source);
-        }
-        
-        /// <summary>
-        /// Handle death event
+        /// Xử lý sự kiện khi chết
         /// </summary>
         private void HandleDeath()
         {
+            _currentHealth = 0;
             OnDeath?.Invoke();
-            Debug.Log($"Unit {_entity.Id} of type {UnitType} has died");
         }
         
         /// <summary>
-        /// Handle attack performed event
+        /// Xử lý sự kiện khi tấn công
         /// </summary>
-        private void HandleAttackPerformed(IEntity target)
+        private void HandleAttackPerformed(IEntity target, float damage)
         {
-            _attacksPerformed++;
+            OnAttackPerformed?.Invoke(target, damage);
+            _isInCombat = true;
+        }
+        
+        /// <summary>
+        /// Xử lý sự kiện khi đến đích
+        /// </summary>
+        private void HandleDestinationReached()
+        {
+            _hasReachedDestination = true;
+        }
+        
+        /// <summary>
+        /// Lấy component theo kiểu
+        /// </summary>
+        public T GetComponent<T>() where T : class, IComponent
+        {
+            if (_entity == null) return null;
             
-            if (_combatComponent != null)
+            Type type = typeof(T);
+            
+            // Kiểm tra cache
+            if (_componentCache.TryGetValue(type, out IComponent cachedComponent))
             {
-                OnAttackPerformed?.Invoke(target, _combatComponent.AttackDamage);
+                return cachedComponent as T;
             }
             
-            // Check if target died from this attack
-            var targetHealth = target.GetComponent<HealthComponent>();
-            if (targetHealth != null && targetHealth.IsDead)
+            // Lấy component từ entity và lưu vào cache
+            T component = _entity.GetComponent<T>();
+            if (component != null)
             {
-                _killCount++;
-                _experiencePoints += 10; // Simple XP reward
+                _componentCache[type] = component;
+            }
+            
+            return component;
+        }
+        
+        /// <summary>
+        /// Kiểm tra xem unit có đang trong trạng thái chiến đấu hay không
+        /// </summary>
+        public bool IsInCombat()
+        {
+            // Kiểm tra thông qua combat component nếu có
+            var combatComponent = GetComponent<CombatComponent>();
+            if (combatComponent != null)
+            {
+                return combatComponent.IsInCombat;
+            }
+            
+            return _isInCombat;
+        }
+        
+        /// <summary>
+        /// Thiết lập ID đội
+        /// </summary>
+        public void SetSquadId(int squadId)
+        {
+            _squadId = squadId;
+            
+            // Cập nhật component nếu có
+            var formationComponent = GetComponent<FormationComponent>();
+            if (formationComponent != null)
+            {
+                formationComponent.SetSquadId(squadId);
             }
         }
         
         /// <summary>
-        /// Handle damage dealt event
+        /// Kích hoạt kỹ năng nếu có thể
         /// </summary>
-        private void HandleDamageDealt(IEntity target, float amount)
+        public bool ActivateAbility(IEntity target = null)
         {
-            _damageDealt += amount;
-        }
-        
-        /// <summary>
-        /// Apply data to the entity's components
-        /// </summary>
-        public void ApplyData()
-        {
-            if (_entity == null || _unitData == null) return;
+            if (string.IsNullOrEmpty(_ability)) return false;
             
-            // Get the GameObject
-            var entityObject = (_entity as MonoBehaviour)?.gameObject;
-            if (entityObject == null) return;
-            
-            // Apply data to components
-            _unitData.ApplyToUnit(entityObject);
-            
-            // Refresh cached components in case new ones were added
-            CacheComponents();
-            
-            // Resubscribe to events
-            SubscribeToEvents();
-            
-            Debug.Log($"UnitModel: Applied data from {_unitData.DisplayName} to entity {_entity.Id}");
-        }
-        
-        /// <summary>
-        /// Update the unit model's data
-        /// </summary>
-        /// <param name="newData">New unit data to apply</param>
-        public void UpdateData(UnitDataSO newData)
-        {
-            if (newData == null) return;
-            
-            UnitDataSO oldData = _unitData;
-            _unitData = newData;
-            
-            // Check if unit type has changed
-            UnitType oldType = oldData?.UnitType ?? UnitType.Infantry;
-            UnitType newType = newData.UnitType;
-            
-            ApplyData();
-            
-            // Trigger unit type changed event if needed
-            if (oldType != newType)
+            var abilityComponent = GetComponent<AbilityComponent>();
+            if (abilityComponent != null)
             {
-                OnUnitTypeChanged?.Invoke(newType);
-            }
-            
-            Debug.Log($"UnitModel: Updated data for entity {_entity.Id} from {oldData?.DisplayName ?? "none"} to {newData.DisplayName}");
-        }
-        
-        /// <summary>
-        /// Set the unit's formation information
-        /// </summary>
-        /// <param name="squadId">ID of the squad</param>
-        /// <param name="slotIndex">Slot index in formation</param>
-        /// <param name="formationType">Type of formation</param>
-        public void SetFormationInfo(int squadId, int slotIndex, FormationType formationType)
-        {
-            if (_formationComponent == null) return;
-            
-            int oldSquadId = _formationComponent.SquadId;
-            
-            _formationComponent.SetSquadId(squadId);
-            _formationComponent.SetFormationSlot(slotIndex);
-            _formationComponent.SetFormationType(formationType);
-            
-            // Trigger squad assigned event if squad changed
-            if (oldSquadId != squadId)
-            {
-                OnSquadAssigned?.Invoke(squadId);
-            }
-            
-            Debug.Log($"UnitModel: Set formation info for entity {_entity.Id} - Squad: {squadId}, Slot: {slotIndex}, Formation: {formationType}");
-        }
-        
-        /// <summary>
-        /// Move the unit to a position
-        /// </summary>
-        /// <param name="position">Target position</param>
-        /// <param name="priority">Navigation priority</param>
-        public void MoveTo(Vector3 position, NavigationCommandPriority priority = NavigationCommandPriority.Normal)
-        {
-            if (_navigationComponent == null) return;
-            
-            _navigationComponent.SetDestination(position, priority);
-            
-            Debug.Log($"UnitModel: Moving entity {_entity.Id} to position {position} with priority {priority}");
-        }
-        
-        /// <summary>
-        /// Attack a target entity
-        /// </summary>
-        /// <param name="target">Target entity</param>
-        /// <returns>True if attack was initiated</returns>
-        public bool Attack(IEntity target)
-        {
-            if (_combatComponent == null || target == null) return false;
-            
-            if (_combatComponent.CanAttack() && _combatComponent.IsInAttackRange(target))
-            {
-                _combatComponent.Attack(target);
-                return true;
+                return abilityComponent.ActivateAbility(new Vector3() ,target);
             }
             
             return false;
         }
         
         /// <summary>
-        /// Use the unit's ability
+        /// Hồi sinh đơn vị
         /// </summary>
-        /// <param name="targetPosition">Target position for the ability</param>
-        /// <param name="targetEntity">Optional target entity</param>
-        /// <returns>True if ability was activated</returns>
-        public bool UseAbility(Vector3 targetPosition, IEntity targetEntity = null)
+        public void Revive()
         {
-            if (_abilityComponent == null) return false;
+            _currentHealth = _hitPoints;
+            _currentShield = _shieldHitPoints;
             
-            return _abilityComponent.ActivateAbility(targetPosition, targetEntity);
-        }
-        
-        /// <summary>
-        /// Check if the unit has a specific component
-        /// </summary>
-        /// <typeparam name="T">Component type</typeparam>
-        /// <returns>True if the unit has the component</returns>
-        public bool HasComponent<T>() where T : class, IComponent
-        {
-            return _entity != null && _entity.HasComponent<T>();
-        }
-        
-        /// <summary>
-        /// Get a component from the unit
-        /// </summary>
-        /// <typeparam name="T">Component type</typeparam>
-        /// <returns>Component or null if not found</returns>
-        public T GetComponent<T>() where T : class, IComponent
-        {
-            return _entity?.GetComponent<T>();
-        }
-        
-        /// <summary>
-        /// Get the unit's current state
-        /// </summary>
-        /// <returns>Name of the current state</returns>
-        public string GetCurrentState()
-        {
-            if (_stateComponent?.CurrentState != null)
+            var healthComponent = GetComponent<HealthComponent>();
+            if (healthComponent != null)
             {
-                return _stateComponent.CurrentState.GetType().Name;
-            }
-            return "Unknown";
-        }
-        
-        /// <summary>
-        /// Check if the unit is in combat
-        /// </summary>
-        /// <returns>True if the unit is in combat</returns>
-        public bool IsInCombat()
-        {
-            if (_aggroComponent == null) return false;
-            
-            return _aggroComponent.HasEnemyInRange();
-        }
-        
-        /// <summary>
-        /// Reset the unit's stats
-        /// </summary>
-        public void ResetStats()
-        {
-            _experiencePoints = 0;
-            _killCount = 0;
-            _damageDealt = 0;
-            _damageReceived = 0;
-            _attacksPerformed = 0;
-            
-            // Also reset health if available
-            if (_healthComponent != null)
-            {
-                _healthComponent.Revive();
+                healthComponent.Revive();
             }
             
-            Debug.Log($"UnitModel: Reset stats for entity {_entity.Id}");
+            OnHealthChanged?.Invoke(_currentHealth);
+            OnShieldChanged?.Invoke(_currentShield);
         }
         
         /// <summary>
-        /// Create a string representation of the unit
+        /// Áp dụng thay đổi thông số cho entity
+        /// </summary>
+        public void ApplyData()
+        {
+            if (_entity == null) return;
+            
+            // Cập nhật các component
+            UpdateComponentReferences();
+            
+            Debug.Log($"UnitModel: Applied data for unit {_displayName} (ID: {_unitId})");
+        }
+        
+        /// <summary>
+        /// Dọn dẹp tài nguyên và hủy đăng ký sự kiện
+        /// </summary>
+        public void Cleanup()
+        {
+            // Hủy đăng ký tất cả các sự kiện
+            if (_entity != null)
+            {
+                var healthComponent = GetComponent<HealthComponent>();
+                if (healthComponent != null)
+                {
+                    // healthComponent.OnDamage -= HandleDamage;
+                    healthComponent.OnDeath -= HandleDeath;
+                }
+                
+                var combatComponent = GetComponent<CombatComponent>();
+                if (combatComponent != null)
+                {
+                    // combatComponent.OnAttackPerformed -= HandleAttackPerformed;
+                }
+                
+                var navigationComponent = GetComponent<NavigationComponent>();
+                if (navigationComponent != null)
+                {
+                    // navigationComponent.OnDestinationReached -= HandleDestinationReached;
+                }
+            }
+            
+            // Xóa cache
+            _componentCache.Clear();
+            _entity = null;
+            
+            Debug.Log($"UnitModel: Cleaned up unit {_displayName} (ID: {_unitId})");
+        }
+        
+        /// <summary>
+        /// Tạo chuỗi biểu diễn của unit
         /// </summary>
         public override string ToString()
         {
-            return $"UnitModel(ID: {_entity?.Id}, Type: {UnitType}, HP: {CurrentHealth}/{MaxHealth}, Squad: {SquadId}, Slot: {FormationSlot})";
-        }
-        
-        /// <summary>
-        /// Create a deep copy of this unit model with a new entity
-        /// </summary>
-        /// <param name="newEntity">New entity to use</param>
-        /// <returns>Clone of this unit model</returns>
-        public UnitModel Clone(IEntity newEntity)
-        {
-            if (newEntity == null) return null;
-            
-            // Create a new model with the same data
-            UnitModel clone = new UnitModel(newEntity, _unitData);
-            
-            // Copy statistics if needed
-            // clone._experiencePoints = this._experiencePoints;
-            // clone._killCount = this._killCount;
-            
-            return clone;
+            return $"UnitModel({_unitType}, '{_displayName}', HP: {_currentHealth}/{_hitPoints}, Shield: {_currentShield}/{_shieldHitPoints}, Squad: {_squadId})";
         }
     }
 }

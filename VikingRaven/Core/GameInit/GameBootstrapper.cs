@@ -17,13 +17,6 @@ namespace VikingRaven.Core
         private UnitFactory UnitFactory => GameManager.Instance.UnitFactory;
         private SquadFactory SquadFactory => SquadFactory.Instance;
         private GameManager GameManager => GameManager.Instance;
-        private LevelManager LevelManager => LevelManager.Instance;
-
-        private void Awake()
-        {
-            DataManager.Instance.OnInitialize();
-        }
-
         private void Start()
         {
             Debug.Log("GameBootstrapper: Initializing game...");
@@ -31,11 +24,6 @@ namespace VikingRaven.Core
             if (SystemRegistry != null)
             {
                 SystemRegistry.InitializeAllSystems();
-            }
-            
-            if (_autoStartLevel && LevelManager != null)
-            {
-                LevelManager.StartLevel();
             }
         }
         
@@ -75,12 +63,6 @@ namespace VikingRaven.Core
             if (GameManager == null)
             {
                 Debug.LogError("GameBootstrapper: GameManager singleton is not available");
-                allValid = false;
-            }
-            
-            if (LevelManager == null)
-            {
-                Debug.LogError("GameBootstrapper: LevelManager singleton is not available");
                 allValid = false;
             }
             
