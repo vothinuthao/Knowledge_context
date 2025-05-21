@@ -131,13 +131,13 @@ namespace VikingRaven.Units.Models
             }
             
             // Set formation component if available
-            var formationComponent = unitModel.GetComponent<FormationComponent>();
-            if (formationComponent != null)
-            {
-                formationComponent.SetSquadId(_squadId);
-                formationComponent.SetFormationSlot(_unitModels.Count - 1);
-                formationComponent.SetFormationType(_currentFormation);
-            }
+            // var formationComponent = unitModel.GetComponent<FormationComponent>();
+            // if (formationComponent != null)
+            // {
+            //     formationComponent.SetSquadId(_squadId);
+            //     formationComponent.SetFormationSlot(_unitModels.Count - 1);
+            //     formationComponent.SetFormationType(_currentFormation);
+            // }
             
             // Generate formation offset for the unit
             UpdateUnitFormationOffset(unitModel);
@@ -198,11 +198,11 @@ namespace VikingRaven.Units.Models
                 UnsubscribeFromUnitEvents(unitModel);
                 
                 // Reset formation component
-                var formationComponent = unitModel.GetComponent<FormationComponent>();
-                if (formationComponent != null)
-                {
-                    formationComponent.SetSquadId(-1);
-                }
+                // var formationComponent = unitModel.GetComponent<FormationComponent>();
+                // if (formationComponent != null)
+                // {
+                //     formationComponent.SetSquadId(-1);
+                // }
                 
                 // Trigger event
                 OnUnitRemoved?.Invoke(unitModel);
@@ -314,14 +314,14 @@ namespace VikingRaven.Units.Models
         /// </summary>
         private void UpdateFormationSlots()
         {
-            for (int i = 0; i < _unitModels.Count; i++)
-            {
-                var formationComponent = _unitModels[i].GetComponent<FormationComponent>();
-                if (formationComponent != null)
-                {
-                    formationComponent.SetFormationSlot(i);
-                }
-            }
+            // for (int i = 0; i < _unitModels.Count; i++)
+            // {
+            //     var formationComponent = _unitModels[i].GetComponent<FormationComponent>();
+            //     if (formationComponent != null)
+            //     {
+            //         formationComponent.SetFormationSlot(i);
+            //     }
+            // }
             
             // Recalculate formation offsets after changing slots
             RecalculateAllFormationOffsets();
@@ -345,11 +345,11 @@ namespace VikingRaven.Units.Models
             // Update all unit formation components
             foreach (var unitModel in _unitModels)
             {
-                var formationComponent = unitModel.GetComponent<FormationComponent>();
-                if (formationComponent != null)
-                {
-                    formationComponent.SetFormationType(formationType, true); // Use smooth transition
-                }
+                // var formationComponent = unitModel.GetComponent<FormationComponent>();
+                // if (formationComponent != null)
+                // {
+                //     formationComponent.SetFormationType(formationType, true); // Use smooth transition
+                // }
             }
             
             // Trigger event
@@ -423,16 +423,16 @@ namespace VikingRaven.Units.Models
                 
                 if (_formationOffsets.TryGetValue(entityId, out Vector3 offset))
                 {
-                    var navigationComponent = unitModel.GetComponent<NavigationComponent>();
-                    if (navigationComponent != null)
-                    {
-                        // Set formation info with squad center, formation offset
-                        navigationComponent.SetFormationInfo(
-                            _currentPosition, 
-                            offset, 
-                            NavigationCommandPriority.High
-                        );
-                    }
+                    // var navigationComponent = unitModel.GetComponent<NavigationComponent>();
+                    // if (navigationComponent != null)
+                    // {
+                    //     // Set formation info with squad center, formation offset
+                    //     navigationComponent.SetFormationInfo(
+                    //         _currentPosition, 
+                    //         offset, 
+                    //         NavigationCommandPriority.High
+                    //     );
+                    // }
                 }
             }
         }
@@ -499,11 +499,11 @@ namespace VikingRaven.Units.Models
             if (_formationOffsets.TryGetValue(entityId, out Vector3 offset))
             {
                 // Update formation component
-                var formationComponent = unitModel.GetComponent<FormationComponent>();
-                if (formationComponent != null)
-                {
-                    formationComponent.SetFormationOffset(offset, true); // Use smooth transition
-                }
+                // var formationComponent = unitModel.GetComponent<FormationComponent>();
+                // if (formationComponent != null)
+                // {
+                //     formationComponent.SetFormationOffset(offset, true); // Use smooth transition
+                // }
             }
             else
             {
@@ -515,11 +515,11 @@ namespace VikingRaven.Units.Models
                     _formationOffsets[entityId] = newOffset;
                     
                     // Update formation component
-                    var formationComponent = unitModel.GetComponent<FormationComponent>();
-                    if (formationComponent != null)
-                    {
-                        formationComponent.SetFormationOffset(newOffset, false); // No transition for initial setup
-                    }
+                    // var formationComponent = unitModel.GetComponent<FormationComponent>();
+                    // if (formationComponent != null)
+                    // {
+                    //     formationComponent.SetFormationOffset(newOffset, false); // No transition for initial setup
+                    // }
                 }
             }
         }
@@ -1021,10 +1021,10 @@ namespace VikingRaven.Units.Models
             int movingCount = 0;
             foreach (var unitModel in _unitModels)
             {
-                if (!unitModel.HasReachedDestination)
-                {
-                    movingCount++;
-                }
+                // if (!unitModel.HasReachedDestination)
+                // {
+                //     movingCount++;
+                // }
             }
             
             // If less than 20% of units are still moving, consider the squad stopped
@@ -1052,12 +1052,12 @@ namespace VikingRaven.Units.Models
             bool anyEngaged = false;
             foreach (var unitModel in _unitModels)
             {
-                if (unitModel.IsInCombat())
-                {
-                    anyEngaged = true;
-                    _lastCombatTime = Time.time;
-                    break;
-                }
+                // if (unitModel.IsInCombat())
+                // {
+                //     anyEngaged = true;
+                //     _lastCombatTime = Time.time;
+                //     break;
+                // }
             }
             
             // If no units are engaged and it's been a while since combat, exit combat state

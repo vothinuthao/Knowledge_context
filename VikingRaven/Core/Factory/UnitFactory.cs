@@ -123,7 +123,7 @@ namespace VikingRaven.Core.Factory
             // Clean up all unit models
             foreach (var unitModel in _unitModelsById.Values)
             {
-                unitModel.Cleanup();
+                // unitModel.Cleanup();
             }
             
             // Clear pools
@@ -240,7 +240,7 @@ namespace VikingRaven.Core.Factory
             if (_unitModelsById.TryGetValue(entity.Id, out UnitModel unitModel))
             {
                 // Clean up model
-                unitModel.Cleanup();
+                // unitModel.Cleanup();
                 
                 // Trigger event
                 OnUnitReturned?.Invoke(unitModel);
@@ -349,7 +349,7 @@ namespace VikingRaven.Core.Factory
             entity.transform.rotation = rotation;
             
             // Apply the unit data
-            unitData.ApplyToUnit(entity.gameObject);
+            // unitData.ApplyToUnit(entity.gameObject);
             
             // Create UnitModel
             UnitModel unitModel = new UnitModel(entity, unitData);
@@ -619,7 +619,7 @@ namespace VikingRaven.Core.Factory
         {
             foreach (var unitModel in _unitModelsById.Values)
             {
-                unitModel.ApplyData();
+                // unitModel.ApplyData();
             }
             
             Debug.Log($"UnitFactory: Refreshed all {_unitModelsById.Count} unit models");

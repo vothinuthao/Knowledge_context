@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using UnityEngine;
 using VikingRaven.Core.ECS;
 using VikingRaven.Units.Components;
@@ -8,63 +7,60 @@ using VikingRaven.Units.Data;
 namespace VikingRaven.Units.Models
 {
     /// <summary>
-    /// Model class for managing unit data and state
-    /// Provides a high-level API for unit operations
+    /// Model class quản lý dữ liệu và trạng thái đơn vị
+    /// Đã được tách biệt khỏi logic component để tránh lỗi tham chiếu null
     /// </summary>
     public class UnitModel
     {
-        // Entity reference
+        // Entity reference - chỉ lưu trữ tham chiếu, không xử lý logic
         private IEntity _entity;
         
-        // Cached components
-        private Dictionary<Type, IComponent> _componentCache = new Dictionary<Type, IComponent>();
-        
+        // Core unit properties (lưu trữ trực tiếp thay vì tham chiếu đến UnitDataSO)
         private UnitType _unitType;
         private string _unitId;
         private string _displayName;
         private string _description;
         
-        private float _hitPoints = 100f;          // Máu cơ bản
-        private float _shieldHitPoints = 0f;      // Máu khiên (Shield Hitpoints)
-        private float _mass = 10f;                // Khối lượng (ảnh hưởng đến knockback)
-        private float _damage = 10f;              // Sát thương cận chiến
-        private float _damageRanged = 0f;         // Sát thương tầm xa
-        private float _damagePerSecond = 0f;      // DPS (tính toán)
-        private float _moveSpeed = 3f;            // Tốc độ di chuyển
-        private float _hitSpeed = 1.5f;           // Tốc độ đánh (giây)
-        private float _loadTime = 0f;             // Thời gian nạp (đạn, kỹ năng)
-        private float _range = 2f;                // Tầm đánh
-        private float _projectileRange = 0f;      // Tầm bắn của đạn
-        private float _deployTime = 1f;           // Thời gian triển khai
-        private int _count = 1;                   // Số lượng
-        private float _detectionRange = 10f;      // Tầm phát hiện kẻ địch
+        // Combat stats
+        private float _hitPoints = 100f;           // Máu cơ bản
+        private float _shieldHitPoints = 0f;       // Máu khiên (Shield Hitpoints)
+        private float _mass = 10f;                 // Khối lượng (ảnh hưởng đến knockback)
+        private float _damage = 10f;               // Sát thương cận chiến
+        private float _damageRanged = 0f;          // Sát thương tầm xa
+        private float _damagePerSecond = 0f;       // DPS (tính toán)
+        private float _moveSpeed = 3f;             // Tốc độ di chuyển
+        private float _hitSpeed = 1.5f;            // Tốc độ đánh (giây)
+        private float _loadTime = 0f;              // Thời gian nạp (đạn, kỹ năng)
+        private float _range = 2f;                 // Tầm đánh
+        private float _projectileRange = 0f;        // Tầm bắn của đạn
+        private float _deployTime = 1f;            // Thời gian triển khai
+        private int _count = 1;                    // Số lượng
+        private float _detectionRange = 10f;       // Tầm phát hiện kẻ địch
         
         // Ability properties
-        private string _ability = "";             // Tên kỹ năng
-        private float _abilityCost = 0f;          // Chi phí kỹ năng
-        private float _abilityCooldown = 0f;      // Hồi chiêu kỹ năng
-        private string _abilityParameters = "";   // Tham số kỹ năng
+        private string _ability = "";              // Tên kỹ năng
+        private float _abilityCost = 0f;           // Chi phí kỹ năng
+        private float _abilityCooldown = 0f;       // Hồi chiêu kỹ năng
+        private string _abilityParameters = "";    // Tham số kỹ năng
         
         // Visual properties
-        private Color _unitColor = Color.white; // Màu đại diện
+        private Color _unitColor = Color.white;    // Màu đại diện
 
-        // State tracking
-        private float _currentHealth;             // Máu hiện tại
-        private float _currentShield;             // Khiên hiện tại
-        private int _squadId = -1;                // ID của đội hình
-        private bool _isInCombat = false;         // Đang trong chiến đấu?
-        private Vector3 _position;                // Vị trí
-        private Quaternion _rotation;             // Hướng
-        private bool _hasReachedDestination = true; // Đã đến đích?
+        // State tracking - chỉ lưu trữ dữ liệu, không xử lý logic
+        private float _currentHealth;              // Máu hiện tại
+        private float _currentShield;              // Khiên hiện tại
+        private int _squadId = -1;                 // ID của đội hình
+        private Vector3 _position;                 // Vị trí (sao lưu)
+        private Quaternion _rotation;              // Hướng (sao lưu)
         
-        // Events
+        // Events - có thể đăng ký từ bên ngoài nếu cần
         public event Action OnDeath;
         public event Action<float, IEntity> OnDamageTaken;
         public event Action<IEntity, float> OnAttackPerformed;
         public event Action<float> OnHealthChanged;
         public event Action<float> OnShieldChanged;
         
-        // Properties
+        // Properties - chỉ trả về dữ liệu, không xử lý logic
         public IEntity Entity => _entity;
         public UnitType UnitType => _unitType;
         public string UnitId => _unitId;
@@ -133,38 +129,26 @@ namespace VikingRaven.Units.Models
         // Squad properties
         public int SquadId => _squadId;
         
-        public Vector3 Position 
-        {
-            get
-            {
-                var transform = (_entity as MonoBehaviour)?.transform;
-                if (transform != null)
-                    return (Vector3)(_entity != null ? transform?.position : _position);
-                return default;
-            }
-        }
-        public Quaternion Rotation
-        {
-            get
-            {
-                var transform = (_entity as MonoBehaviour)?.transform;
-                if (transform != null)
-                    return (Quaternion)(_entity != null ? transform?.rotation : _rotation);
-                return default;
-            }
-        }
-        public bool HasReachedDestination => _hasReachedDestination;
+        // Position properties (lưu ý: không truy xuất transform nữa)
+        public Vector3 Position => _position;
+        public Quaternion Rotation => _rotation;
         
+        /// <summary>
+        /// Khởi tạo từ entity và unitData
+        /// </summary>
         public UnitModel(IEntity entity, UnitDataSO unitData)
         {
             _entity = entity;
             
             if (unitData != null)
             {
+                // Khởi tạo thông tin cơ bản
                 _unitType = unitData.UnitType;
                 _unitId = unitData.UnitId;
                 _displayName = unitData.DisplayName;
                 _description = unitData.Description;
+                
+                // Khởi tạo các chỉ số chiến đấu
                 _hitPoints = unitData.HitPoints;
                 _shieldHitPoints = unitData.Shield;
                 _mass = unitData.Mass;
@@ -179,139 +163,126 @@ namespace VikingRaven.Units.Models
                 _deployTime = unitData.DeployTime;
                 _count = unitData.Count;
                 _detectionRange = unitData.DetectionRange;
+                
+                // Khởi tạo thông tin kỹ năng
                 _ability = unitData.Ability;
                 _abilityCost = unitData.AbilityCost;
                 _abilityCooldown = unitData.AbilityCooldown;
                 _abilityParameters = unitData.AbilityParameters;
+                
+                // Khởi tạo thuộc tính hình ảnh
                 _unitColor = unitData.UnitColor;
+                
+                // Khởi tạo giá trị máu hiện tại
                 _currentHealth = _hitPoints;
                 _currentShield = _shieldHitPoints;
             }
             else
             {
+                // Giá trị mặc định nếu không có unitData
                 _unitType = UnitType.Infantry;
                 _unitId = "unknown";
                 _displayName = "Unknown Unit";
                 _description = "No description available";
+                
+                // Giá trị chiến đấu mặc định
                 _currentHealth = _hitPoints;
                 _currentShield = _shieldHitPoints;
             }
             
-            if (_entity != null)
+            // Lưu vị trí ban đầu nếu có transform
+            if (entity != null)
             {
-                RegisterEvents();
-                UpdateComponentReferences();
+                var entityObj = entity as MonoBehaviour;
+                if (entityObj != null)
+                {
+                    _position = entityObj.transform.position;
+                    _rotation = entityObj.transform.rotation;
+                }
             }
         }
         
-        private float CalculateDps()
+        /// <summary>
+        /// Khởi tạo trực tiếp từ các tham số (constructor đầy đủ)
+        /// </summary>
+        public UnitModel(UnitType unitType, string unitId, string displayName, string description,
+                        float hitPoints, float shieldHitPoints, float mass, float damage, float damageRanged,
+                        float moveSpeed, float hitSpeed, float loadTime, float range, float projectileRange,
+                        float deployTime, int count, float detectionRange,
+                        string ability = "", float abilityCost = 0, float abilityCooldown = 0, string abilityParameters = "")
+        {
+            // Khởi tạo thông tin cơ bản
+            _unitType = unitType;
+            _unitId = unitId;
+            _displayName = displayName;
+            _description = description;
+            
+            // Khởi tạo các chỉ số chiến đấu
+            _hitPoints = hitPoints;
+            _shieldHitPoints = shieldHitPoints;
+            _mass = mass;
+            _damage = damage;
+            _damageRanged = damageRanged;
+            _moveSpeed = moveSpeed;
+            _hitSpeed = hitSpeed;
+            _loadTime = loadTime;
+            _range = range;
+            _projectileRange = projectileRange;
+            _deployTime = deployTime;
+            _count = count;
+            _detectionRange = detectionRange;
+            
+            // Tính toán DPS
+            _damagePerSecond = CalculateDPS();
+            
+            // Khởi tạo thông tin kỹ năng
+            _ability = ability;
+            _abilityCost = abilityCost;
+            _abilityCooldown = abilityCooldown;
+            _abilityParameters = abilityParameters;
+            
+            // Khởi tạo giá trị máu hiện tại
+            _currentHealth = _hitPoints;
+            _currentShield = _shieldHitPoints;
+        }
+        
+        /// <summary>
+        /// Tính toán giá trị DPS
+        /// </summary>
+        private float CalculateDPS()
         {
             float effectiveDamage = Mathf.Max(_damage, _damageRanged);
             return _hitSpeed > 0 ? effectiveDamage / _hitSpeed : 0;
         }
         
-        private void RegisterEvents()
-        {
-            var healthComponent = GetComponent<HealthComponent>();
-            if (healthComponent != null)
-            {
-                // healthComponent.OnDamage += HandleDamage;
-                healthComponent.OnDeath += HandleDeath;
-                _currentHealth = healthComponent.CurrentHealth;
-                
-                // Lấy thông tin khiên nếu có
-                // _currentShield = healthComponent.CurrentArmor;
-            }
-            
-            var combatComponent = GetComponent<CombatComponent>();
-            if (combatComponent != null)
-            {
-                // combatComponent.OnAttackPerformed += HandleAttackPerformed;
-            }
-            
-            var navigationComponent = GetComponent<NavigationComponent>();
-            if (navigationComponent != null)
-            {
-                // navigationComponent.OnDestinationReached += HandleDestinationReached;
-                _hasReachedDestination = navigationComponent.HasReachedDestination;
-            }
-            
-            var formationComponent = GetComponent<FormationComponent>();
-            if (formationComponent != null)
-            {
-                _squadId = formationComponent.SquadId;
-            }
-        }
-        
         /// <summary>
-        /// Cập nhật các tham chiếu component
+        /// Cập nhật vị trí và góc quay từ entity (nếu có transform)
         /// </summary>
-        private void UpdateComponentReferences()
+        public void UpdateTransformData()
         {
-            if (_entity == null) return;
-            
-            // Xóa cache hiện tại
-            _componentCache.Clear();
-            
-            // Cập nhật giá trị thiết lập cho các component
-            var healthComponent = GetComponent<HealthComponent>();
-            if (healthComponent != null)
+            if (_entity != null)
             {
-                healthComponent.SetMaxHealth(_hitPoints);
-                // healthComponent.SetCurrentHealth(_currentHealth);
-                healthComponent.SetArmor(_shieldHitPoints);
-            }
-            
-            var combatComponent = GetComponent<CombatComponent>();
-            if (combatComponent != null)
-            {
-                combatComponent.SetAttackDamage(_damage);
-                combatComponent.SetAttackCooldown(_hitSpeed);
-                combatComponent.SetAttackRange(_range);
-                combatComponent.SetMoveSpeed(_moveSpeed);
-                
-                // Cấu hình tấn công tầm xa nếu có
-                if (_damageRanged > 0)
+                var entityObj = _entity as MonoBehaviour;
+                if (entityObj != null)
                 {
-                    combatComponent.ConfigureSecondaryAttack(
-                        true, 
-                        AttackType.Ranged, 
-                        _damageRanged, 
-                        _projectileRange, 
-                        _loadTime > 0 ? _loadTime * 3 : 3f
-                    );
+                    _position = entityObj.transform.position;
+                    _rotation = entityObj.transform.rotation;
                 }
             }
-            
-            var unitTypeComponent = GetComponent<UnitTypeComponent>();
-            if (unitTypeComponent != null)
-            {
-                unitTypeComponent.SetUnitType(_unitType);
-            }
-            
-            var navigationComponent = GetComponent<NavigationComponent>();
-            if (navigationComponent != null)
-            {
-                // navigationComponent.SetMoveSpeed(_moveSpeed);
-            }
-            
-            var aggroComponent = GetComponent<AggroDetectionComponent>();
-            if (aggroComponent != null)
-            {
-                aggroComponent.SetAggroRange(_detectionRange);
-            }
-            
-            var abilityComponent = GetComponent<AbilityComponent>();
-            if (abilityComponent != null && !string.IsNullOrEmpty(_ability))
-            {
-                abilityComponent.SetAbility(_ability, _abilityCost, _abilityCooldown, _abilityParameters);
-            }
         }
         
         /// <summary>
-        /// Xử lý sự kiện khi bị tấn công
+        /// Thiết lập ID đội
         /// </summary>
-        private void HandleDamage(float amount, IEntity source)
+        public void SetSquadId(int squadId)
+        {
+            _squadId = squadId;
+        }
+        
+        /// <summary>
+        /// Gây sát thương cho đơn vị
+        /// </summary>
+        public void TakeDamage(float amount, IEntity source)
         {
             // Ưu tiên trừ khiên trước, sau đó mới trừ máu
             if (_currentShield > 0)
@@ -328,178 +299,61 @@ namespace VikingRaven.Units.Models
                 _currentHealth = Mathf.Max(0, _currentHealth - amount);
                 OnDamageTaken?.Invoke(amount, source);
                 OnHealthChanged?.Invoke(_currentHealth);
+                
+                // Kiểm tra xem đã chết chưa
+                if (_currentHealth <= 0)
+                {
+                    OnDeath?.Invoke();
+                }
             }
         }
         
         /// <summary>
-        /// Xử lý sự kiện khi chết
+        /// Hồi máu cho đơn vị
         /// </summary>
-        private void HandleDeath()
+        public void Heal(float amount)
         {
-            _currentHealth = 0;
-            OnDeath?.Invoke();
-        }
-        
-        /// <summary>
-        /// Xử lý sự kiện khi tấn công
-        /// </summary>
-        private void HandleAttackPerformed(IEntity target, float damage)
-        {
-            OnAttackPerformed?.Invoke(target, damage);
-            _isInCombat = true;
-        }
-        
-        /// <summary>
-        /// Xử lý sự kiện khi đến đích
-        /// </summary>
-        private void HandleDestinationReached()
-        {
-            _hasReachedDestination = true;
-        }
-        
-        /// <summary>
-        /// Lấy component theo kiểu
-        /// </summary>
-        public T GetComponent<T>() where T : class, IComponent
-        {
-            if (_entity == null) return null;
+            float oldHealth = _currentHealth;
+            _currentHealth = Mathf.Min(_currentHealth + amount, _hitPoints);
             
-            Type type = typeof(T);
-            
-            // Kiểm tra cache
-            if (_componentCache.TryGetValue(type, out IComponent cachedComponent))
+            if (_currentHealth > oldHealth)
             {
-                return cachedComponent as T;
+                OnHealthChanged?.Invoke(_currentHealth);
             }
-            
-            // Lấy component từ entity và lưu vào cache
-            T component = _entity.GetComponent<T>();
-            if (component != null)
-            {
-                _componentCache[type] = component;
-            }
-            
-            return component;
-        }
-        
-        /// <summary>
-        /// Kiểm tra xem unit có đang trong trạng thái chiến đấu hay không
-        /// </summary>
-        public bool IsInCombat()
-        {
-            // Kiểm tra thông qua combat component nếu có
-            var combatComponent = GetComponent<CombatComponent>();
-            if (combatComponent != null)
-            {
-                return combatComponent.IsInCombat;
-            }
-            
-            return _isInCombat;
-        }
-        
-        /// <summary>
-        /// Thiết lập ID đội
-        /// </summary>
-        public void SetSquadId(int squadId)
-        {
-            _squadId = squadId;
-            
-            // Cập nhật component nếu có
-            var formationComponent = GetComponent<FormationComponent>();
-            if (formationComponent != null)
-            {
-                formationComponent.SetSquadId(squadId);
-            }
-        }
-        
-        /// <summary>
-        /// Kích hoạt kỹ năng nếu có thể
-        /// </summary>
-        public bool ActivateAbility(IEntity target = null)
-        {
-            if (string.IsNullOrEmpty(_ability)) return false;
-            
-            var abilityComponent = GetComponent<AbilityComponent>();
-            if (abilityComponent != null)
-            {
-                return abilityComponent.ActivateAbility(new Vector3() ,target);
-            }
-            
-            return false;
         }
         
         /// <summary>
         /// Hồi sinh đơn vị
         /// </summary>
-        public void Revive()
+        public void Revive(float healthPercent = 1.0f)
         {
-            _currentHealth = _hitPoints;
+            _currentHealth = _hitPoints * Mathf.Clamp01(healthPercent);
             _currentShield = _shieldHitPoints;
-            
-            var healthComponent = GetComponent<HealthComponent>();
-            if (healthComponent != null)
-            {
-                healthComponent.Revive();
-            }
             
             OnHealthChanged?.Invoke(_currentHealth);
             OnShieldChanged?.Invoke(_currentShield);
         }
         
         /// <summary>
-        /// Áp dụng thay đổi thông số cho entity
-        /// </summary>
-        public void ApplyData()
-        {
-            if (_entity == null) return;
-            
-            // Cập nhật các component
-            UpdateComponentReferences();
-            
-            Debug.Log($"UnitModel: Applied data for unit {_displayName} (ID: {_unitId})");
-        }
-        
-        /// <summary>
-        /// Dọn dẹp tài nguyên và hủy đăng ký sự kiện
-        /// </summary>
-        public void Cleanup()
-        {
-            // Hủy đăng ký tất cả các sự kiện
-            if (_entity != null)
-            {
-                var healthComponent = GetComponent<HealthComponent>();
-                if (healthComponent != null)
-                {
-                    // healthComponent.OnDamage -= HandleDamage;
-                    healthComponent.OnDeath -= HandleDeath;
-                }
-                
-                var combatComponent = GetComponent<CombatComponent>();
-                if (combatComponent != null)
-                {
-                    // combatComponent.OnAttackPerformed -= HandleAttackPerformed;
-                }
-                
-                var navigationComponent = GetComponent<NavigationComponent>();
-                if (navigationComponent != null)
-                {
-                    // navigationComponent.OnDestinationReached -= HandleDestinationReached;
-                }
-            }
-            
-            // Xóa cache
-            _componentCache.Clear();
-            _entity = null;
-            
-            Debug.Log($"UnitModel: Cleaned up unit {_displayName} (ID: {_unitId})");
-        }
-        
-        /// <summary>
-        /// Tạo chuỗi biểu diễn của unit
+        /// Tạo chuỗi biểu diễn của đơn vị
         /// </summary>
         public override string ToString()
         {
             return $"UnitModel({_unitType}, '{_displayName}', HP: {_currentHealth}/{_hitPoints}, Shield: {_currentShield}/{_shieldHitPoints}, Squad: {_squadId})";
+        }
+        
+        /// <summary>
+        /// Tạo bản sao của model này
+        /// </summary>
+        public UnitModel Clone()
+        {
+            return new UnitModel(
+                _unitType, _unitId, _displayName, _description,
+                _hitPoints, _shieldHitPoints, _mass, _damage, _damageRanged,
+                _moveSpeed, _hitSpeed, _loadTime, _range, _projectileRange,
+                _deployTime, _count, _detectionRange,
+                _ability, _abilityCost, _abilityCooldown, _abilityParameters
+            );
         }
     }
 }

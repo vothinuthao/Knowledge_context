@@ -404,11 +404,11 @@ namespace VikingRaven.Units.Systems
                 
             foreach (var unit in squad.Units)
             {
-                var healthComponent = unit.GetComponent<HealthComponent>();
-                if (healthComponent != null)
-                {
-                    healthComponent.Heal(amount);
-                }
+                // var healthComponent = unit.GetComponent<HealthComponent>();
+                // if (healthComponent != null)
+                // {
+                //     healthComponent.Heal(amount);
+                // }
             }
             
             if (_debugLogging)
@@ -436,11 +436,11 @@ namespace VikingRaven.Units.Systems
                 
             foreach (var unit in squad.Units)
             {
-                var healthComponent = unit.GetComponent<HealthComponent>();
-                if (healthComponent != null)
-                {
-                    healthComponent.TakeDamage(amount, null);
-                }
+                // var healthComponent = unit.GetComponent<HealthComponent>();
+                // if (healthComponent != null)
+                // {
+                //     healthComponent.TakeDamage(amount, null);
+                // }
             }
             
             if (_debugLogging)
