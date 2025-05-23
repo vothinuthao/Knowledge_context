@@ -11,89 +11,68 @@ using VikingRaven.Units.Components;
 namespace VikingRaven.Core.Factory
 {
     /// <summary>
-    /// Factory for creating and managing units from pools
-    /// Uses unit data to dynamically create and configure units
+    /// Enhanced Factory for creating and managing units with dynamic data caching
+    /// Uses UnitDataSO cache and dynamic prefab loading
     /// </summary>
     public class UnitFactory : MonoBehaviour
     {
         #region Inspector Fields
 
-        [TitleGroup("Prefab References")]
-        [Tooltip("Infantry unit prefab reference")]
-        [SerializeField, PreviewField(50)] 
-        private GameObject _infantryPrefab;
+        [TitleGroup("Cache Settings")]
+        [Tooltip("Tự động tải cache UnitDataSO khi khởi động")]
+        [SerializeField, ToggleLeft] 
+        private bool _autoLoadCache = true;
         
-        [Tooltip("Archer unit prefab reference")]
-        [SerializeField, PreviewField(50)] 
-        private GameObject _archerPrefab;
-        
-        [Tooltip("Pike unit prefab reference")]
-        [SerializeField, PreviewField(50)] 
-        private GameObject _pikePrefab;
+        [Tooltip("Kích thước pool mặc định cho mỗi loại unit")]
+        [SerializeField, Range(5, 50), ProgressBar(5, 50)] 
+        private int _defaultPoolSize = 20;
         
         [TitleGroup("Pool Settings")]
-        [Tooltip("Initial pool size for Infantry units")]
-        [SerializeField, Range(5, 50), ProgressBar(5, 50, 0, 1, Height = 15)] 
-        private int _infantryPoolSize = 20;
-        
-        [Tooltip("Initial pool size for Archer units")]
-        [SerializeField, Range(5, 50), ProgressBar(5, 50, 0, 1, Height = 15)] 
-        private int _archerPoolSize = 10;
-        
-        [Tooltip("Initial pool size for Pike units")]
-        [SerializeField, Range(5, 50), ProgressBar(5, 50, 0, 1, Height = 15)] 
-        private int _pikePoolSize = 10;
-        
-        [TitleGroup("Initialization Settings")]
-        [Tooltip("Whether to preload unit models on Awake")]
-        [SerializeField, ToggleLeft] 
-        private bool _preloadOnAwake = true;
-        
-        [Tooltip("Whether pools can expand when empty")]
+        [Tooltip("Pool có thể mở rộng khi hết unit")]
         [SerializeField, ToggleLeft] 
         private bool _expandPoolsWhenEmpty = true;
         
+        [Tooltip("Số lượng unit tối đa mỗi pool có thể chứa")]
+        [SerializeField, Range(50, 200)] 
+        private int _maxPoolSize = 100;
+        
         [TitleGroup("Debug Information")]
-        [ShowInInspector, ReadOnly] 
-        private int _activeEntitiesCount => _activeEntities?.Count ?? 0;
+        [ShowInInspector, ReadOnly, ProgressBar(0, 1000)] 
+        private int ActiveUnitsCount => _activeEntities?.Count ?? 0;
         
         [ShowInInspector, ReadOnly] 
-        private int _unitModelsCount => _unitModelsById?.Count ?? 0;
+        private int CachedUnitDataCount => _unitDataCache?.Count ?? 0;
         
         [ShowInInspector, ReadOnly] 
-        private int _templateModelsCount => _unitModelTemplates?.Count ?? 0;
+        private int UnitModelTemplatesCount => _unitModelTemplates?.Count ?? 0;
+        
+        [ShowInInspector, ReadOnly] 
+        private int ActivePoolsCount => _unitPools?.Count ?? 0;
 
         #endregion
 
         #region Private Fields
 
-        // Object pools for each unit type
-        private ObjectPool<BaseEntity> _infantryPool;
-        private ObjectPool<BaseEntity> _archerPool;
-        private ObjectPool<BaseEntity> _pikePool;
-        
-        // Dictionary to track all created units by ID
-        private Dictionary<int, BaseEntity> _activeEntities = new Dictionary<int, BaseEntity>();
-        
-        // Dictionary to track unit models by entity ID
-        private Dictionary<int, UnitModel> _unitModelsById = new Dictionary<int, UnitModel>();
-        
-        // Dictionary to cache unit models by unit data ID
+        // Cache hệ thống
+        private Dictionary<string, UnitDataSO> _unitDataCache = new Dictionary<string, UnitDataSO>();
+        private Dictionary<UnitType, List<UnitDataSO>> _unitDataByType = new Dictionary<UnitType, List<UnitDataSO>>();
         private Dictionary<string, UnitModel> _unitModelTemplates = new Dictionary<string, UnitModel>();
         
-        // Next entity ID to assign
-        private int _nextEntityId = 1000;
+        // Pool hệ thống động
+        private Dictionary<string, ObjectPool<BaseEntity>> _unitPools = new Dictionary<string, ObjectPool<BaseEntity>>();
+        private Dictionary<string, Transform> _poolParents = new Dictionary<string, Transform>();
         
-        // Parent transforms for pool organization
-        private Transform _infantryPoolParent;
-        private Transform _archerPoolParent;
-        private Transform _pikePoolParent;
+        // Tracking hệ thống
+        private Dictionary<int, BaseEntity> _activeEntities = new Dictionary<int, BaseEntity>();
+        private Dictionary<int, UnitModel> _unitModelsById = new Dictionary<int, UnitModel>();
+        private Dictionary<string, List<int>> _unitsByDataId = new Dictionary<string, List<int>>();
+        
+        private int _nextEntityId = 1000;
 
         #endregion
 
         #region Properties
 
-        // References to other managers
         private EntityRegistry EntityRegistry => EntityRegistry.Instance;
         private DataManager DataManager => DataManager.Instance;
         
@@ -101,122 +80,168 @@ namespace VikingRaven.Core.Factory
         public delegate void UnitEvent(UnitModel unitModel);
         public event UnitEvent OnUnitCreated;
         public event UnitEvent OnUnitReturned;
+        public event UnitEvent OnUnitDestroyed;
 
         #endregion
 
-        #region Unity Lifecycle Methods
+        #region Unity Lifecycle
 
         private void Awake()
         {
-            // Initialize object pools
-            InitializeObjectPools();
+            InitializeUnitTypeCollections();
             
-            // Preload data cache
-            if (_preloadOnAwake)
+            if (_autoLoadCache)
             {
-                PreloadUnitModels();
+                LoadUnitDataCache();
+                CreateUnitModelTemplates();
             }
         }
 
         private void OnDestroy()
         {
-            // Clean up all unit models
-            foreach (var unitModel in _unitModelsById.Values)
-            {
-                // unitModel.Cleanup();
-            }
-            
-            // Clear pools
-            ClearAllPools();
+            CleanupAllResources();
         }
 
         #endregion
 
-        #region Initialization Methods
+        #region Cache Management
 
         /// <summary>
-        /// Initialize object pools for each unit type
+        /// Khởi tạo collections cho các loại unit
         /// </summary>
-        private void InitializeObjectPools()
+        private void InitializeUnitTypeCollections()
         {
-            // Create parent transforms for each pool
-            _infantryPoolParent = CreatePoolParent("InfantryPool");
-            _archerPoolParent = CreatePoolParent("ArcherPool");
-            _pikePoolParent = CreatePoolParent("PikePool");
-            
-            // Create the object pools
-            if (_infantryPrefab != null)
-            {
-                _infantryPool = new ObjectPool<BaseEntity>(
-                    _infantryPrefab.GetComponent<BaseEntity>(),
-                    _infantryPoolSize,
-                    _infantryPoolParent,
-                    _expandPoolsWhenEmpty,
-                    OnReturnUnit,
-                    OnGetUnit
-                );
-                Debug.Log($"UnitFactory: Created infantry pool with {_infantryPoolSize} units");
-            }
-            
-            if (_archerPrefab != null)
-            {
-                _archerPool = new ObjectPool<BaseEntity>(
-                    _archerPrefab.GetComponent<BaseEntity>(),
-                    _archerPoolSize,
-                    _archerPoolParent,
-                    _expandPoolsWhenEmpty,
-                    OnReturnUnit,
-                    OnGetUnit
-                );
-                Debug.Log($"UnitFactory: Created archer pool with {_archerPoolSize} units");
-            }
-            
-            if (_pikePrefab != null)
-            {
-                _pikePool = new ObjectPool<BaseEntity>(
-                    _pikePrefab.GetComponent<BaseEntity>(),
-                    _pikePoolSize,
-                    _pikePoolParent,
-                    _expandPoolsWhenEmpty,
-                    OnReturnUnit,
-                    OnGetUnit
-                );
-                Debug.Log($"UnitFactory: Created pike pool with {_pikePoolSize} units");
-            }
+            _unitDataByType[UnitType.Infantry] = new List<UnitDataSO>();
+            _unitDataByType[UnitType.Archer] = new List<UnitDataSO>();
+            _unitDataByType[UnitType.Pike] = new List<UnitDataSO>();
         }
-        
+
         /// <summary>
-        /// Preload unit models from DataManager
+        /// Tải cache UnitDataSO từ DataManager
         /// </summary>
-        private void PreloadUnitModels()
+        [Button("Load Unit Data Cache"), TitleGroup("Cache Management")]
+        private void LoadUnitDataCache()
         {
             if (DataManager == null || !DataManager.IsInitialized)
             {
-                Debug.LogWarning("UnitFactory: DataManager not available for preloading data");
+                Debug.LogWarning("EnhancedUnitFactory: DataManager không khả dụng cho việc tải cache");
                 return;
             }
-            
+
             // Clear existing cache
-            _unitModelTemplates.Clear();
-            
-            // Get all unit data from DataManager
+            _unitDataCache.Clear();
+            foreach (var typeList in _unitDataByType.Values)
+            {
+                typeList.Clear();
+            }
+
+            // Load all unit data
             List<UnitDataSO> allUnitData = DataManager.GetAllUnitData();
             
             foreach (var unitData in allUnitData)
             {
-                if (!string.IsNullOrEmpty(unitData.UnitId))
+                if (unitData != null && !string.IsNullOrEmpty(unitData.UnitId))
                 {
-                    // Create a template UnitModel (without a real entity)
-                    UnitModel templateModel = new UnitModel(null, unitData);
-                    _unitModelTemplates[unitData.UnitId] = templateModel;
+                    // Add to main cache
+                    _unitDataCache[unitData.UnitId] = unitData;
+                    
+                    // Add to type-specific cache
+                    if (_unitDataByType.ContainsKey(unitData.UnitType))
+                    {
+                        _unitDataByType[unitData.UnitType].Add(unitData);
+                    }
                 }
             }
-            
-            Debug.Log($"UnitFactory: Preloaded {_unitModelTemplates.Count} unit model templates");
+
+            Debug.Log($"EnhancedUnitFactory: Đã tải {_unitDataCache.Count} UnitDataSO vào cache");
         }
-        
+
         /// <summary>
-        /// Create a parent transform for a pool
+        /// Tạo UnitModel templates từ cache data
+        /// </summary>
+        [Button("Create Unit Model Templates"), TitleGroup("Cache Management")]
+        private void CreateUnitModelTemplates()
+        {
+            _unitModelTemplates.Clear();
+            
+            foreach (var kvp in _unitDataCache)
+            {
+                string unitId = kvp.Key;
+                UnitDataSO unitData = kvp.Value;
+                
+                // Tạo template UnitModel (không có entity thật)
+                UnitModel templateModel = new UnitModel(null, unitData);
+                _unitModelTemplates[unitId] = templateModel;
+            }
+            
+            Debug.Log($"EnhancedUnitFactory: Đã tạo {_unitModelTemplates.Count} UnitModel templates");
+        }
+
+        #endregion
+
+        #region Dynamic Pool Management
+
+        /// <summary>
+        /// Lấy hoặc tạo pool cho một UnitDataSO cụ thể
+        /// </summary>
+        private ObjectPool<BaseEntity> GetOrCreatePool(UnitDataSO unitData)
+        {
+            if (unitData == null || unitData.Prefab == null)
+            {
+                Debug.LogError("EnhancedUnitFactory: UnitData hoặc Prefab là null");
+                return null;
+            }
+
+            string poolKey = unitData.UnitId;
+            
+            // Kiểm tra pool đã tồn tại
+            if (_unitPools.TryGetValue(poolKey, out ObjectPool<BaseEntity> existingPool))
+            {
+                return existingPool;
+            }
+
+            // Tạo pool mới
+            return CreateNewPool(unitData);
+        }
+
+        /// <summary>
+        /// Tạo pool mới cho UnitDataSO
+        /// </summary>
+        private ObjectPool<BaseEntity> CreateNewPool(UnitDataSO unitData)
+        {
+            string poolKey = unitData.UnitId;
+            
+            // Tạo parent transform cho pool
+            Transform poolParent = CreatePoolParent($"Pool_{unitData.DisplayName}");
+            _poolParents[poolKey] = poolParent;
+            
+            // Lấy BaseEntity component từ prefab
+            BaseEntity prefabEntity = unitData.Prefab.GetComponent<BaseEntity>();
+            if (prefabEntity == null)
+            {
+                Debug.LogError($"EnhancedUnitFactory: Prefab {unitData.Prefab.name} không có BaseEntity component");
+                return null;
+            }
+
+            // Tạo object pool
+            ObjectPool<BaseEntity> newPool = new ObjectPool<BaseEntity>(
+                prefabEntity,
+                _defaultPoolSize,
+                poolParent,
+                _expandPoolsWhenEmpty,
+                entity => OnReturnUnit(entity, unitData),
+                entity => OnGetUnit(entity, unitData)
+            );
+
+            _unitPools[poolKey] = newPool;
+            
+            Debug.Log($"EnhancedUnitFactory: Đã tạo pool cho {unitData.DisplayName} với {_defaultPoolSize} units");
+            
+            return newPool;
+        }
+
+        /// <summary>
+        /// Tạo parent transform cho pool
         /// </summary>
         private Transform CreatePoolParent(string name)
         {
@@ -230,59 +255,51 @@ namespace VikingRaven.Core.Factory
         #region Pool Callbacks
 
         /// <summary>
-        /// Callback when a unit is returned to the pool
+        /// Callback khi unit được trả về pool
         /// </summary>
-        private void OnReturnUnit(BaseEntity entity)
+        private void OnReturnUnit(BaseEntity entity, UnitDataSO unitData)
         {
             if (entity == null) return;
+
+            int entityId = entity.Id;
             
-            // Get the unit model
-            if (_unitModelsById.TryGetValue(entity.Id, out UnitModel unitModel))
+            // Lấy unit model
+            if (_unitModelsById.TryGetValue(entityId, out UnitModel unitModel))
             {
-                // Clean up model
-                // unitModel.Cleanup();
-                
                 // Trigger event
                 OnUnitReturned?.Invoke(unitModel);
                 
-                // Remove from tracking dictionaries
-                _unitModelsById.Remove(entity.Id);
+                // Remove from tracking
+                _unitModelsById.Remove(entityId);
+                
+                // Remove from units by data tracking
+                if (_unitsByDataId.TryGetValue(unitData.UnitId, out List<int> unitList))
+                {
+                    unitList.Remove(entityId);
+                    if (unitList.Count == 0)
+                    {
+                        _unitsByDataId.Remove(unitData.UnitId);
+                    }
+                }
             }
-            
-            // Reset the unit's state
-            var healthComponent = entity.GetComponent<HealthComponent>();
-            if (healthComponent != null)
-            {
-                healthComponent.Revive();
-            }
-            
-            // Deactivate components that should be inactive
-            var navigationComponent = entity.GetComponent<NavigationComponent>();
-            if (navigationComponent != null)
-            {
-                navigationComponent.DisablePathfinding();
-            }
+
+            // Reset entity state
+            ResetEntityState(entity);
             
             // Remove from active entities
-            _activeEntities.Remove(entity.Id);
+            _activeEntities.Remove(entityId);
             
-            // Unregister from EntityRegistry if needed
-            if (EntityRegistry != null)
-            {
-                // EntityRegistry.UnregisterEntity(entity);
-            }
-            
-            Debug.Log($"UnitFactory: Returned entity {entity.Id} to pool");
+            Debug.Log($"EnhancedUnitFactory: Đã trả unit {entityId} về pool {unitData.UnitId}");
         }
-        
+
         /// <summary>
-        /// Callback when a unit is taken from the pool
+        /// Callback khi unit được lấy từ pool
         /// </summary>
-        private void OnGetUnit(BaseEntity entity)
+        private void OnGetUnit(BaseEntity entity, UnitDataSO unitData)
         {
             if (entity == null) return;
-            
-            // Assign a new entity ID
+
+            // Assign new entity ID
             AssignEntityId(entity);
             
             // Register with EntityRegistry
@@ -294,10 +311,10 @@ namespace VikingRaven.Core.Factory
             // Add to active entities
             _activeEntities[entity.Id] = entity;
             
-            // Initialize components
-            InitializeEntityComponents(entity);
+            // Initialize components with unit data
+            InitializeEntityWithData(entity, unitData);
             
-            Debug.Log($"UnitFactory: Got entity {entity.Id} from pool");
+            Debug.Log($"EnhancedUnitFactory: Đã lấy unit {entity.Id} từ pool {unitData.UnitId}");
         }
 
         #endregion
@@ -305,135 +322,119 @@ namespace VikingRaven.Core.Factory
         #region Factory Methods
 
         /// <summary>
-        /// Create a unit of a specific type
+        /// Tạo unit từ UnitType (random từ available data)
         /// </summary>
         public IEntity CreateUnit(UnitType unitType, Vector3 position, Quaternion rotation)
         {
-            // Get unit data
-            UnitDataSO unitData = GetUnitData(unitType);
-            
-            // Create entity with the data
+            // Lấy random UnitData từ type
+            UnitDataSO unitData = GetRandomUnitDataByType(unitType);
+            if (unitData == null)
+            {
+                Debug.LogError($"EnhancedUnitFactory: Không tìm thấy UnitData cho type {unitType}");
+                return null;
+            }
+
             return CreateUnitFromData(unitData, position, rotation);
         }
-        
+
         /// <summary>
-        /// Create a unit from a specific UnitData with UnitModel
+        /// Tạo unit từ UnitDataSO ID
+        /// </summary>
+        public IEntity CreateUnitFromId(string unitId, Vector3 position, Quaternion rotation)
+        {
+            if (!_unitDataCache.TryGetValue(unitId, out UnitDataSO unitData))
+            {
+                Debug.LogError($"EnhancedUnitFactory: Không tìm thấy UnitData với ID {unitId}");
+                return null;
+            }
+
+            return CreateUnitFromData(unitData, position, rotation);
+        }
+
+        /// <summary>
+        /// Tạo unit từ UnitDataSO (main factory method)
         /// </summary>
         public IEntity CreateUnitFromData(UnitDataSO unitData, Vector3 position, Quaternion rotation)
         {
             if (unitData == null)
             {
-                Debug.LogError("UnitFactory: Cannot create unit - unitData is null");
+                Debug.LogError("EnhancedUnitFactory: UnitData là null");
                 return null;
             }
-            
-            // Get the appropriate pool based on unit type
-            ObjectPool<BaseEntity> pool = GetPoolForUnitType(unitData.UnitType);
-            
+
+            // Bước 1: Tạo UnitModel từ template
+            UnitModel unitModel = CreateUnitModelFromData(unitData);
+            if (unitModel == null)
+            {
+                Debug.LogError($"EnhancedUnitFactory: Không thể tạo UnitModel cho {unitData.UnitId}");
+                return null;
+            }
+
+            // Bước 2: Lấy pool và entity
+            ObjectPool<BaseEntity> pool = GetOrCreatePool(unitData);
             if (pool == null)
             {
-                Debug.LogError($"UnitFactory: No pool available for unit type {unitData.UnitType}");
+                Debug.LogError($"EnhancedUnitFactory: Không thể tạo pool cho {unitData.UnitId}");
                 return null;
             }
-            
-            // Get a unit from the pool
+
             BaseEntity entity = pool.Get();
             if (entity == null)
             {
-                Debug.LogError($"UnitFactory: Failed to get unit from pool for type {unitData.UnitType}");
+                Debug.LogError($"EnhancedUnitFactory: Không thể lấy entity từ pool {unitData.UnitId}");
                 return null;
             }
-            
-            // Set position and rotation
+
+            // Bước 3: Setup entity
             entity.transform.position = position;
             entity.transform.rotation = rotation;
-            
-            // Apply the unit data
-            // unitData.ApplyToUnit(entity.gameObject);
-            
-            // Create UnitModel
-            UnitModel unitModel = new UnitModel(entity, unitData);
-            
-            // Store in dictionary
+
+            // Bước 4: Kết nối UnitModel với Entity
+            unitModel = new UnitModel(entity, unitData); // Tạo lại với entity thật
             _unitModelsById[entity.Id] = unitModel;
-            
-            // Trigger event
+
+            // Bước 5: Tracking
+            if (!_unitsByDataId.ContainsKey(unitData.UnitId))
+            {
+                _unitsByDataId[unitData.UnitId] = new List<int>();
+            }
+            _unitsByDataId[unitData.UnitId].Add(entity.Id);
+
+            // Bước 6: Trigger event
             OnUnitCreated?.Invoke(unitModel);
-            
-            Debug.Log($"UnitFactory: Created unit ID {entity.Id} of type {unitData.UnitType} at position {position}");
-            
+
+            Debug.Log($"EnhancedUnitFactory: Đã tạo unit {entity.Id} từ data {unitData.UnitId} tại {position}");
+
             return entity;
         }
-        
+
         /// <summary>
-        /// Get the appropriate pool for a unit type
+        /// Tạo multiple units cùng loại
         /// </summary>
-        private ObjectPool<BaseEntity> GetPoolForUnitType(UnitType unitType)
+        public List<IEntity> CreateMultipleUnits(UnitType unitType, int count, Vector3 basePosition, float spacing = 1f)
         {
-            switch (unitType)
+            List<IEntity> createdUnits = new List<IEntity>();
+
+            for (int i = 0; i < count; i++)
             {
-                case UnitType.Infantry:
-                    return _infantryPool;
-                case UnitType.Archer:
-                    return _archerPool;
-                case UnitType.Pike:
-                    return _pikePool;
-                default:
-                    return _infantryPool; // Default to infantry
-            }
-        }
-        
-        /// <summary>
-        /// Get unit data for a specific unit type
-        /// </summary>
-        private UnitDataSO GetUnitData(UnitType unitType)
-        {
-            // Get data from DataManager if available
-            if (DataManager != null && DataManager.IsInitialized)
-            {
-                var unitDataList = DataManager.GetUnitDataByType(unitType);
-                if (unitDataList.Count > 0)
+                // Tính toán vị trí với spacing
+                Vector3 offset = new Vector3(
+                    (i % 3) * spacing - spacing,
+                    0,
+                    (i / 3) * spacing
+                );
+                Vector3 position = basePosition + offset;
+
+                IEntity unit = CreateUnit(unitType, position, Quaternion.identity);
+                if (unit != null)
                 {
-                    // Return a random unit data from the available options
-                    return unitDataList[Random.Range(0, unitDataList.Count)];
+                    createdUnits.Add(unit);
                 }
             }
-            
-            Debug.LogWarning($"UnitFactory: No unit data found for type {unitType}");
-            return null;
-        }
-        
-        /// <summary>
-        /// Return a unit to its pool
-        /// </summary>
-        public void ReturnUnit(IEntity entity)
-        {
-            if (entity == null) return;
-            
-            var baseEntity = entity as BaseEntity;
-            if (baseEntity == null) return;
-            
-            // Determine which pool this unit belongs to
-            var unitTypeComponent = baseEntity.GetComponent<UnitTypeComponent>();
-            if (unitTypeComponent == null) 
-            {
-                Debug.LogError($"UnitFactory: Entity {entity.Id} has no UnitTypeComponent, cannot return to pool");
-                return;
-            }
-            
-            UnitType unitType = unitTypeComponent.UnitType;
-            ObjectPool<BaseEntity> pool = GetPoolForUnitType(unitType);
-            
-            if (pool != null)
-            {
-                // Return to the appropriate pool
-                pool.Return(baseEntity);
-                Debug.Log($"UnitFactory: Returned unit ID {entity.Id} of type {unitType} to pool");
-            }
-            else
-            {
-                Debug.LogError($"UnitFactory: No pool found for unit type {unitType}, cannot return entity {entity.Id}");
-            }
+
+            Debug.Log($"EnhancedUnitFactory: Đã tạo {createdUnits.Count}/{count} units loại {unitType}");
+
+            return createdUnits;
         }
 
         #endregion
@@ -441,44 +442,91 @@ namespace VikingRaven.Core.Factory
         #region Helper Methods
 
         /// <summary>
-        /// Initialize components on a unit entity
+        /// Tạo UnitModel từ UnitDataSO (sử dụng template nếu có)
         /// </summary>
-        private void InitializeEntityComponents(IEntity entity)
+        private UnitModel CreateUnitModelFromData(UnitDataSO unitData)
         {
-            // Get the MonoBehaviour
-            var entityTransform = entity as MonoBehaviour;
-            if (entityTransform == null) return;
-            
-            // Ensure all components are properly initialized
-            var components = entityTransform.GetComponents<IComponent>();
+            if (_unitModelTemplates.TryGetValue(unitData.UnitId, out UnitModel template))
+            {
+                // Clone template
+                return template.Clone();
+            }
+
+            // Tạo mới nếu không có template
+            return new UnitModel(null, unitData);
+        }
+
+        /// <summary>
+        /// Lấy random UnitDataSO theo type
+        /// </summary>
+        private UnitDataSO GetRandomUnitDataByType(UnitType unitType)
+        {
+            if (_unitDataByType.TryGetValue(unitType, out List<UnitDataSO> dataList) && dataList.Count > 0)
+            {
+                return dataList[Random.Range(0, dataList.Count)];
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Khởi tạo entity với data
+        /// </summary>
+        private void InitializeEntityWithData(BaseEntity entity, UnitDataSO unitData)
+        {
+            // Đảm bảo tất cả components được khởi tạo đúng
+            var components = entity.GetComponents<IComponent>();
             foreach (var component in components)
             {
                 if (component.Entity == null)
                 {
                     component.Entity = entity;
                 }
-                
                 component.Initialize();
             }
+
+            // Set unit type nếu có component
+            var unitTypeComponent = entity.GetComponent<UnitTypeComponent>();
+            if (unitTypeComponent != null)
+            {
+                // unitTypeComponent.SetUnitType(unitData.UnitType);
+            }
         }
-        
+
         /// <summary>
-        /// Assign a unique entity ID
+        /// Reset trạng thái entity khi trả về pool
+        /// </summary>
+        private void ResetEntityState(BaseEntity entity)
+        {
+            // Reset health
+            var healthComponent = entity.GetComponent<HealthComponent>();
+            if (healthComponent != null)
+            {
+                healthComponent.Revive();
+            }
+
+            // Reset navigation
+            var navigationComponent = entity.GetComponent<NavigationComponent>();
+            if (navigationComponent != null)
+            {
+                navigationComponent.DisablePathfinding();
+            }
+
+            // Reset formation
+            var formationComponent = entity.GetComponent<FormationComponent>();
+            if (formationComponent != null)
+            {
+                formationComponent.SetSquadId(-1);
+            }
+        }
+
+        /// <summary>
+        /// Assign entity ID
         /// </summary>
         private void AssignEntityId(BaseEntity entity)
         {
-            if (entity == null) return;
-            
-            // Use reflection to set the ID field
-            var idField = typeof(BaseEntity).GetField("_id", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (idField != null)
-            {
-                idField.SetValue(entity, _nextEntityId++);
-            }
-            else
-            {
-                Debug.LogError("UnitFactory: Cannot find _id field in BaseEntity");
-            }
+            var idField = typeof(BaseEntity).GetField("_id", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            idField?.SetValue(entity, _nextEntityId++);
         }
 
         #endregion
@@ -486,78 +534,102 @@ namespace VikingRaven.Core.Factory
         #region Public API
 
         /// <summary>
-        /// Get a unit model by entity ID
+        /// Trả unit về pool
+        /// </summary>
+        public void ReturnUnit(IEntity entity)
+        {
+            if (entity == null) return;
+
+            var baseEntity = entity as BaseEntity;
+            if (baseEntity == null) return;
+
+            // Tìm pool tương ứng
+            UnitModel unitModel = GetUnitModel(entity.Id);
+            if (unitModel == null)
+            {
+                Debug.LogError($"EnhancedUnitFactory: Không tìm thấy UnitModel cho entity {entity.Id}");
+                return;
+            }
+
+            // Tìm UnitData để xác định pool
+            UnitDataSO unitData = GetUnitDataById(unitModel.UnitId);
+            if (unitData == null)
+            {
+                Debug.LogError($"EnhancedUnitFactory: Không tìm thấy UnitData cho {unitModel.UnitId}");
+                return;
+            }
+
+            // Trả về pool
+            if (_unitPools.TryGetValue(unitData.UnitId, out ObjectPool<BaseEntity> pool))
+            {
+                pool.Return(baseEntity);
+            }
+        }
+
+        /// <summary>
+        /// Lấy UnitModel theo entity ID
         /// </summary>
         public UnitModel GetUnitModel(int entityId)
         {
-            if (_unitModelsById.TryGetValue(entityId, out UnitModel model))
-            {
-                return model;
-            }
-            return null;
+            _unitModelsById.TryGetValue(entityId, out UnitModel model);
+            return model;
         }
-        
+
         /// <summary>
-        /// Get a unit model from an entity
+        /// Lấy UnitModel từ entity
         /// </summary>
         public UnitModel GetUnitModel(IEntity entity)
         {
-            if (entity == null) return null;
+            return entity != null ? GetUnitModel(entity.Id) : null;
+        }
+
+        /// <summary>
+        /// Lấy UnitDataSO theo ID
+        /// </summary>
+        public UnitDataSO GetUnitDataById(string unitId)
+        {
+            _unitDataCache.TryGetValue(unitId, out UnitDataSO unitData);
+            return unitData;
+        }
+
+        /// <summary>
+        /// Lấy tất cả UnitData theo type
+        /// </summary>
+        public List<UnitDataSO> GetUnitDataByType(UnitType unitType)
+        {
+            return _unitDataByType.TryGetValue(unitType, out List<UnitDataSO> dataList) 
+                ? new List<UnitDataSO>(dataList) 
+                : new List<UnitDataSO>();
+        }
+
+        /// <summary>
+        /// Lấy tất cả units đang active theo data ID
+        /// </summary>
+        public List<IEntity> GetActiveUnitsByDataId(string unitId)
+        {
+            List<IEntity> result = new List<IEntity>();
             
-            return GetUnitModel(entity.Id);
-        }
-        
-        /// <summary>
-        /// Get a unit template from cache by ID
-        /// </summary>
-        public UnitModel GetUnitTemplate(string unitId)
-        {
-            if (_unitModelTemplates.TryGetValue(unitId, out UnitModel template))
+            if (_unitsByDataId.TryGetValue(unitId, out List<int> entityIds))
             {
-                return template;
-            }
-            return null;
-        }
-        
-        /// <summary>
-        /// Get all unit templates
-        /// </summary>
-        public Dictionary<string, UnitModel> GetAllUnitTemplates()
-        {
-            return new Dictionary<string, UnitModel>(_unitModelTemplates);
-        }
-        
-        /// <summary>
-        /// Get all unit models
-        /// </summary>
-        public List<UnitModel> GetAllUnitModels()
-        {
-            return new List<UnitModel>(_unitModelsById.Values);
-        }
-        
-        /// <summary>
-        /// Get all unit models of a specific type
-        /// </summary>
-        public List<UnitModel> GetUnitModelsByType(UnitType unitType)
-        {
-            List<UnitModel> result = new List<UnitModel>();
-            foreach (var unitModel in _unitModelsById.Values)
-            {
-                if (unitModel.UnitType == unitType)
+                foreach (int id in entityIds)
                 {
-                    result.Add(unitModel);
+                    if (_activeEntities.TryGetValue(id, out BaseEntity entity))
+                    {
+                        result.Add(entity);
+                    }
                 }
             }
+            
             return result;
         }
-        
-        /// <summary>
-        /// Return all units to their pools
-        /// </summary>
+
+        #endregion
+
+        #region Debug Tools
+
         [Button("Return All Units"), TitleGroup("Debug Tools")]
         public void ReturnAllUnits()
         {
-            // Create a copy of the keys to avoid modification during iteration
             List<int> entityIds = new List<int>(_activeEntities.Keys);
             
             foreach (int id in entityIds)
@@ -568,61 +640,55 @@ namespace VikingRaven.Core.Factory
                 }
             }
             
-            Debug.Log($"UnitFactory: Returned all {entityIds.Count} units to pool");
+            Debug.Log($"EnhancedUnitFactory: Đã trả {entityIds.Count} units về pool");
         }
-        
-        /// <summary>
-        /// Clear all pools and reset the factory
-        /// </summary>
+
         [Button("Clear All Pools"), TitleGroup("Debug Tools")]
         public void ClearAllPools()
         {
-            // Return all active units first
             ReturnAllUnits();
             
-            // Clear pools
-            _infantryPool?.Clear();
-            _archerPool?.Clear();
-            _pikePool?.Clear();
-            
-            // Clear dictionaries
-            _activeEntities.Clear();
-            _unitModelsById.Clear();
-            
-            Debug.Log("UnitFactory: Cleared all unit pools");
-        }
-        
-        /// <summary>
-        /// Get statistics about the pools
-        /// </summary>
-        [Button("Show Pool Stats"), TitleGroup("Debug Tools")]
-        public string GetPoolStats()
-        {
-            string stats = "UnitFactory Stats:\n";
-            
-            stats += $"Infantry Pool: {_infantryPool?.CountInactive}/{_infantryPool?.CountAll} inactive/total\n";
-            stats += $"Archer Pool: {_archerPool?.CountInactive}/{_archerPool?.CountAll} inactive/total\n";
-            stats += $"Pike Pool: {_pikePool?.CountInactive}/{_pikePool?.CountAll} inactive/total\n";
-            stats += $"Active Entities: {_activeEntities.Count}\n";
-            stats += $"Unit Models: {_unitModelsById.Count}\n";
-            stats += $"Unit Templates: {_unitModelTemplates.Count}";
-            
-            Debug.Log(stats);
-            return stats;
-        }
-        
-        /// <summary>
-        /// Refresh all unit models by reapplying their data
-        /// </summary>
-        [Button("Refresh All Units"), TitleGroup("Debug Tools")]
-        public void RefreshAllUnits()
-        {
-            foreach (var unitModel in _unitModelsById.Values)
+            foreach (var pool in _unitPools.Values)
             {
-                // unitModel.ApplyData();
+                pool.Clear();
             }
             
-            Debug.Log($"UnitFactory: Refreshed all {_unitModelsById.Count} unit models");
+            _unitPools.Clear();
+            _poolParents.Clear();
+            
+            Debug.Log("EnhancedUnitFactory: Đã xóa tất cả pools");
+        }
+
+        [Button("Show Cache Stats"), TitleGroup("Debug Tools")]
+        public void ShowCacheStats()
+        {
+            string stats = "=== Enhanced Unit Factory Stats ===\n";
+            stats += $"Cached Unit Data: {_unitDataCache.Count}\n";
+            stats += $"Unit Model Templates: {_unitModelTemplates.Count}\n";
+            stats += $"Active Pools: {_unitPools.Count}\n";
+            stats += $"Active Units: {_activeEntities.Count}\n";
+            
+            stats += "\n=== Units by Type ===\n";
+            foreach (var kvp in _unitDataByType)
+            {
+                stats += $"{kvp.Key}: {kvp.Value.Count} data entries\n";
+            }
+            
+            Debug.Log(stats);
+        }
+
+        /// <summary>
+        /// Cleanup tất cả resources
+        /// </summary>
+        private void CleanupAllResources()
+        {
+            ReturnAllUnits();
+            ClearAllPools();
+            
+            _unitDataCache.Clear();
+            _unitModelTemplates.Clear();
+            _unitModelsById.Clear();
+            _unitsByDataId.Clear();
         }
 
         #endregion

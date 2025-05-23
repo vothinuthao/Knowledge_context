@@ -53,7 +53,6 @@ namespace VikingRaven.Units.Models
         private Vector3 _position;                 // Vị trí (sao lưu)
         private Quaternion _rotation;              // Hướng (sao lưu)
         
-        // Events - có thể đăng ký từ bên ngoài nếu cần
         public event Action OnDeath;
         public event Action<float, IEntity> OnDamageTaken;
         public event Action<IEntity, float> OnAttackPerformed;
@@ -67,7 +66,6 @@ namespace VikingRaven.Units.Models
         public string DisplayName => _displayName;
         public string Description => _description;
         
-        // Health & Shield properties
         public float CurrentHealth 
         { 
             get => _currentHealth; 

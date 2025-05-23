@@ -2,193 +2,479 @@
 using System.Collections.Generic;
 using Core.Utils;
 using UnityEngine;
+using Sirenix.OdinInspector;
 using VikingRaven.Core.Data;
 using VikingRaven.Core.ECS;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Data;
 using VikingRaven.Units.Models;
+using VikingRaven.Core.Factory;
+using VikingRaven.Units.Controllers;
 using Random = UnityEngine.Random;
 
 namespace VikingRaven.Core.Factory
 {
-    /// <summary>
-    /// Factory cho việc tạo và quản lý Squad, lưu trữ SquadModel cache
-    /// </summary>
     public class SquadFactory : Singleton<SquadFactory>
     {
-        [Header("Squad Settings")]
-        [SerializeField] private int _nextSquadId = 1;
+        #region Inspector Fields
         
-        [Header("References")]
-        [SerializeField] private UnitFactory _unitFactory;
+        [TitleGroup("Squad Configuration")]
+        [Tooltip("Số lượng units trong mỗi squad")]
+        [SerializeField, Range(3, 15), ProgressBar(3, 15)]
+        private int _unitsPerSquad = 9;
         
-        // Dictionary to store active squads by ID
-        private Dictionary<int, SquadModel> _activeSquads = new Dictionary<int, SquadModel>();
+        [Tooltip("Khoảng cách spawn giữa các units trong squad")]
+        [SerializeField, Range(0.5f, 3f)]
+        private float _unitSpacing = 1.5f;
         
-        // Dictionary to cache squad templates by ID
+        [Tooltip("Tự động assign SquadController cho squad mới")]
+        [SerializeField, ToggleLeft]
+        private bool _autoAssignController = true;
+        
+        [TitleGroup("Cache Settings")]
+        [Tooltip("Tự động load cache SquadDataSO khi khởi động")]
+        [SerializeField, ToggleLeft]
+        private bool _autoLoadSquadCache = true;
+        
+        [Tooltip("Số lượng squad template tối đa lưu trong cache")]
+        [SerializeField, Range(10, 100)]
+        private int _maxCacheSize = 50;
+        
+        [TitleGroup("Debug Information")]
+        [ShowInInspector, ReadOnly, ProgressBar(0, 100)]
+        private int ActiveSquadsCount => _activeSquads?.Count ?? 0;
+        
+        [ShowInInspector, ReadOnly]
+        private int CachedSquadDataCount => _squadDataCache?.Count ?? 0;
+        
+        [ShowInInspector, ReadOnly]
+        private int SquadModelTemplatesCount => _squadModelTemplates?.Count ?? 0;
+        
+        [ShowInInspector, ReadOnly]
+        [PropertySpace(SpaceBefore = 10)]
+        private string FactoryStatus => _isInitialized ? "Initialized" : "Not Initialized";
+
+        #endregion
+
+        #region Private Fields
+
+        // Cache system
+        private Dictionary<string, SquadDataSO> _squadDataCache = new Dictionary<string, SquadDataSO>();
         private Dictionary<string, SquadModel> _squadModelTemplates = new Dictionary<string, SquadModel>();
+        private Dictionary<UnitType, List<SquadDataSO>> _squadDataByPrimaryType = new Dictionary<UnitType, List<SquadDataSO>>();
         
-        // Categorized squad lists
+        // Squad tracking
+        private Dictionary<int, SquadModel> _activeSquads = new Dictionary<int, SquadModel>();
+        private Dictionary<int, SquadController> _squadControllers = new Dictionary<int, SquadController>();
+        private Dictionary<string, List<int>> _squadsByTemplateId = new Dictionary<string, List<int>>();
+        
+        // Categorized squads
         private List<int> _playerSquadIds = new List<int>();
         private List<int> _enemySquadIds = new List<int>();
         private List<int> _neutralSquadIds = new List<int>();
         
-        // References to other systems
+        // ID management
+        private int _nextSquadId = 1;
+        private bool _isInitialized = false;
+
+        #endregion
+
+        #region Properties
+
+        // References
         private DataManager DataManager => DataManager.Instance;
+        private UnitFactory UnitFactory => FindObjectOfType<UnitFactory>();
         
         // Events
         public delegate void SquadEvent(SquadModel squadModel);
+        public delegate void SquadControllerEvent(SquadController squadController);
+        
         public event SquadEvent OnSquadCreated;
         public event SquadEvent OnSquadDisbanded;
-        
-        
+        public event SquadControllerEvent OnSquadControllerAssigned;
+
+        #endregion
+
+        #region Unity Lifecycle
+
         protected override void OnInitialize()
         {
             base.OnInitialize();
-            Debug.Log("SquadFactory initialized as singleton");
             
-            // Auto-initialize unit factory reference if not set
-            if (_unitFactory == null)
+            InitializeSquadTypeCollections();
+            
+            if (_autoLoadSquadCache)
             {
-                _unitFactory = FindObjectOfType<UnitFactory>();
-                if (_unitFactory == null)
-                {
-                    Debug.LogError("SquadFactory: UnitFactory reference is not set and couldn't be found");
-                }
+                LoadSquadDataCache();
+                CreateSquadModelTemplates();
             }
             
-            // Preload data cache
-            PreloadSquadModels();
+            _isInitialized = true;
+            Debug.Log("EnhancedSquadFactory: Đã khởi tạo thành công");
         }
-        
+
+        #endregion
+
+        #region Cache Management
+
         /// <summary>
-        /// Preload squad models from DataManager
+        /// Khởi tạo collections cho các loại squad theo unit type chính
         /// </summary>
-        private void PreloadSquadModels()
+        private void InitializeSquadTypeCollections()
+        {
+            _squadDataByPrimaryType[UnitType.Infantry] = new List<SquadDataSO>();
+            _squadDataByPrimaryType[UnitType.Archer] = new List<SquadDataSO>();
+            _squadDataByPrimaryType[UnitType.Pike] = new List<SquadDataSO>();
+        }
+
+        /// <summary>
+        /// Load cache SquadDataSO từ DataManager
+        /// </summary>
+        [Button("Load Squad Data Cache"), TitleGroup("Cache Management")]
+        private void LoadSquadDataCache()
         {
             if (DataManager == null || !DataManager.IsInitialized)
             {
-                Debug.LogWarning("SquadFactory: DataManager not available for preloading data");
+                Debug.LogWarning("EnhancedSquadFactory: DataManager không khả dụng");
                 return;
             }
-            
+
             // Clear existing cache
-            _squadModelTemplates.Clear();
-            
+            _squadDataCache.Clear();
+            foreach (var typeList in _squadDataByPrimaryType.Values)
+            {
+                typeList.Clear();
+            }
+
             // Load all squad data
             List<SquadDataSO> allSquadData = DataManager.GetAllSquadData();
             
             foreach (var squadData in allSquadData)
             {
-                if (!string.IsNullOrEmpty(squadData.SquadId))
+                if (squadData != null && !string.IsNullOrEmpty(squadData.SquadId))
                 {
-                    // Create a template SquadModel (without actual units)
-                    SquadModel templateModel = new SquadModel(-1, squadData, Vector3.zero, Quaternion.identity);
-                    _squadModelTemplates[squadData.SquadId] = templateModel;
+                    // Add to main cache
+                    _squadDataCache[squadData.SquadId] = squadData;
+                    
+                    // Determine primary unit type and add to type-specific cache
+                    UnitType primaryType = DeterminePrimaryUnitType(squadData);
+                    if (_squadDataByPrimaryType.ContainsKey(primaryType))
+                    {
+                        _squadDataByPrimaryType[primaryType].Add(squadData);
+                    }
+                }
+            }
+
+            Debug.Log($"EnhancedSquadFactory: Đã load {_squadDataCache.Count} SquadDataSO vào cache");
+        }
+
+        /// <summary>
+        /// Xác định loại unit chính của squad dựa trên composition
+        /// </summary>
+        private UnitType DeterminePrimaryUnitType(SquadDataSO squadData)
+        {
+            Dictionary<UnitType, int> typeCounts = squadData.GetUnitTypeCounts();
+            
+            UnitType primaryType = UnitType.Infantry; // Default
+            int maxCount = 0;
+            
+            foreach (var kvp in typeCounts)
+            {
+                if (kvp.Value > maxCount)
+                {
+                    maxCount = kvp.Value;
+                    primaryType = kvp.Key;
                 }
             }
             
-            Debug.Log($"SquadFactory: Preloaded {_squadModelTemplates.Count} squad templates");
+            return primaryType;
         }
-        
+
         /// <summary>
-        /// Create a squad based on a template ID from cache
+        /// Tạo SquadModel templates từ cache data
+        /// </summary>
+        [Button("Create Squad Model Templates"), TitleGroup("Cache Management")]
+        private void CreateSquadModelTemplates()
+        {
+            _squadModelTemplates.Clear();
+            
+            foreach (var kvp in _squadDataCache)
+            {
+                string squadId = kvp.Key;
+                SquadDataSO squadData = kvp.Value;
+                
+                // Tạo template SquadModel (với ID âm để đánh dấu là template)
+                SquadModel templateModel = new SquadModel(-1, squadData, Vector3.zero, Quaternion.identity);
+                _squadModelTemplates[squadId] = templateModel;
+            }
+            
+            Debug.Log($"EnhancedSquadFactory: Đã tạo {_squadModelTemplates.Count} SquadModel templates");
+        }
+
+        #endregion
+
+        #region Factory Methods
+
+        /// <summary>
+        /// Tạo squad từ template ID
         /// </summary>
         public SquadModel CreateSquadFromTemplate(string squadTemplateId, Vector3 position, Quaternion rotation, bool isEnemy = false)
         {
-            // Check if template exists
+            // Kiểm tra template trong cache
             if (!_squadModelTemplates.TryGetValue(squadTemplateId, out SquadModel templateModel))
             {
-                // If not in cache, try to get from DataManager
-                SquadDataSO squadDataSo = DataManager.GetSquadData(squadTemplateId);
-                if (squadDataSo == null)
+                // Nếu không có trong cache, thử lấy từ DataManager
+                SquadDataSO squadData = DataManager?.GetSquadData(squadTemplateId);
+                if (squadData == null)
                 {
-                    Debug.LogError($"SquadFactory: Cannot create squad - template with ID {squadTemplateId} not found");
+                    Debug.LogError($"EnhancedSquadFactory: Không tìm thấy squad template {squadTemplateId}");
                     return null;
                 }
                 
-                // Create a new template
-                templateModel = new SquadModel(-1, squadDataSo, Vector3.zero, Quaternion.identity);
+                // Tạo template mới
+                templateModel = new SquadModel(-1, squadData, Vector3.zero, Quaternion.identity);
                 _squadModelTemplates[squadTemplateId] = templateModel;
-                
-                Debug.Log($"SquadFactory: Created new template for squad ID {squadTemplateId}");
             }
-            
-            // Get squad data from template
-            SquadDataSO squadData = templateModel.Data;
-            
-            // Create an actual squad using the template's data
-            return CreateSquadFromData(squadData, position, rotation, isEnemy);
+
+            return CreateSquadFromData(templateModel.Data, position, rotation, isEnemy);
         }
-        
+
         /// <summary>
-        /// Create a squad based on SquadData
+        /// Tạo squad từ SquadDataSO
         /// </summary>
         public SquadModel CreateSquadFromData(SquadDataSO squadData, Vector3 position, Quaternion rotation, bool isEnemy = false)
         {
             if (squadData == null)
             {
-                Debug.LogError("SquadFactory: Cannot create squad - squadData is null");
+                Debug.LogError("EnhancedSquadFactory: SquadData là null");
                 return null;
             }
+
+            if (UnitFactory == null)
+            {
+                Debug.LogError("EnhancedSquadFactory: Không tìm thấy UnitFactory");
+                return null;
+            }
+
+            // Bước 1: Tạo SquadModel
+            int squadId = _nextSquadId++;
+            SquadModel squadModel = new SquadModel(squadId, squadData, position, rotation);
+
+            // Bước 2: Tạo units theo composition
+            List<UnitModel> squadUnits = CreateUnitsFromComposition(squadData, position, rotation);
             
-            // Generate a new squad ID
+            if (squadUnits.Count == 0)
+            {
+                Debug.LogError($"EnhancedSquadFactory: Không thể tạo units cho squad {squadId}");
+                return null;
+            }
+
+            // Bước 3: Assign squad ID cho tất cả units
+            foreach (var unitModel in squadUnits)
+            {
+                unitModel.SetSquadId(squadId);
+                
+                // Set formation component nếu có
+                var formationComponent = unitModel.Entity?.GetComponent<FormationComponent>();
+                if (formationComponent != null)
+                {
+                    formationComponent.SetSquadId(squadId);
+                    formationComponent.SetFormationType(squadData.DefaultFormationType);
+                }
+            }
+
+            // Bước 4: Add units vào squad
+            squadModel.AddUnits(squadUnits);
+
+            // Bước 5: Store squad
+            _activeSquads[squadId] = squadModel;
+
+            // Bước 6: Categorize squad
+            CategorizeSquad(squadId, squadData.Faction, isEnemy);
+
+            // Bước 7: Track by template
+            if (!_squadsByTemplateId.ContainsKey(squadData.SquadId))
+            {
+                _squadsByTemplateId[squadData.SquadId] = new List<int>();
+            }
+            _squadsByTemplateId[squadData.SquadId].Add(squadId);
+
+            // Bước 8: Assign SquadController nếu được enable
+            if (_autoAssignController)
+            {
+                AssignSquadController(squadModel);
+            }
+
+            // Bước 9: Trigger events
+            OnSquadCreated?.Invoke(squadModel);
+
+            Debug.Log($"EnhancedSquadFactory: Đã tạo {(isEnemy ? "enemy" : "player")} squad {squadId} " +
+                     $"với {squadUnits.Count} units từ template {squadData.DisplayName}");
+
+            return squadModel;
+        }
+
+        /// <summary>
+        /// Tạo squad đơn giản với 1 loại unit
+        /// </summary>
+        public SquadModel CreateSimpleSquad(UnitType unitType, Vector3 position, Quaternion rotation, bool isEnemy = false)
+        {
+            if (UnitFactory == null)
+            {
+                Debug.LogError("EnhancedSquadFactory: Không tìm thấy UnitFactory");
+                return null;
+            }
+
+            // Tìm template phù hợp
+            SquadDataSO matchingData = FindBestSquadTemplateForUnitType(unitType);
+            
+            if (matchingData != null)
+            {
+                return CreateSquadFromData(matchingData, position, rotation, isEnemy);
+            }
+
+            // Tạo squad generic nếu không tìm thấy template
+            return CreateGenericSquad(unitType, position, rotation, isEnemy);
+        }
+
+        /// <summary>
+        /// Tạo squad generic (không có template)
+        /// </summary>
+        private SquadModel CreateGenericSquad(UnitType unitType, Vector3 position, Quaternion rotation, bool isEnemy)
+        {
             int squadId = _nextSquadId++;
             
-            // Create squad model
-            SquadModel squadModel = new SquadModel(squadId, squadData, position, rotation);
-            
-            // Create units based on the squad composition
+            // Tạo squad model không có data
+            SquadModel squadModel = new SquadModel(squadId, null, position, rotation);
+
+            // Tạo units
             List<UnitModel> squadUnits = new List<UnitModel>();
             
+            for (int i = 0; i < _unitsPerSquad; i++)
+            {
+                Vector3 spawnPosition = CalculateUnitSpawnPosition(position, i);
+                
+                IEntity unitEntity = UnitFactory.CreateUnit(unitType, spawnPosition, rotation);
+                if (unitEntity != null)
+                {
+                    UnitModel unitModel = UnitFactory.GetUnitModel(unitEntity);
+                    if (unitModel != null)
+                    {
+                        unitModel.SetSquadId(squadId);
+                        squadUnits.Add(unitModel);
+                        
+                        // Set formation component
+                        var formationComponent = unitEntity.GetComponent<FormationComponent>();
+                        if (formationComponent != null)
+                        {
+                            formationComponent.SetSquadId(squadId);
+                            formationComponent.SetFormationType(FormationType.Line); // Default formation
+                        }
+                    }
+                }
+            }
+
+            // Add units to squad
+            squadModel.AddUnits(squadUnits);
+
+            // Store squad
+            _activeSquads[squadId] = squadModel;
+
+            // Categorize
+            CategorizeSquad(squadId, isEnemy ? "Enemy" : "Player", isEnemy);
+
+            // Assign controller
+            if (_autoAssignController)
+            {
+                AssignSquadController(squadModel);
+            }
+
+            // Trigger event
+            OnSquadCreated?.Invoke(squadModel);
+
+            Debug.Log($"EnhancedSquadFactory: Đã tạo generic squad {squadId} với {squadUnits.Count} {unitType} units");
+
+            return squadModel;
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        /// <summary>
+        /// Tạo units từ squad composition
+        /// </summary>
+        private List<UnitModel> CreateUnitsFromComposition(SquadDataSO squadData, Vector3 position, Quaternion rotation)
+        {
+            List<UnitModel> squadUnits = new List<UnitModel>();
+            int unitIndex = 0;
+
             foreach (var composition in squadData.UnitCompositions)
             {
                 if (composition.UnitData == null || composition.Count <= 0)
                     continue;
-                    
-                string unitId = composition.UnitData.UnitId;
-                
+
                 for (int i = 0; i < composition.Count; i++)
                 {
-                    // Add a small random offset to avoid units spawning at exactly the same position
-                    Vector3 spawnOffset = new Vector3(
-                        Random.Range(-0.5f, 0.5f),
-                        0,
-                        Random.Range(-0.5f, 0.5f)
-                    );
+                    Vector3 spawnPosition = CalculateUnitSpawnPosition(position, unitIndex);
                     
-                    // Create unit from template or data
-                    IEntity unitEntity;
-                    unitEntity = _unitFactory.CreateUnitFromData(
-                        composition.UnitData,
-                        position + spawnOffset,
+                    IEntity unitEntity = UnitFactory.CreateUnitFromData(
+                        composition.UnitData, 
+                        spawnPosition, 
                         rotation
                     );
-                    
+
                     if (unitEntity != null)
                     {
-                        // Get the unit model
-                        UnitModel unitModel = _unitFactory.GetUnitModel(unitEntity.Id);
+                        UnitModel unitModel = UnitFactory.GetUnitModel(unitEntity);
                         if (unitModel != null)
                         {
                             squadUnits.Add(unitModel);
                         }
                     }
+
+                    unitIndex++;
                 }
             }
+
+            return squadUnits;
+        }
+
+        /// <summary>
+        /// Tính toán vị trí spawn cho unit trong squad
+        /// </summary>
+        private Vector3 CalculateUnitSpawnPosition(Vector3 basePosition, int unitIndex)
+        {
+            // Tạo pattern grid 3x3 cho squad
+            int row = unitIndex / 3;
+            int col = unitIndex % 3;
             
-            // Add all units to the squad
-            squadModel.AddUnits(squadUnits);
+            Vector3 offset = new Vector3(
+                (col - 1) * _unitSpacing,
+                0,
+                row * _unitSpacing
+            );
             
-            // Store the squad in active squads
-            _activeSquads[squadId] = squadModel;
-            
-            // Add to appropriate list
-            if (isEnemy)
+            // Add small random để tránh overlap hoàn toàn
+            offset += new Vector3(
+                Random.Range(-0.1f, 0.1f),
+                0,
+                Random.Range(-0.1f, 0.1f)
+            );
+
+            return basePosition + offset;
+        }
+
+        /// <summary>
+        /// Phân loại squad theo faction
+        /// </summary>
+        private void CategorizeSquad(int squadId, string faction, bool isEnemy)
+        {
+            if (isEnemy || faction == "Enemy")
             {
                 _enemySquadIds.Add(squadId);
             }
-            else if (squadData.Faction == "Neutral")
+            else if (faction == "Neutral")
             {
                 _neutralSquadIds.Add(squadId);
             }
@@ -196,504 +482,196 @@ namespace VikingRaven.Core.Factory
             {
                 _playerSquadIds.Add(squadId);
             }
-            
-            // Trigger event
-            OnSquadCreated?.Invoke(squadModel);
-            
-            Debug.Log($"SquadFactory: Created {(isEnemy ? "enemy" : "player")} squad {squadId} with {squadUnits.Count} units based on {squadData.DisplayName}");
-            
-            return squadModel;
         }
-        
+
         /// <summary>
-        /// Create a squad with a single unit type
+        /// Tìm squad template tốt nhất cho unit type
         /// </summary>
-        public SquadModel CreateSquad(UnitType unitType, int unitCount, Vector3 position, Quaternion rotation, bool isEnemy = false)
+        private SquadDataSO FindBestSquadTemplateForUnitType(UnitType unitType)
         {
-            // Try to find a matching squad template first
-            SquadDataSO matchingData = FindMatchingSquadData(unitType);
-            
-            if (matchingData != null)
+            if (_squadDataByPrimaryType.TryGetValue(unitType, out List<SquadDataSO> templates) && templates.Count > 0)
             {
-                // Create from the matching data but override the unit count
-                return CreateCustomizedSquad(matchingData, unitCount, position, rotation, isEnemy);
+                // Trả về template đầu tiên hoặc random
+                return templates[Random.Range(0, templates.Count)];
             }
-            
-            // If no matching data found, create a generic squad
-            int squadId = _nextSquadId++;
-            
-            // Create an empty squad model
-            SquadModel squadModel = new SquadModel(squadId, null, position, rotation);
-            
-            // Create the units
-            List<UnitModel> squadUnits = new List<UnitModel>();
-            
-            for (int i = 0; i < unitCount; i++)
-            {
-                // Add a small random offset
-                Vector3 spawnOffset = new Vector3(
-                    Random.Range(-0.5f, 0.5f),
-                    0,
-                    Random.Range(-0.5f, 0.5f)
-                );
-                
-                // Create unit
-                IEntity unitEntity = _unitFactory.CreateUnit(unitType, position + spawnOffset, rotation);
-                
-                if (unitEntity != null)
-                {
-                    // Get the unit model
-                    UnitModel unitModel = _unitFactory.GetUnitModel(unitEntity.Id);
-                    if (unitModel != null)
-                    {
-                        squadUnits.Add(unitModel);
-                    }
-                }
-            }
-            
-            // Add units to the squad
-            squadModel.AddUnits(squadUnits);
-            
-            // Store the squad
-            _activeSquads[squadId] = squadModel;
-            
-            // Add to appropriate list
-            if (isEnemy)
-            {
-                _enemySquadIds.Add(squadId);
-            }
-            else
-            {
-                _playerSquadIds.Add(squadId);
-            }
-            
-            // Trigger event
-            OnSquadCreated?.Invoke(squadModel);
-            
-            Debug.Log($"SquadFactory: Created {(isEnemy ? "enemy" : "player")} squad {squadId} with {squadUnits.Count} units of type {unitType}");
-            
-            return squadModel;
+            return null;
         }
-        
+
         /// <summary>
-        /// Create a customized version of a squad data with different unit count
+        /// Assign SquadController cho squad
         /// </summary>
-        private SquadModel CreateCustomizedSquad(SquadDataSO baseData, int totalUnitCount, Vector3 position, Quaternion rotation, bool isEnemy)
+        private void AssignSquadController(SquadModel squadModel)
         {
-            if (baseData == null) return null;
-            
-            // Clone the data so we don't modify the original
-            SquadDataSO customData = baseData.Clone();
-            
-            // Get the original unit type ratio
-            Dictionary<UnitType, float> typeRatios = new Dictionary<UnitType, float>();
-            int originalTotalCount = 0;
-            
-            foreach (var composition in baseData.UnitCompositions)
-            {
-                if (composition.UnitData != null)
-                {
-                    UnitType type = composition.UnitData.UnitType;
-                    if (!typeRatios.ContainsKey(type))
-                    {
-                        typeRatios[type] = 0;
-                    }
-                    
-                    typeRatios[type] += composition.Count;
-                    originalTotalCount += composition.Count;
-                }
-            }
-            
-            // Convert counts to ratios
-            if (originalTotalCount > 0)
-            {
-                foreach (var type in typeRatios.Keys)
-                {
-                    typeRatios[type] /= originalTotalCount;
-                }
-            }
-            
-            // Create a mixed unit squad with the same ratio but different total count
-            Dictionary<UnitType, int> unitCounts = new Dictionary<UnitType, int>();
-            int remainingUnits = totalUnitCount;
-            
-            // First pass: calculate counts based on ratios
-            foreach (var type in typeRatios.Keys)
-            {
-                int count = Mathf.FloorToInt(totalUnitCount * typeRatios[type]);
-                unitCounts[type] = count;
-                remainingUnits -= count;
-            }
-            
-            // Second pass: distribute any remaining units
-            var typeList = new List<UnitType>(typeRatios.Keys);
-            while (remainingUnits > 0 && typeList.Count > 0)
-            {
-                int index = Random.Range(0, typeList.Count);
-                UnitType type = typeList[index];
-                
-                unitCounts[type]++;
-                remainingUnits--;
-                
-                // Remove this type to ensure even distribution
-                typeList.RemoveAt(index);
-                
-                // If we've gone through all types, reset the list
-                if (typeList.Count == 0 && remainingUnits > 0)
-                {
-                    typeList = new List<UnitType>(typeRatios.Keys);
-                }
-            }
-            
-            // Now create a mixed squad with these counts
-            return CreateMixedSquad(unitCounts, position, rotation, isEnemy);
-        }
-        
-        /// <summary>
-        /// Create a mixed squad with different unit types
-        /// </summary>
-        public SquadModel CreateMixedSquad(Dictionary<UnitType, int> unitCounts, Vector3 position, Quaternion rotation, bool isEnemy = false)
-        {
-            // Try to find a matching squad data first
-            SquadDataSO matchingData = FindMatchingSquadData(unitCounts);
-            
-            if (matchingData != null)
-            {
-                return CreateSquadFromData(matchingData, position, rotation, isEnemy);
-            }
-            
-            // If no matching data found, create a generic mixed squad
-            int squadId = _nextSquadId++;
-            
-            // Create an empty squad model
-            SquadModel squadModel = new SquadModel(squadId, null, position, rotation);
-            
-            // Create units of each type
-            List<UnitModel> squadUnits = new List<UnitModel>();
-            
-            foreach (var kvp in unitCounts)
-            {
-                UnitType unitType = kvp.Key;
-                int count = kvp.Value;
-                
-                for (int i = 0; i < count; i++)
-                {
-                    // Add a small random offset
-                    Vector3 spawnOffset = new Vector3(
-                        Random.Range(-0.5f, 0.5f),
-                        0,
-                        Random.Range(-0.5f, 0.5f)
-                    );
-                    
-                    // Create unit
-                    IEntity unitEntity = _unitFactory.CreateUnit(unitType, position + spawnOffset, rotation);
-                    
-                    if (unitEntity != null)
-                    {
-                        // Get the unit model
-                        UnitModel unitModel = _unitFactory.GetUnitModel(unitEntity.Id);
-                        if (unitModel != null)
-                        {
-                            squadUnits.Add(unitModel);
-                        }
-                    }
-                }
-            }
-            
-            // Add units to the squad
-            squadModel.AddUnits(squadUnits);
-            
-            // Store the squad
-            _activeSquads[squadId] = squadModel;
-            
-            // Add to appropriate list
-            if (isEnemy)
-            {
-                _enemySquadIds.Add(squadId);
-            }
-            else
-            {
-                _playerSquadIds.Add(squadId);
-            }
-            
+            if (squadModel == null) return;
+
+            // Tạo GameObject cho SquadController
+            GameObject controllerObj = new GameObject($"SquadController_{squadModel.SquadId}");
+            controllerObj.transform.position = squadModel.CurrentPosition;
+
+            // Add SquadController component
+            SquadController controller = controllerObj.AddComponent<SquadController>();
+            controller.InitializeWithSquad(squadModel);
+
+            // Store reference
+            _squadControllers[squadModel.SquadId] = controller;
+
             // Trigger event
-            OnSquadCreated?.Invoke(squadModel);
-            
-            Debug.Log($"SquadFactory: Created {(isEnemy ? "enemy" : "player")} mixed squad {squadId} with {squadUnits.Count} units");
-            
-            return squadModel;
+            OnSquadControllerAssigned?.Invoke(controller);
+
+            Debug.Log($"EnhancedSquadFactory: Đã assign SquadController cho squad {squadModel.SquadId}");
         }
-        
+
+        #endregion
+
+        #region Public API
+
         /// <summary>
-        /// Disband a squad (return all its units to pools)
+        /// Disband squad và return units về pool
         /// </summary>
         public void DisbandSquad(int squadId)
         {
-            if (_activeSquads.TryGetValue(squadId, out SquadModel squadModel))
+            if (!_activeSquads.TryGetValue(squadId, out SquadModel squadModel))
             {
-                // Trigger event
-                OnSquadDisbanded?.Invoke(squadModel);
-                
-                // Get all unit entities
-                List<IEntity> unitEntities = squadModel.GetAllUnitEntities();
-                
-                // Return all units to the factory
-                foreach (var entity in unitEntities)
+                Debug.LogWarning($"EnhancedSquadFactory: Squad {squadId} không tồn tại");
+                return;
+            }
+
+            // Trigger event trước khi disband
+            OnSquadDisbanded?.Invoke(squadModel);
+
+            // Return all units
+            List<IEntity> unitEntities = squadModel.GetAllUnitEntities();
+            foreach (var entity in unitEntities)
+            {
+                if (UnitFactory != null && entity != null)
                 {
-                    if (_unitFactory != null && entity != null)
-                    {
-                        _unitFactory.ReturnUnit(entity);
-                    }
+                    UnitFactory.ReturnUnit(entity);
                 }
-                
-                // Clean up squad model
-                squadModel.Cleanup();
-                
-                // Remove from tracking collections
-                _activeSquads.Remove(squadId);
-                _playerSquadIds.Remove(squadId);
-                _enemySquadIds.Remove(squadId);
-                _neutralSquadIds.Remove(squadId);
-                
-                Debug.Log($"SquadFactory: Disbanded squad {squadId} with {unitEntities.Count} units");
             }
-        }
-        
-        /// <summary>
-        /// Disband all active squads
-        /// </summary>
-        public void DisbandAllSquads()
-        {
-            // Create a copy of squad IDs to avoid modification during iteration
-            List<int> squadIds = new List<int>(_activeSquads.Keys);
-            
-            foreach (int squadId in squadIds)
+
+            // Destroy squad controller nếu có
+            if (_squadControllers.TryGetValue(squadId, out SquadController controller))
             {
-                DisbandSquad(squadId);
+                if (controller != null)
+                {
+                    DestroyImmediate(controller.gameObject);
+                }
+                _squadControllers.Remove(squadId);
             }
-            
-            Debug.Log($"SquadFactory: Disbanded all {squadIds.Count} squads");
+
+            // Cleanup squad model
+            squadModel.Cleanup();
+
+            // Remove from tracking
+            _activeSquads.Remove(squadId);
+            _playerSquadIds.Remove(squadId);
+            _enemySquadIds.Remove(squadId);
+            _neutralSquadIds.Remove(squadId);
+
+            // Remove from template tracking
+            foreach (var templateList in _squadsByTemplateId.Values)
+            {
+                templateList.Remove(squadId);
+            }
+
+            Debug.Log($"EnhancedSquadFactory: Đã disband squad {squadId} với {unitEntities.Count} units");
         }
-        
+
         /// <summary>
-        /// Get a squad model by ID
+        /// Lấy squad model theo ID
         /// </summary>
         public SquadModel GetSquad(int squadId)
         {
-            if (_activeSquads.TryGetValue(squadId, out SquadModel squadModel))
-            {
-                return squadModel;
-            }
-            return null;
+            _activeSquads.TryGetValue(squadId, out SquadModel squadModel);
+            return squadModel;
         }
-        
+
         /// <summary>
-        /// Get a squad template by ID
+        /// Lấy squad controller theo ID
         /// </summary>
-        public SquadModel GetSquadTemplate(string squadId)
+        public SquadController GetSquadController(int squadId)
         {
-            if (_squadModelTemplates.TryGetValue(squadId, out SquadModel template))
-            {
-                return template;
-            }
-            return null;
+            _squadControllers.TryGetValue(squadId, out SquadController controller);
+            return controller;
         }
-        
+
         /// <summary>
-        /// Get all squad templates
-        /// </summary>
-        public Dictionary<string, SquadModel> GetAllSquadTemplates()
-        {
-            return new Dictionary<string, SquadModel>(_squadModelTemplates);
-        }
-        
-        /// <summary>
-        /// Get all squad models
+        /// Lấy tất cả active squads
         /// </summary>
         public List<SquadModel> GetAllSquads()
         {
             return new List<SquadModel>(_activeSquads.Values);
         }
-        
+
         /// <summary>
-        /// Get all player squad models
+        /// Lấy player squads
         /// </summary>
         public List<SquadModel> GetPlayerSquads()
         {
             List<SquadModel> result = new List<SquadModel>();
-            
             foreach (int squadId in _playerSquadIds)
             {
-                if (_activeSquads.TryGetValue(squadId, out SquadModel squadModel))
+                if (_activeSquads.TryGetValue(squadId, out SquadModel squad))
                 {
-                    result.Add(squadModel);
+                    result.Add(squad);
                 }
             }
-            
             return result;
         }
-        
+
         /// <summary>
-        /// Get all enemy squad models
+        /// Lấy enemy squads
         /// </summary>
         public List<SquadModel> GetEnemySquads()
         {
             List<SquadModel> result = new List<SquadModel>();
-            
             foreach (int squadId in _enemySquadIds)
             {
-                if (_activeSquads.TryGetValue(squadId, out SquadModel squadModel))
+                if (_activeSquads.TryGetValue(squadId, out SquadModel squad))
                 {
-                    result.Add(squadModel);
+                    result.Add(squad);
                 }
             }
-            
             return result;
         }
-        
-        /// <summary>
-        /// Get all squad IDs
-        /// </summary>
-        public List<int> GetAllSquadIds()
+
+        #endregion
+
+        #region Debug Tools
+
+        [Button("Create Test Squad"), TitleGroup("Debug Tools")]
+        public void CreateTestSquad()
         {
-            return new List<int>(_activeSquads.Keys);
+            Vector3 position = Vector3.zero;
+            CreateSimpleSquad(UnitType.Infantry, position, Quaternion.identity, false);
         }
-        
-        /// <summary>
-        /// Get all player squad IDs
-        /// </summary>
-        public List<int> GetPlayerSquadIds()
+
+        [Button("Disband All Squads"), TitleGroup("Debug Tools")]
+        public void DisbandAllSquads()
         {
-            return new List<int>(_playerSquadIds);
-        }
-        
-        /// <summary>
-        /// Get all enemy squad IDs
-        /// </summary>
-        public List<int> GetEnemySquadIds()
-        {
-            return new List<int>(_enemySquadIds);
-        }
-        
-        /// <summary>
-        /// Find a matching squad data for a specific unit type
-        /// </summary>
-        private SquadDataSO FindMatchingSquadData(UnitType unitType)
-        {
-            if (DataManager == null || !DataManager.IsInitialized)
-                return null;
-                
-            // Get all squad data
-            List<SquadDataSO> allSquadData = DataManager.GetAllSquadData();
-            
-            foreach (var squadData in allSquadData)
+            List<int> squadIds = new List<int>(_activeSquads.Keys);
+            foreach (int squadId in squadIds)
             {
-                // Count units by type
-                Dictionary<UnitType, int> typeCounts = squadData.GetUnitTypeCounts();
-                
-                // Check if this squad only contains the requested unit type
-                if (typeCounts.Count == 1 && typeCounts.ContainsKey(unitType))
-                {
-                    return squadData;
-                }
+                DisbandSquad(squadId);
             }
-            
-            return null;
+            Debug.Log($"EnhancedSquadFactory: Đã disband {squadIds.Count} squads");
         }
-        
-        /// <summary>
-        /// Find a matching squad data for a specific unit composition
-        /// </summary>
-        private SquadDataSO FindMatchingSquadData(Dictionary<UnitType, int> unitCounts)
+
+        [Button("Show Factory Stats"), TitleGroup("Debug Tools")]
+        public void ShowFactoryStats()
         {
-            if (DataManager == null || !DataManager.IsInitialized)
-                return null;
-                
-            // Get all squad data
-            List<SquadDataSO> allSquadData = DataManager.GetAllSquadData();
+            string stats = "=== Enhanced Squad Factory Stats ===\n";
+            stats += $"Cached Squad Data: {_squadDataCache.Count}\n";
+            stats += $"Squad Model Templates: {_squadModelTemplates.Count}\n";
+            stats += $"Active Squads: {_activeSquads.Count}\n";
+            stats += $"Squad Controllers: {_squadControllers.Count}\n";
+            stats += $"Player Squads: {_playerSquadIds.Count}\n";
+            stats += $"Enemy Squads: {_enemySquadIds.Count}\n";
+            stats += $"Neutral Squads: {_neutralSquadIds.Count}\n";
             
-            // Calculate total unit count
-            int totalRequestedUnits = 0;
-            foreach (var count in unitCounts.Values)
-            {
-                totalRequestedUnits += count;
-            }
-            
-            // Find a squad with a similar composition
-            foreach (var squadData in allSquadData)
-            {
-                // Get squad composition
-                Dictionary<UnitType, int> squadComposition = squadData.GetUnitTypeCounts();
-                
-                // Check if the composition matches
-                if (squadComposition.Count != unitCounts.Count)
-                    continue;
-                    
-                bool isMatch = true;
-                float ratioMatch = 0f;
-                
-                // Calculate total units in squad
-                int totalSquadUnits = 0;
-                foreach (var count in squadComposition.Values)
-                {
-                    totalSquadUnits += count;
-                }
-                
-                // Compare each unit type
-                foreach (var kvp in unitCounts)
-                {
-                    UnitType type = kvp.Key;
-                    int requestedCount = kvp.Value;
-                    
-                    // Check if the squad has this unit type
-                    if (!squadComposition.TryGetValue(type, out int squadCount))
-                    {
-                        isMatch = false;
-                        break;
-                    }
-                    
-                    // Check if the ratio is similar
-                    float requestedRatio = (float)requestedCount / totalRequestedUnits;
-                    float squadRatio = (float)squadCount / totalSquadUnits;
-                    
-                    // Consider a 20% variance as acceptable
-                    float ratioVariance = Mathf.Abs(requestedRatio - squadRatio);
-                    if (ratioVariance > 0.2f)
-                    {
-                        isMatch = false;
-                        break;
-                    }
-                    
-                    // Track how closely this matches (lower is better)
-                    ratioMatch += ratioVariance;
-                }
-                
-                if (isMatch)
-                {
-                    return squadData;
-                }
-            }
-            
-            return null;
+            Debug.Log(stats);
         }
-        
-        /// <summary>
-        /// Update all squads
-        /// </summary>
-        public void UpdateAllSquads()
-        {
-            foreach (var squad in _activeSquads.Values)
-            {
-                squad.Update();
-            }
-        }
-        
-        /// <summary>
-        /// Clean up all squads when destroyed
-        /// </summary>
-        private void OnDestroy()
-        {
-            DisbandAllSquads();
-        }
+
+        #endregion
     }
 }

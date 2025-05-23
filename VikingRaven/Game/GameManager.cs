@@ -17,9 +17,6 @@ namespace VikingRaven.Game
         public UnitFactory UnitFactory => _unitFactory;
         
         
-        /// <summary>
-        /// Creates a squad of units of the specified type
-        /// </summary>
         public void CreateSquad(UnitType unitType, int count, Vector3 position)
         {
             if (SquadFactory != null)

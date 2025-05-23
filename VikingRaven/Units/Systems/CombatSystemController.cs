@@ -451,30 +451,6 @@ namespace VikingRaven.Units.Systems
             return true;
         }
         
-        /// <summary>
-        /// Get all player squad IDs
-        /// </summary>
-        /// <returns>List of player squad IDs</returns>
-        public List<int> GetPlayerSquadIds()
-        {
-            if (_squadFactory == null)
-                return new List<int>();
-                
-            return _squadFactory.GetPlayerSquadIds();
-        }
-        
-        /// <summary>
-        /// Get all enemy squad IDs
-        /// </summary>
-        /// <returns>List of enemy squad IDs</returns>
-        public List<int> GetEnemySquadIds()
-        {
-            if (_squadFactory == null)
-                return new List<int>();
-                
-            return _squadFactory.GetEnemySquadIds();
-        }
-        
         #endregion
         
         #region Editor Debug Methods
@@ -512,33 +488,7 @@ namespace VikingRaven.Units.Systems
                           $"Formation: {squad.CurrentFormation}");
             }
         }
-        
-        [Button("Simulate Squad Combat")]
-        private void SimulateSquadCombat()
-        {
-            if (_squadFactory == null)
-                return;
-                
-            List<int> playerSquadIds = _squadFactory.GetPlayerSquadIds();
-            List<int> enemySquadIds = _squadFactory.GetEnemySquadIds();
-            
-            if (playerSquadIds.Count == 0 || enemySquadIds.Count == 0)
-            {
-                Debug.Log("CombatSystemController: Need at least one player and one enemy squad to simulate combat");
-                return;
-            }
-            
-            // Pick a random player and enemy squad
-            int playerSquadId = playerSquadIds[Random.Range(0, playerSquadIds.Count)];
-            int enemySquadId = enemySquadIds[Random.Range(0, enemySquadIds.Count)];
-            
-            // Order attack
-            OrderSquadAttack(playerSquadId, enemySquadId);
-            
-            Debug.Log($"CombatSystemController: Simulated combat between player squad {playerSquadId} and enemy squad {enemySquadId}");
-        }
         #endif
-        
         #endregion
     }
 }
