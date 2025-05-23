@@ -98,22 +98,32 @@ namespace VikingRaven.Core.Data
 
         #region Unity Lifecycle
 
-        protected override void OnInitialize()
+        public void Initialize()
         {
-            base.OnInitialize();
-            
             if (_verboseLogging)
                 Debug.Log("DataManager: Initializing...");
             
-            // Khởi tạo dictionaries
             InitializeCaches();
             
-            // Auto load nếu được bật
             if (_autoLoadOnStart)
             {
                 LoadAllData();
             }
         }
+        // protected override void OnInitialize()
+        // {
+        //     base.OnInitialize();
+        //     
+        //     if (_verboseLogging)
+        //         Debug.Log("DataManager: Initializing...");
+        //     
+        //     InitializeCaches();
+        //     
+        //     if (_autoLoadOnStart)
+        //     {
+        //         LoadAllData();
+        //     }
+        // }
 
         #endregion
 

@@ -5,177 +5,175 @@ using VikingRaven.Units.Components;
 
 namespace VikingRaven.Units.Systems
 {
+    /// <summary>
+    /// Enhanced FormationSystem theo chuẩn ECS pattern
+    /// Xử lý tất cả logic formation, FormationComponent chỉ chứa data
+    /// Được inject dependency thay vì sử dụng singleton
+    /// </summary>
     public class FormationSystem : BaseSystem
     {
-        // Set priority for this system
-        [SerializeField] private int _systemPriority = 300;
+        #region System Configuration
+
+        [Header("System Settings")]
+        [Tooltip("Priority of this system in execution order")]
+        [SerializeField] private int _systemPriority = 100;
         
-        // Dictionary to track squad formations
-        private Dictionary<int, Dictionary<FormationType, Vector3[]>> _formationTemplates = 
-            new Dictionary<int, Dictionary<FormationType, Vector3[]>>();
+        [Tooltip("Update frequency (frames) - lower is more frequent")]
+        [SerializeField, Range(1, 10)] private int _updateFrequency = 2;
         
-        private Dictionary<int, FormationType> _currentFormations = new Dictionary<int, FormationType>();
+        [Tooltip("Enable debug visualization")]
+        [SerializeField] private bool _enableDebugVisualization = false;
+
+        #endregion
+
+        #region Formation Configuration
+
+        [Header("Formation Templates")]
+        [Tooltip("Spacing between units in different formations")]
+        [SerializeField] private FormationSpacingConfig _spacingConfig;
+
+        #endregion
+
+        #region Runtime Data
+
+        // Squad formation tracking
         private Dictionary<int, List<IEntity>> _squadMembers = new Dictionary<int, List<IEntity>>();
-        
-        // Tracking squad manual movement
-        private Dictionary<int, bool> _squadManualMovement = new Dictionary<int, bool>();
-        private Dictionary<int, float> _lastManualMoveTime = new Dictionary<int, float>();
-        [SerializeField] private float _manualMoveTimeout = 5.0f;
-        
-        // Position tracking
+        private Dictionary<int, FormationType> _squadFormationTypes = new Dictionary<int, FormationType>();
         private Dictionary<int, Vector3> _squadCenters = new Dictionary<int, Vector3>();
         private Dictionary<int, Quaternion> _squadRotations = new Dictionary<int, Quaternion>();
         
-        // Formation spacing parameters
-        [SerializeField] private float _lineSpacing = 2.0f;
-        [SerializeField] private float _columnSpacing = 2.0f;
-        [SerializeField] private float _phalanxSpacing = 1.2f;
-        [SerializeField] private float _testudoSpacing = 0.8f;
-        [SerializeField] private float _circleMultiplier = 0.3f;
-        [SerializeField] private float _gridSpacing = 2.0f;
+        // Formation templates cache
+        private Dictionary<string, Vector3[]> _formationTemplateCache = new Dictionary<string, Vector3[]>();
         
-        // Debug flags
-        [SerializeField] private bool _logDebugInfo = false;
+        // Update timing
+        private int _frameCounter = 0;
+
+        #endregion
+
+        #region Dependencies (Injected by GameManager)
+
+        private EntityRegistry _entityRegistry;
         
+        /// <summary>
+        /// Initialize system with dependencies (called by GameManager)
+        /// </summary>
+        public void Initialize(EntityRegistry entityRegistry)
+        {
+            _entityRegistry = entityRegistry;
+            Priority = _systemPriority;
+            
+            // Initialize default spacing config if not assigned
+            if (_spacingConfig == null)
+            {
+                _spacingConfig = CreateDefaultSpacingConfig();
+            }
+            
+            Debug.Log("FormationSystem: Initialized with dependencies");
+        }
+
+        #endregion
+
+        #region System Lifecycle
+
         public override void Initialize()
         {
             base.Initialize();
-            // Set priority for this system
-            Priority = _systemPriority;
             
-            if (_logDebugInfo)
+            // This will be called by SystemRegistry
+            if (_entityRegistry == null)
             {
-                Debug.Log($"FormationSystem initialized with priority {Priority}");
+                Debug.LogWarning("FormationSystem: EntityRegistry not injected, using fallback");
+                _entityRegistry = EntityRegistry.Instance; // Fallback to singleton if needed
             }
         }
-        
+
         public override void Execute()
         {
-            // Update unit list by squad
-            UpdateSquadMembers();
+            // Performance optimization: don't run every frame
+            _frameCounter++;
+            if (_frameCounter % _updateFrequency != 0) return;
+
+            if (_entityRegistry == null) return;
+
+            // Update squad data
+            UpdateSquadMembership();
             
-            // Calculate new centers and rotations for each squad
-            CalculateSquadCentersAndRotations();
+            // Calculate squad centers and rotations
+            CalculateSquadTransforms();
             
-            // Update formation positions for each squad
-            foreach (var squadId in _squadMembers.Keys)
+            // Update formation positions for all squads
+            UpdateAllSquadFormations();
+            
+            // Debug visualization
+            if (_enableDebugVisualization)
             {
-                var members = _squadMembers[squadId];
-                if (members.Count == 0) continue;
-                
-                // Check if this squad is being manually moved
-                bool isManuallyMoving = false;
-                if (_squadManualMovement.TryGetValue(squadId, out isManuallyMoving) && isManuallyMoving)
-                {
-                    if (_logDebugInfo)
-                    {
-                        Debug.Log($"FormationSystem: Squad {squadId} is being manually moved, skipping formation update");
-                    }
-                    continue;
-                }
-                
-                // Get current formation type
-                FormationType formationType = FormationType.Line; // Default
-                if (_currentFormations.TryGetValue(squadId, out var currentFormation))
-                {
-                    formationType = currentFormation;
-                }
-                
-                // Ensure template exists for formation and unit count
-                EnsureFormationTemplate(squadId, formationType, members.Count);
-                
-                // Update formation positions
-                UpdateFormationPositions(squadId, members, formationType);
+                DrawFormationDebug();
             }
-            
-            // Update manual movement status
-            UpdateManualMovementStatus();
         }
-        
+
+        #endregion
+
+        #region Squad Membership Management
+
         /// <summary>
-        /// Update squad members list
+        /// Update squad membership data from FormationComponents
         /// </summary>
-        private void UpdateSquadMembers()
+        private void UpdateSquadMembership()
         {
+            // Clear previous data
             _squadMembers.Clear();
             
-            var entities = EntityRegistry.GetEntitiesWithComponent<FormationComponent>();
+            // Get all entities with FormationComponent
+            var formationEntities = _entityRegistry.GetEntitiesWithComponent<FormationComponent>();
             
-            foreach (var entity in entities)
+            // Group by squad ID
+            foreach (var entity in formationEntities)
             {
                 var formationComponent = entity.GetComponent<FormationComponent>();
-                if (formationComponent == null || !formationComponent.IsActive)
-                    continue;
+                if (formationComponent == null || !formationComponent.IsActive) continue;
                 
                 int squadId = formationComponent.SquadId;
+                if (squadId < 0) continue; // Invalid squad ID
                 
+                // Add to squad members
                 if (!_squadMembers.ContainsKey(squadId))
                 {
                     _squadMembers[squadId] = new List<IEntity>();
                 }
-                
                 _squadMembers[squadId].Add(entity);
                 
-                // Update current formation type for squad
-                if (!_currentFormations.ContainsKey(squadId))
-                {
-                    _currentFormations[squadId] = formationComponent.CurrentFormationType;
-                }
+                // Track formation type
+                _squadFormationTypes[squadId] = formationComponent.CurrentFormationType;
             }
             
-            // Sort members in each squad by ID for consistency
+            // Sort members by slot index for consistent ordering
             foreach (var squadId in _squadMembers.Keys)
             {
-                _squadMembers[squadId].Sort((a, b) => a.Id.CompareTo(b.Id));
+                _squadMembers[squadId].Sort((a, b) => {
+                    var formA = a.GetComponent<FormationComponent>();
+                    var formB = b.GetComponent<FormationComponent>();
+                    return formA.FormationSlotIndex.CompareTo(formB.FormationSlotIndex);
+                });
             }
         }
 
+        #endregion
+
+        #region Squad Transform Calculation
+
         /// <summary>
-        /// Update manual movement status
+        /// Calculate center position and rotation for each squad
         /// </summary>
-        private void UpdateManualMovementStatus()
+        private void CalculateSquadTransforms()
         {
-            float currentTime = Time.time;
-            List<int> expiredSquads = new List<int>();
-            
-            // Check and update squads that have timed out of manual movement
-            foreach (var squadId in _squadManualMovement.Keys)
+            foreach (var squadData in _squadMembers)
             {
-                if (_squadManualMovement[squadId])
-                {
-                    if (_lastManualMoveTime.TryGetValue(squadId, out float lastMoveTime))
-                    {
-                        if (currentTime - lastMoveTime > _manualMoveTimeout)
-                        {
-                            // Manual movement timeout has expired
-                            expiredSquads.Add(squadId);
-                            
-                            if (_logDebugInfo)
-                            {
-                                Debug.Log($"FormationSystem: Squad {squadId} manual movement expired");
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Reset state for expired squads
-            foreach (var squadId in expiredSquads)
-            {
-                _squadManualMovement[squadId] = false;
-            }
-        }
-        
-        /// <summary>
-        /// Calculate squad centers and rotations
-        /// </summary>
-        private void CalculateSquadCentersAndRotations()
-        {
-            foreach (var squadId in _squadMembers.Keys)
-            {
-                var members = _squadMembers[squadId];
+                int squadId = squadData.Key;
+                var members = squadData.Value;
+                
                 if (members.Count == 0) continue;
                 
+                // Calculate center position (average of all unit positions)
                 Vector3 centerSum = Vector3.zero;
                 Vector3 forwardSum = Vector3.zero;
                 int validCount = 0;
@@ -193,15 +191,13 @@ namespace VikingRaven.Units.Systems
                 
                 if (validCount > 0)
                 {
-                    // Calculate center (average position of all units)
-                    Vector3 center = centerSum / validCount;
-                    _squadCenters[squadId] = center;
+                    // Store calculated transforms
+                    _squadCenters[squadId] = centerSum / validCount;
                     
-                    // Calculate average direction
+                    // Calculate average forward direction
                     if (forwardSum.magnitude > 0.01f)
                     {
-                        Quaternion rotation = Quaternion.LookRotation(forwardSum.normalized);
-                        _squadRotations[squadId] = rotation;
+                        _squadRotations[squadId] = Quaternion.LookRotation(forwardSum.normalized);
                     }
                     else
                     {
@@ -210,243 +206,447 @@ namespace VikingRaven.Units.Systems
                 }
             }
         }
-        
+
+        #endregion
+
+        #region Formation Position Updates
+
         /// <summary>
-        /// Ensure formation template exists for a given formation type and member count
+        /// Update formation positions for all squads
         /// </summary>
-        private void EnsureFormationTemplate(int squadId, FormationType formationType, int memberCount)
+        private void UpdateAllSquadFormations()
         {
-            if (!_formationTemplates.ContainsKey(squadId))
+            foreach (var squadData in _squadMembers)
             {
-                _formationTemplates[squadId] = new Dictionary<FormationType, Vector3[]>();
-            }
-            
-            if (!_formationTemplates[squadId].ContainsKey(formationType) || 
-                _formationTemplates[squadId][formationType].Length != memberCount)
-            {
-                _formationTemplates[squadId][formationType] = GenerateFormationTemplate(formationType, memberCount);
+                int squadId = squadData.Key;
+                var members = squadData.Value;
                 
-                if (_logDebugInfo)
+                if (members.Count == 0) continue;
+                
+                // Get squad transform data
+                if (!_squadCenters.TryGetValue(squadId, out Vector3 squadCenter) ||
+                    !_squadRotations.TryGetValue(squadId, out Quaternion squadRotation) ||
+                    !_squadFormationTypes.TryGetValue(squadId, out FormationType formationType))
                 {
-                    Debug.Log($"FormationSystem: Generated new template for squad {squadId}, formation {formationType}, members {memberCount}");
+                    continue;
                 }
+                
+                // Update formation for this squad
+                UpdateSquadFormation(squadId, members, squadCenter, squadRotation, formationType);
             }
         }
-        
+
         /// <summary>
-        /// Generate formation position offsets based on formation type
+        /// Update formation for a specific squad
         /// </summary>
-        private Vector3[] GenerateFormationTemplate(FormationType formationType, int count)
+        private void UpdateSquadFormation(int squadId, List<IEntity> members, Vector3 squadCenter, 
+            Quaternion squadRotation, FormationType formationType)
         {
-            Vector3[] positions = new Vector3[count];
+            // Get or generate formation template
+            Vector3[] formationTemplate = GetFormationTemplate(formationType, members.Count);
+            
+            // Update each member's formation data
+            for (int i = 0; i < members.Count && i < formationTemplate.Length; i++)
+            {
+                var entity = members[i];
+                var formationComponent = entity.GetComponent<FormationComponent>();
+                var transformComponent = entity.GetComponent<TransformComponent>();
+                
+                if (formationComponent == null || transformComponent == null) continue;
+                
+                // Calculate world position for this slot
+                Vector3 localOffset = formationTemplate[i];
+                Vector3 worldOffset = squadRotation * localOffset;
+                Vector3 targetPosition = squadCenter + worldOffset;
+                
+                // Update FormationComponent data
+                formationComponent.SetFormationPositionData(
+                    localOffset, 
+                    targetPosition, 
+                    squadCenter, 
+                    squadRotation
+                );
+                
+                // Update formation state
+                float distanceFromTarget = Vector3.Distance(transformComponent.Position, targetPosition);
+                bool isInPosition = distanceFromTarget < 0.5f; // Tolerance threshold
+                
+                formationComponent.UpdateFormationState(
+                    isInPosition, 
+                    distanceFromTarget, 
+                    false // Not transitioning in this simple implementation
+                );
+                
+                // Set formation role based on position
+                FormationRole role = DetermineFormationRole(i, members.Count, formationType);
+                formationComponent.SetFormationRole(role);
+            }
+        }
+
+        #endregion
+
+        #region Formation Template Generation
+
+        /// <summary>
+        /// Get formation template for specific type and unit count
+        /// </summary>
+        private Vector3[] GetFormationTemplate(FormationType formationType, int unitCount)
+        {
+            string cacheKey = $"{formationType}_{unitCount}";
+            
+            // Check cache first
+            if (_formationTemplateCache.TryGetValue(cacheKey, out Vector3[] cachedTemplate))
+            {
+                return cachedTemplate;
+            }
+            
+            // Generate new template
+            Vector3[] template = GenerateFormationTemplate(formationType, unitCount);
+            _formationTemplateCache[cacheKey] = template;
+            
+            return template;
+        }
+
+        /// <summary>
+        /// Generate formation template based on type and unit count
+        /// </summary>
+        private Vector3[] GenerateFormationTemplate(FormationType formationType, int unitCount)
+        {
+            Vector3[] positions = new Vector3[unitCount];
+            float spacing = _spacingConfig.GetSpacing(formationType);
             
             switch (formationType)
             {
                 case FormationType.Line:
-                    // Line formation: units in a horizontal row
-                    for (int i = 0; i < count; i++)
-                    {
-                        float xOffset = i - (count - 1) / 2.0f; // Ensure centered
-                        positions[i] = new Vector3(xOffset * _lineSpacing, 0, 0);
-                    }
+                    GenerateLineFormation(positions, spacing);
                     break;
-                
+                    
                 case FormationType.Column:
-                    // Column formation: units in a vertical column
-                    for (int i = 0; i < count; i++)
-                    {
-                        float zOffset = i - (count - 1) / 2.0f; // Ensure centered
-                        positions[i] = new Vector3(0, 0, zOffset * _columnSpacing);
-                    }
+                    GenerateColumnFormation(positions, spacing);
                     break;
-                
+                    
                 case FormationType.Phalanx:
-                    // Phalanx formation: grid/rectangle
-                    int rowSize = Mathf.CeilToInt(Mathf.Sqrt(count));
-                    for (int i = 0; i < count; i++)
-                    {
-                        int row = i / rowSize;
-                        int col = i % rowSize;
-                        
-                        // Center formation
-                        float xOffset = col - (rowSize - 1) / 2.0f;
-                        float zOffset = row - ((count - 1) / rowSize) / 2.0f;
-                        
-                        positions[i] = new Vector3(
-                            xOffset * _phalanxSpacing, 
-                            0, 
-                            zOffset * _phalanxSpacing);
-                    }
+                    GeneratePhalanxFormation(positions, spacing);
                     break;
                     
                 case FormationType.Testudo:
-                    // Testudo formation: tighter grid
-                    rowSize = Mathf.CeilToInt(Mathf.Sqrt(count));
-                    for (int i = 0; i < count; i++)
-                    {
-                        int row = i / rowSize;
-                        int col = i % rowSize;
-                        
-                        // Center formation
-                        float xOffset = col - (rowSize - 1) / 2.0f;
-                        float zOffset = row - ((count - 1) / rowSize) / 2.0f;
-                        
-                        positions[i] = new Vector3(
-                            xOffset * _testudoSpacing, 
-                            0, 
-                            zOffset * _testudoSpacing);
-                    }
+                    GenerateTestudoFormation(positions, spacing);
                     break;
                     
                 case FormationType.Circle:
-                    // Circle formation
-                    positions[0] = Vector3.zero; // Center
-                    
-                    float radius = Mathf.Max(1.5f, count * _circleMultiplier);
-                    
-                    // Other members in circle
-                    for (int i = 1; i < count; i++)
-                    {
-                        float angle = ((i - 1) * 2 * Mathf.PI) / (count - 1);
-                        float x = Mathf.Sin(angle) * radius;
-                        float z = Mathf.Cos(angle) * radius;
-                        positions[i] = new Vector3(x, 0, z);
-                    }
+                    GenerateCircleFormation(positions, spacing);
                     break;
-                
+                    
                 case FormationType.Normal:
-                    // Normal formation: fixed 3x3 grid
-                    for (int i = 0; i < count; i++)
-                    {
-                        // Modulo 3 to calculate row/column in 3x3 grid
-                        int row = i / 3;
-                        int col = i % 3;
-                        
-                        // Center formation
-                        float xOffset = col - 1.0f; 
-                        float zOffset = row - 1.0f;
-                        
-                        positions[i] = new Vector3(
-                            xOffset * _gridSpacing, 
-                            0, 
-                            zOffset * _gridSpacing);
-                    }
+                    GenerateNormalFormation(positions, spacing);
                     break;
-                
+                    
                 default:
-                    // Default to Line formation
-                    for (int i = 0; i < count; i++)
-                    {
-                        float xOffset = i - (count - 1) / 2.0f;
-                        positions[i] = new Vector3(xOffset * _lineSpacing, 0, 0);
-                    }
+                    GenerateLineFormation(positions, spacing); // Fallback
                     break;
             }
             
             return positions;
         }
-        
+
         /// <summary>
-        /// Update formation positions for units in a squad
+        /// Generate line formation (horizontal line)
         /// </summary>
-        private void UpdateFormationPositions(int squadId, List<IEntity> members, FormationType formationType)
+        private void GenerateLineFormation(Vector3[] positions, float spacing)
         {
-            // Check if squad center and rotation data exists
-            if (!_squadCenters.TryGetValue(squadId, out Vector3 center) ||
-                !_squadRotations.TryGetValue(squadId, out Quaternion rotation))
+            int count = positions.Length;
+            
+            for (int i = 0; i < count; i++)
             {
+                float x = (i - (count - 1) * 0.5f) * spacing;
+                positions[i] = new Vector3(x, 0, 0);
+            }
+        }
+
+        /// <summary>
+        /// Generate column formation (vertical line)
+        /// </summary>
+        private void GenerateColumnFormation(Vector3[] positions, float spacing)
+        {
+            int count = positions.Length;
+            
+            for (int i = 0; i < count; i++)
+            {
+                float z = (i - (count - 1) * 0.5f) * spacing;
+                positions[i] = new Vector3(0, 0, z);
+            }
+        }
+
+        /// <summary>
+        /// Generate phalanx formation (tight grid)
+        /// </summary>
+        private void GeneratePhalanxFormation(Vector3[] positions, float spacing)
+        {
+            int count = positions.Length;
+            int width = Mathf.CeilToInt(Mathf.Sqrt(count));
+            
+            for (int i = 0; i < count; i++)
+            {
+                int row = i / width;
+                int col = i % width;
+                
+                float x = (col - (width - 1) * 0.5f) * spacing;
+                float z = (row - ((count - 1) / width) * 0.5f) * spacing;
+                
+                positions[i] = new Vector3(x, 0, z);
+            }
+        }
+
+        /// <summary>
+        /// Generate testudo formation (very tight defensive grid)
+        /// </summary>
+        private void GenerateTestudoFormation(Vector3[] positions, float spacing)
+        {
+            // Similar to phalanx but with tighter spacing
+            GeneratePhalanxFormation(positions, spacing * 0.7f);
+        }
+
+        /// <summary>
+        /// Generate circle formation
+        /// </summary>
+        private void GenerateCircleFormation(Vector3[] positions, float spacing)
+        {
+            int count = positions.Length;
+            
+            if (count == 1)
+            {
+                positions[0] = Vector3.zero;
                 return;
             }
             
-            // Get created template
-            var formationTemplate = _formationTemplates[squadId][formationType];
+            float radius = count * spacing / (2 * Mathf.PI);
+            radius = Mathf.Max(radius, spacing * 1.5f); // Minimum radius
             
-            // Ensure we don't exceed template size
-            int count = Mathf.Min(members.Count, formationTemplate.Length);
-            
-            // Update positions for each entity
             for (int i = 0; i < count; i++)
             {
-                var entity = members[i];
-                var formationComponent = entity.GetComponent<FormationComponent>();
+                float angle = (i * 2 * Mathf.PI) / count;
+                float x = Mathf.Sin(angle) * radius;
+                float z = Mathf.Cos(angle) * radius;
                 
-                if (formationComponent != null)
+                positions[i] = new Vector3(x, 0, z);
+            }
+        }
+
+        /// <summary>
+        /// Generate normal formation (3x3 grid)
+        /// </summary>
+        private void GenerateNormalFormation(Vector3[] positions, float spacing)
+        {
+            int count = positions.Length;
+            
+            for (int i = 0; i < count; i++)
+            {
+                int row = i / 3;
+                int col = i % 3;
+                
+                float x = (col - 1) * spacing;
+                float z = (row - 1) * spacing;
+                
+                positions[i] = new Vector3(x, 0, z);
+            }
+        }
+
+        #endregion
+
+        #region Formation Role Assignment
+
+        /// <summary>
+        /// Determine formation role based on position and formation type
+        /// </summary>
+        private FormationRole DetermineFormationRole(int slotIndex, int totalUnits, FormationType formationType)
+        {
+            // Leader is always slot 0
+            if (slotIndex == 0)
+                return FormationRole.Leader;
+            
+            // Role assignment based on formation type
+            switch (formationType)
+            {
+                case FormationType.Phalanx:
+                case FormationType.Testudo:
+                    // Front row units are front-line
+                    int width = Mathf.CeilToInt(Mathf.Sqrt(totalUnits));
+                    if (slotIndex < width)
+                        return FormationRole.FrontLine;
+                    else
+                        return FormationRole.Support;
+                
+                case FormationType.Circle:
+                    return FormationRole.Flanker; // All circle units are flankers
+                
+                case FormationType.Line:
+                    return FormationRole.FrontLine; // All line units are front-line
+                
+                case FormationType.Column:
+                    if (slotIndex == 1) // Second unit in column
+                        return FormationRole.FrontLine;
+                    else
+                        return FormationRole.Support;
+                
+                default:
+                    return FormationRole.Follower;
+            }
+        }
+
+        #endregion
+
+        #region Public Interface (Called by GameManager/Other Systems)
+
+        /// <summary>
+        /// Force update formation for specific squad
+        /// </summary>
+        public void UpdateSquadFormation(int squadId, FormationType newFormationType)
+        {
+            if (_squadFormationTypes.ContainsKey(squadId))
+            {
+                _squadFormationTypes[squadId] = newFormationType;
+                
+                // Update all components in this squad
+                if (_squadMembers.TryGetValue(squadId, out var members))
                 {
-                    // Update formation slot and offset
-                    formationComponent.SetFormationSlot(i);
-                    formationComponent.SetFormationOffset(formationTemplate[i]);
-                    
-                    // Ensure formation type consistency
-                    if (formationComponent.CurrentFormationType != formationType)
+                    foreach (var entity in members)
                     {
-                        formationComponent.SetFormationType(formationType);
-                    }
-                    
-                    // Update navigation target if needed
-                    var navigationComponent = entity.GetComponent<NavigationComponent>();
-                    if (navigationComponent != null && navigationComponent.IsActive)
-                    {
-                        Vector3 targetPosition = center + (rotation * formationTemplate[i]);
-                        
-                        // Only update if command priority is appropriate
-                        if (navigationComponent.CurrentCommandPriority <= NavigationCommandPriority.Normal)
+                        var formationComponent = entity.GetComponent<FormationComponent>();
+                        if (formationComponent != null)
                         {
-                            navigationComponent.SetFormationInfo(center, formationTemplate[i], NavigationCommandPriority.Normal);
+                            formationComponent.SetFormationType(newFormationType);
                         }
                     }
                 }
-            }
-        }
-        
-        /// <summary>
-        /// Mark a squad as being manually moved
-        /// </summary>
-        public void SetSquadManualMovement(int squadId, bool isManuallyMoving)
-        {
-            _squadManualMovement[squadId] = isManuallyMoving;
-            _lastManualMoveTime[squadId] = Time.time;
-        }
-        
-        /// <summary>
-        /// Change formation type for a squad
-        /// </summary>
-        public void ChangeFormation(int squadId, FormationType formationType)
-        {
-            // Store new formation type
-            _currentFormations[squadId] = formationType;
-            
-            // Remove current template to create new one on next update
-            if (_formationTemplates.ContainsKey(squadId) && 
-                _formationTemplates[squadId].ContainsKey(formationType))
-            {
-                _formationTemplates[squadId].Remove(formationType);
-            }
-            
-            // Update immediately if there are members
-            if (_squadMembers.TryGetValue(squadId, out var members) && members.Count > 0)
-            {
-                // Ensure template exists
-                EnsureFormationTemplate(squadId, formationType, members.Count);
                 
-                // Update positions
-                if (_squadCenters.ContainsKey(squadId) && _squadRotations.ContainsKey(squadId))
+                // Clear template cache for this formation
+                string cachePattern = $"{newFormationType}_";
+                var keysToRemove = new List<string>();
+                foreach (var key in _formationTemplateCache.Keys)
                 {
-                    UpdateFormationPositions(squadId, members, formationType);
+                    if (key.StartsWith(cachePattern))
+                    {
+                        keysToRemove.Add(key);
+                    }
+                }
+                foreach (var key in keysToRemove)
+                {
+                    _formationTemplateCache.Remove(key);
                 }
             }
         }
-        
+
         /// <summary>
-        /// Get current formation type for a squad
+        /// Get formation effectiveness for a squad
         /// </summary>
-        public FormationType GetCurrentFormationType(int squadId)
+        public float GetSquadFormationEffectiveness(int squadId)
         {
-            if (_currentFormations.TryGetValue(squadId, out FormationType formationType))
+            if (!_squadMembers.TryGetValue(squadId, out var members))
+                return 0f;
+            
+            float totalEffectiveness = 0f;
+            int validCount = 0;
+            
+            foreach (var entity in members)
             {
-                return formationType;
+                var formationComponent = entity.GetComponent<FormationComponent>();
+                if (formationComponent != null)
+                {
+                    totalEffectiveness += formationComponent.GetFormationEffectiveness();
+                    validCount++;
+                }
             }
             
-            return FormationType.Line; // Default
+            return validCount > 0 ? totalEffectiveness / validCount : 0f;
+        }
+
+        #endregion
+
+        #region Configuration
+
+        /// <summary>
+        /// Create default spacing configuration
+        /// </summary>
+        private FormationSpacingConfig CreateDefaultSpacingConfig()
+        {
+            var config = ScriptableObject.CreateInstance<FormationSpacingConfig>();
+            config.LineSpacing = 2.0f;
+            config.ColumnSpacing = 2.0f;
+            config.PhalanxSpacing = 1.5f;
+            config.TestudoSpacing = 1.0f;
+            config.CircleSpacing = 1.8f;
+            config.NormalSpacing = 2.0f;
+            return config;
+        }
+
+        #endregion
+
+        #region Debug Visualization
+
+        /// <summary>
+        /// Draw debug visualization for formations
+        /// </summary>
+        private void DrawFormationDebug()
+        {
+            foreach (var squadData in _squadMembers)
+            {
+                int squadId = squadData.Key;
+                var members = squadData.Value;
+                
+                if (!_squadCenters.TryGetValue(squadId, out Vector3 center)) continue;
+                
+                // Draw squad center
+                Debug.DrawLine(center, center + Vector3.up * 2f, Color.yellow, 0.1f);
+                
+                // Draw formation connections
+                for (int i = 0; i < members.Count; i++)
+                {
+                    var transformComponent = members[i].GetComponent<TransformComponent>();
+                    var formationComponent = members[i].GetComponent<FormationComponent>();
+                    
+                    if (transformComponent != null && formationComponent != null)
+                    {
+                        Vector3 unitPos = transformComponent.Position;
+                        Vector3 targetPos = formationComponent.TargetFormationPosition;
+                        
+                        // Draw line from unit to formation target
+                        Color lineColor = formationComponent.IsInFormationPosition ? Color.green : Color.red;
+                        Debug.DrawLine(unitPos, targetPos, lineColor, 0.1f);
+                        
+                    }
+                }
+            }
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Configuration class for formation spacing
+    /// </summary>
+    [System.Serializable]
+    public class FormationSpacingConfig : ScriptableObject
+    {
+        [Header("Formation Spacing Settings")]
+        public float LineSpacing = 2.0f;
+        public float ColumnSpacing = 2.0f;
+        public float PhalanxSpacing = 1.5f;
+        public float TestudoSpacing = 1.0f;
+        public float CircleSpacing = 1.8f;
+        public float NormalSpacing = 2.0f;
+        
+        public float GetSpacing(FormationType formationType)
+        {
+            switch (formationType)
+            {
+                case FormationType.Line: return LineSpacing;
+                case FormationType.Column: return ColumnSpacing;
+                case FormationType.Phalanx: return PhalanxSpacing;
+                case FormationType.Testudo: return TestudoSpacing;
+                case FormationType.Circle: return CircleSpacing;
+                case FormationType.Normal: return NormalSpacing;
+                default: return LineSpacing;
+            }
         }
     }
 }

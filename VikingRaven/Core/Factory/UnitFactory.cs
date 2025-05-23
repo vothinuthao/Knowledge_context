@@ -326,7 +326,6 @@ namespace VikingRaven.Core.Factory
         /// </summary>
         public IEntity CreateUnit(UnitType unitType, Vector3 position, Quaternion rotation)
         {
-            // Lấy random UnitData từ type
             UnitDataSO unitData = GetRandomUnitDataByType(unitType);
             if (unitData == null)
             {
@@ -497,25 +496,15 @@ namespace VikingRaven.Core.Factory
         /// </summary>
         private void ResetEntityState(BaseEntity entity)
         {
-            // Reset health
             var healthComponent = entity.GetComponent<HealthComponent>();
             if (healthComponent != null)
             {
                 healthComponent.Revive();
             }
-
-            // Reset navigation
             var navigationComponent = entity.GetComponent<NavigationComponent>();
             if (navigationComponent != null)
             {
                 navigationComponent.DisablePathfinding();
-            }
-
-            // Reset formation
-            var formationComponent = entity.GetComponent<FormationComponent>();
-            if (formationComponent != null)
-            {
-                formationComponent.SetSquadId(-1);
             }
         }
 

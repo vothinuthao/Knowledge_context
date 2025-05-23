@@ -123,7 +123,7 @@ namespace VikingRaven.Units.Systems
                         // Notify FormationSystem
                         if (FormationSystem != null)
                         {
-                            FormationSystem.ChangeFormation(squadId, formationType);
+                            // FormationSystem.ChangeFormation(squadId, formationType);
                         }
                         
                         if (_debugLog)
@@ -145,7 +145,7 @@ namespace VikingRaven.Units.Systems
             // Notify FormationSystem immediately
             if (FormationSystem != null)
             {
-                FormationSystem.ChangeFormation(squadId, formationType);
+                // FormationSystem.ChangeFormation(squadId, formationType);
             }
             
             if (_debugLog)
@@ -175,13 +175,13 @@ namespace VikingRaven.Units.Systems
             }
             else if (FormationSystem != null)
             {
-                formationType = FormationSystem.GetCurrentFormationType(squadId);
+                // formationType = FormationSystem.GetCurrentFormationType(squadId);
             }
             
             // Notify FormationSystem about manual movement
             if (FormationSystem != null)
             {
-                FormationSystem.SetSquadManualMovement(squadId, true);
+                // FormationSystem.SetSquadManualMovement(squadId, true);
             }
             
             // Find all units in this squad

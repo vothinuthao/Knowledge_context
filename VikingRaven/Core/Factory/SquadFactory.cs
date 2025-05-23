@@ -9,7 +9,6 @@ using VikingRaven.Units.Components;
 using VikingRaven.Units.Data;
 using VikingRaven.Units.Models;
 using VikingRaven.Core.Factory;
-using VikingRaven.Units.Controllers;
 using Random = UnityEngine.Random;
 
 namespace VikingRaven.Core.Factory
@@ -65,7 +64,6 @@ namespace VikingRaven.Core.Factory
         
         // Squad tracking
         private Dictionary<int, SquadModel> _activeSquads = new Dictionary<int, SquadModel>();
-        private Dictionary<int, SquadController> _squadControllers = new Dictionary<int, SquadController>();
         private Dictionary<string, List<int>> _squadsByTemplateId = new Dictionary<string, List<int>>();
         
         // Categorized squads
@@ -87,11 +85,8 @@ namespace VikingRaven.Core.Factory
         
         // Events
         public delegate void SquadEvent(SquadModel squadModel);
-        public delegate void SquadControllerEvent(SquadController squadController);
-        
         public event SquadEvent OnSquadCreated;
         public event SquadEvent OnSquadDisbanded;
-        public event SquadControllerEvent OnSquadControllerAssigned;
 
         #endregion
 
@@ -278,34 +273,18 @@ namespace VikingRaven.Core.Factory
                 var formationComponent = unitModel.Entity?.GetComponent<FormationComponent>();
                 if (formationComponent != null)
                 {
-                    formationComponent.SetSquadId(squadId);
                     formationComponent.SetFormationType(squadData.DefaultFormationType);
                 }
             }
-
-            // Bước 4: Add units vào squad
             squadModel.AddUnits(squadUnits);
-
-            // Bước 5: Store squad
             _activeSquads[squadId] = squadModel;
-
-            // Bước 6: Categorize squad
             CategorizeSquad(squadId, squadData.Faction, isEnemy);
-
-            // Bước 7: Track by template
             if (!_squadsByTemplateId.ContainsKey(squadData.SquadId))
             {
                 _squadsByTemplateId[squadData.SquadId] = new List<int>();
             }
             _squadsByTemplateId[squadData.SquadId].Add(squadId);
 
-            // Bước 8: Assign SquadController nếu được enable
-            if (_autoAssignController)
-            {
-                AssignSquadController(squadModel);
-            }
-
-            // Bước 9: Trigger events
             OnSquadCreated?.Invoke(squadModel);
 
             Debug.Log($"EnhancedSquadFactory: Đã tạo {(isEnemy ? "enemy" : "player")} squad {squadId} " +
@@ -313,10 +292,6 @@ namespace VikingRaven.Core.Factory
 
             return squadModel;
         }
-
-        /// <summary>
-        /// Tạo squad đơn giản với 1 loại unit
-        /// </summary>
         public SquadModel CreateSimpleSquad(UnitType unitType, Vector3 position, Quaternion rotation, bool isEnemy = false)
         {
             if (UnitFactory == null)
@@ -337,17 +312,11 @@ namespace VikingRaven.Core.Factory
             return CreateGenericSquad(unitType, position, rotation, isEnemy);
         }
 
-        /// <summary>
-        /// Tạo squad generic (không có template)
-        /// </summary>
         private SquadModel CreateGenericSquad(UnitType unitType, Vector3 position, Quaternion rotation, bool isEnemy)
         {
             int squadId = _nextSquadId++;
-            
-            // Tạo squad model không có data
             SquadModel squadModel = new SquadModel(squadId, null, position, rotation);
 
-            // Tạo units
             List<UnitModel> squadUnits = new List<UnitModel>();
             
             for (int i = 0; i < _unitsPerSquad; i++)
@@ -363,13 +332,6 @@ namespace VikingRaven.Core.Factory
                         unitModel.SetSquadId(squadId);
                         squadUnits.Add(unitModel);
                         
-                        // Set formation component
-                        var formationComponent = unitEntity.GetComponent<FormationComponent>();
-                        if (formationComponent != null)
-                        {
-                            formationComponent.SetSquadId(squadId);
-                            formationComponent.SetFormationType(FormationType.Line); // Default formation
-                        }
                     }
                 }
             }
@@ -383,11 +345,6 @@ namespace VikingRaven.Core.Factory
             // Categorize
             CategorizeSquad(squadId, isEnemy ? "Enemy" : "Player", isEnemy);
 
-            // Assign controller
-            if (_autoAssignController)
-            {
-                AssignSquadController(squadModel);
-            }
 
             // Trigger event
             OnSquadCreated?.Invoke(squadModel);
@@ -497,29 +454,6 @@ namespace VikingRaven.Core.Factory
             return null;
         }
 
-        /// <summary>
-        /// Assign SquadController cho squad
-        /// </summary>
-        private void AssignSquadController(SquadModel squadModel)
-        {
-            if (squadModel == null) return;
-
-            // Tạo GameObject cho SquadController
-            GameObject controllerObj = new GameObject($"SquadController_{squadModel.SquadId}");
-            controllerObj.transform.position = squadModel.CurrentPosition;
-
-            // Add SquadController component
-            SquadController controller = controllerObj.AddComponent<SquadController>();
-            controller.InitializeWithSquad(squadModel);
-
-            // Store reference
-            _squadControllers[squadModel.SquadId] = controller;
-
-            // Trigger event
-            OnSquadControllerAssigned?.Invoke(controller);
-
-            Debug.Log($"EnhancedSquadFactory: Đã assign SquadController cho squad {squadModel.SquadId}");
-        }
 
         #endregion
 
@@ -548,17 +482,6 @@ namespace VikingRaven.Core.Factory
                     UnitFactory.ReturnUnit(entity);
                 }
             }
-
-            // Destroy squad controller nếu có
-            if (_squadControllers.TryGetValue(squadId, out SquadController controller))
-            {
-                if (controller != null)
-                {
-                    DestroyImmediate(controller.gameObject);
-                }
-                _squadControllers.Remove(squadId);
-            }
-
             // Cleanup squad model
             squadModel.Cleanup();
 
@@ -584,15 +507,6 @@ namespace VikingRaven.Core.Factory
         {
             _activeSquads.TryGetValue(squadId, out SquadModel squadModel);
             return squadModel;
-        }
-
-        /// <summary>
-        /// Lấy squad controller theo ID
-        /// </summary>
-        public SquadController GetSquadController(int squadId)
-        {
-            _squadControllers.TryGetValue(squadId, out SquadController controller);
-            return controller;
         }
 
         /// <summary>
@@ -664,7 +578,6 @@ namespace VikingRaven.Core.Factory
             stats += $"Cached Squad Data: {_squadDataCache.Count}\n";
             stats += $"Squad Model Templates: {_squadModelTemplates.Count}\n";
             stats += $"Active Squads: {_activeSquads.Count}\n";
-            stats += $"Squad Controllers: {_squadControllers.Count}\n";
             stats += $"Player Squads: {_playerSquadIds.Count}\n";
             stats += $"Enemy Squads: {_enemySquadIds.Count}\n";
             stats += $"Neutral Squads: {_neutralSquadIds.Count}\n";
