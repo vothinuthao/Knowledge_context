@@ -19,8 +19,6 @@ namespace VikingRaven.Core.ECS
 
         private void Awake()
         {
-            // Auto-register with SystemRegistry
-            SystemRegistry.Instance?.RegisterSystem(this);
         }
 
         public virtual void Initialize() 

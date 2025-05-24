@@ -17,7 +17,7 @@ namespace VikingRaven.Units.Models
         
         // Core unit properties (lưu trữ trực tiếp thay vì tham chiếu đến UnitDataSO)
         private UnitType _unitType;
-        private string _unitId;
+        private uint _unitId;
         private string _displayName;
         private string _description;
         
@@ -62,9 +62,9 @@ namespace VikingRaven.Units.Models
         // Properties - chỉ trả về dữ liệu, không xử lý logic
         public IEntity Entity => _entity;
         public UnitType UnitType => _unitType;
-        public string UnitId => _unitId;
+        public uint UnitId => _unitId;
         public string DisplayName => _displayName;
-        public string Description => _description;
+        public string Description => _description; 
         
         public float CurrentHealth 
         { 
@@ -159,31 +159,23 @@ namespace VikingRaven.Units.Models
                 _range = unitData.Range;
                 _projectileRange = unitData.ProjectileRange;
                 _deployTime = unitData.DeployTime;
-                _count = unitData.Count;
                 _detectionRange = unitData.DetectionRange;
                 
-                // Khởi tạo thông tin kỹ năng
-                _ability = unitData.Ability;
-                _abilityCost = unitData.AbilityCost;
-                _abilityCooldown = unitData.AbilityCooldown;
-                _abilityParameters = unitData.AbilityParameters;
+                // _ability = unitData.Ability;
+                // _abilityCost = unitData.AbilityCost;
+                // _abilityCooldown = unitData.AbilityCooldown;
+                // _abilityParameters = unitData.AbilityParameters;
                 
-                // Khởi tạo thuộc tính hình ảnh
                 _unitColor = unitData.UnitColor;
-                
-                // Khởi tạo giá trị máu hiện tại
                 _currentHealth = _hitPoints;
                 _currentShield = _shieldHitPoints;
             }
             else
             {
-                // Giá trị mặc định nếu không có unitData
                 _unitType = UnitType.Infantry;
-                _unitId = "unknown";
+                _unitId = 9999;
                 _displayName = "Unknown Unit";
                 _description = "No description available";
-                
-                // Giá trị chiến đấu mặc định
                 _currentHealth = _hitPoints;
                 _currentShield = _shieldHitPoints;
             }
@@ -200,62 +192,7 @@ namespace VikingRaven.Units.Models
             }
         }
         
-        /// <summary>
-        /// Khởi tạo trực tiếp từ các tham số (constructor đầy đủ)
-        /// </summary>
-        public UnitModel(UnitType unitType, string unitId, string displayName, string description,
-                        float hitPoints, float shieldHitPoints, float mass, float damage, float damageRanged,
-                        float moveSpeed, float hitSpeed, float loadTime, float range, float projectileRange,
-                        float deployTime, int count, float detectionRange,
-                        string ability = "", float abilityCost = 0, float abilityCooldown = 0, string abilityParameters = "")
-        {
-            // Khởi tạo thông tin cơ bản
-            _unitType = unitType;
-            _unitId = unitId;
-            _displayName = displayName;
-            _description = description;
-            
-            // Khởi tạo các chỉ số chiến đấu
-            _hitPoints = hitPoints;
-            _shieldHitPoints = shieldHitPoints;
-            _mass = mass;
-            _damage = damage;
-            _damageRanged = damageRanged;
-            _moveSpeed = moveSpeed;
-            _hitSpeed = hitSpeed;
-            _loadTime = loadTime;
-            _range = range;
-            _projectileRange = projectileRange;
-            _deployTime = deployTime;
-            _count = count;
-            _detectionRange = detectionRange;
-            
-            // Tính toán DPS
-            _damagePerSecond = CalculateDPS();
-            
-            // Khởi tạo thông tin kỹ năng
-            _ability = ability;
-            _abilityCost = abilityCost;
-            _abilityCooldown = abilityCooldown;
-            _abilityParameters = abilityParameters;
-            
-            // Khởi tạo giá trị máu hiện tại
-            _currentHealth = _hitPoints;
-            _currentShield = _shieldHitPoints;
-        }
         
-        /// <summary>
-        /// Tính toán giá trị DPS
-        /// </summary>
-        private float CalculateDPS()
-        {
-            float effectiveDamage = Mathf.Max(_damage, _damageRanged);
-            return _hitSpeed > 0 ? effectiveDamage / _hitSpeed : 0;
-        }
-        
-        /// <summary>
-        /// Cập nhật vị trí và góc quay từ entity (nếu có transform)
-        /// </summary>
         public void UpdateTransformData()
         {
             if (_entity != null)
@@ -269,20 +206,13 @@ namespace VikingRaven.Units.Models
             }
         }
         
-        /// <summary>
-        /// Thiết lập ID đội
-        /// </summary>
         public void SetSquadId(int squadId)
         {
             _squadId = squadId;
         }
         
-        /// <summary>
-        /// Gây sát thương cho đơn vị
-        /// </summary>
         public void TakeDamage(float amount, IEntity source)
         {
-            // Ưu tiên trừ khiên trước, sau đó mới trừ máu
             if (_currentShield > 0)
             {
                 float shieldDamage = Mathf.Min(_currentShield, amount);
@@ -298,17 +228,12 @@ namespace VikingRaven.Units.Models
                 OnDamageTaken?.Invoke(amount, source);
                 OnHealthChanged?.Invoke(_currentHealth);
                 
-                // Kiểm tra xem đã chết chưa
                 if (_currentHealth <= 0)
                 {
                     OnDeath?.Invoke();
                 }
             }
         }
-        
-        /// <summary>
-        /// Hồi máu cho đơn vị
-        /// </summary>
         public void Heal(float amount)
         {
             float oldHealth = _currentHealth;
@@ -319,10 +244,6 @@ namespace VikingRaven.Units.Models
                 OnHealthChanged?.Invoke(_currentHealth);
             }
         }
-        
-        /// <summary>
-        /// Hồi sinh đơn vị
-        /// </summary>
         public void Revive(float healthPercent = 1.0f)
         {
             _currentHealth = _hitPoints * Mathf.Clamp01(healthPercent);
@@ -331,27 +252,10 @@ namespace VikingRaven.Units.Models
             OnHealthChanged?.Invoke(_currentHealth);
             OnShieldChanged?.Invoke(_currentShield);
         }
-        
-        /// <summary>
-        /// Tạo chuỗi biểu diễn của đơn vị
-        /// </summary>
         public override string ToString()
         {
             return $"UnitModel({_unitType}, '{_displayName}', HP: {_currentHealth}/{_hitPoints}, Shield: {_currentShield}/{_shieldHitPoints}, Squad: {_squadId})";
         }
         
-        /// <summary>
-        /// Tạo bản sao của model này
-        /// </summary>
-        public UnitModel Clone()
-        {
-            return new UnitModel(
-                _unitType, _unitId, _displayName, _description,
-                _hitPoints, _shieldHitPoints, _mass, _damage, _damageRanged,
-                _moveSpeed, _hitSpeed, _loadTime, _range, _projectileRange,
-                _deployTime, _count, _detectionRange,
-                _ability, _abilityCost, _abilityCooldown, _abilityParameters
-            );
-        }
     }
 }

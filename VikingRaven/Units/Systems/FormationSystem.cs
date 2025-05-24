@@ -68,7 +68,6 @@ namespace VikingRaven.Units.Systems
                 _spacingConfig = CreateDefaultSpacingConfig();
             }
             
-            Debug.Log("FormationSystem: Initialized with dependencies");
         }
 
         #endregion
@@ -78,33 +77,22 @@ namespace VikingRaven.Units.Systems
         public override void Initialize()
         {
             base.Initialize();
-            
-            // This will be called by SystemRegistry
-            if (_entityRegistry == null)
+            if (!_entityRegistry)
             {
                 Debug.LogWarning("FormationSystem: EntityRegistry not injected, using fallback");
-                _entityRegistry = EntityRegistry.Instance; // Fallback to singleton if needed
+                _entityRegistry = EntityRegistry.Instance;
             }
         }
 
         public override void Execute()
         {
-            // Performance optimization: don't run every frame
             _frameCounter++;
             if (_frameCounter % _updateFrequency != 0) return;
 
             if (_entityRegistry == null) return;
-
-            // Update squad data
             UpdateSquadMembership();
-            
-            // Calculate squad centers and rotations
             CalculateSquadTransforms();
-            
-            // Update formation positions for all squads
             UpdateAllSquadFormations();
-            
-            // Debug visualization
             if (_enableDebugVisualization)
             {
                 DrawFormationDebug();
@@ -120,20 +108,14 @@ namespace VikingRaven.Units.Systems
         /// </summary>
         private void UpdateSquadMembership()
         {
-            // Clear previous data
             _squadMembers.Clear();
-            
-            // Get all entities with FormationComponent
             var formationEntities = _entityRegistry.GetEntitiesWithComponent<FormationComponent>();
-            
-            // Group by squad ID
             foreach (var entity in formationEntities)
             {
                 var formationComponent = entity.GetComponent<FormationComponent>();
-                if (formationComponent == null || !formationComponent.IsActive) continue;
-                
+                if (!formationComponent || !formationComponent.IsActive) continue;
                 int squadId = formationComponent.SquadId;
-                if (squadId < 0) continue; // Invalid squad ID
+                if (squadId < 0) continue;
                 
                 // Add to squad members
                 if (!_squadMembers.ContainsKey(squadId))
@@ -141,12 +123,8 @@ namespace VikingRaven.Units.Systems
                     _squadMembers[squadId] = new List<IEntity>();
                 }
                 _squadMembers[squadId].Add(entity);
-                
-                // Track formation type
                 _squadFormationTypes[squadId] = formationComponent.CurrentFormationType;
             }
-            
-            // Sort members by slot index for consistent ordering
             foreach (var squadId in _squadMembers.Keys)
             {
                 _squadMembers[squadId].Sort((a, b) => {
@@ -170,10 +148,8 @@ namespace VikingRaven.Units.Systems
             {
                 int squadId = squadData.Key;
                 var members = squadData.Value;
-                
+                 
                 if (members.Count == 0) continue;
-                
-                // Calculate center position (average of all unit positions)
                 Vector3 centerSum = Vector3.zero;
                 Vector3 forwardSum = Vector3.zero;
                 int validCount = 0;

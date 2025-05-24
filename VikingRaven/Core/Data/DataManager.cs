@@ -11,28 +11,28 @@ using VikingRaven.Units.Components;
 namespace VikingRaven.Core.Data
 {
     /// <summary>
-    /// Trung tâm quản lý tất cả dữ liệu game - UnitData, SquadData, và các loại dữ liệu khác
-    /// Singleton pattern để đảm bảo chỉ có một instance duy nhất
+    /// Central data management for all game data - UnitData, SquadData
+    /// Updated to use uint for IDs instead of string
     /// </summary>
     public class DataManager : Singleton<DataManager>
     {
         #region Inspector Fields
         
         [TitleGroup("Data Loading Settings")]
-        [Tooltip("Tự động load dữ liệu khi khởi tạo")]
+        [Tooltip("Auto load data on start")]
         [SerializeField, ToggleLeft] 
         private bool _autoLoadOnStart = true;
         
-        [Tooltip("Hiển thị log chi tiết khi load dữ liệu")]
+        [Tooltip("Enable verbose logging")]
         [SerializeField, ToggleLeft] 
         private bool _verboseLogging = true;
         
         [TitleGroup("Resource Paths")]
-        [Tooltip("Đường dẫn đến thư mục chứa UnitDataSO")]
+        [Tooltip("Path to UnitDataSO folder")]
         [SerializeField, FolderPath] 
         private string _unitDataPath = "UnitData";
         
-        [Tooltip("Đường dẫn đến thư mục chứa SquadDataSO")]
+        [Tooltip("Path to SquadDataSO folder")]
         [SerializeField, FolderPath] 
         private string _squadDataPath = "SquadData";
         
@@ -53,16 +53,14 @@ namespace VikingRaven.Core.Data
 
         #region Private Fields
 
-        // Cache dữ liệu UnitData theo ID
-        private Dictionary<string, UnitDataSO> _unitDataCache = new Dictionary<string, UnitDataSO>();
+        // Cache data using uint IDs
+        private Dictionary<uint, UnitDataSO> _unitDataCache = new Dictionary<uint, UnitDataSO>();
+        private Dictionary<uint, SquadDataSO> _squadDataCache = new Dictionary<uint, SquadDataSO>();
         
-        // Cache dữ liệu SquadData theo ID  
-        private Dictionary<string, SquadDataSO> _squadDataCache = new Dictionary<string, SquadDataSO>();
-        
-        // Cache dữ liệu UnitData theo loại đơn vị
+        // Cache by unit type
         private Dictionary<UnitType, List<UnitDataSO>> _unitDataByType = new Dictionary<UnitType, List<UnitDataSO>>();
         
-        // Danh sách tất cả UnitData và SquadData
+        // All data lists
         private List<UnitDataSO> _allUnitData = new List<UnitDataSO>();
         private List<SquadDataSO> _allSquadData = new List<SquadDataSO>();
 
@@ -70,28 +68,14 @@ namespace VikingRaven.Core.Data
 
         #region Properties
 
-        /// <summary>
-        /// Kiểm tra xem dữ liệu đã được load chưa
-        /// </summary>
         public bool IsInitialized => _isDataLoaded;
-        
-        /// <summary>
-        /// Tiến độ load dữ liệu (0-100)
-        /// </summary>
         public float LoadProgress => _loadProgress;
 
         #endregion
 
         #region Events
 
-        /// <summary>
-        /// Event được gọi khi hoàn thành load dữ liệu
-        /// </summary>
         public event Action OnDataLoaded;
-        
-        /// <summary>
-        /// Event được gọi khi bắt đầu load dữ liệu
-        /// </summary>
         public event Action OnDataLoadStarted;
 
         #endregion
@@ -110,28 +94,11 @@ namespace VikingRaven.Core.Data
                 LoadAllData();
             }
         }
-        // protected override void OnInitialize()
-        // {
-        //     base.OnInitialize();
-        //     
-        //     if (_verboseLogging)
-        //         Debug.Log("DataManager: Initializing...");
-        //     
-        //     InitializeCaches();
-        //     
-        //     if (_autoLoadOnStart)
-        //     {
-        //         LoadAllData();
-        //     }
-        // }
 
         #endregion
 
         #region Initialization Methods
 
-        /// <summary>
-        /// Khởi tạo các cache dictionaries
-        /// </summary>
         private void InitializeCaches()
         {
             _unitDataCache.Clear();
@@ -139,6 +106,7 @@ namespace VikingRaven.Core.Data
             _unitDataByType.Clear();
             _allUnitData.Clear();
             _allSquadData.Clear();
+            
             foreach (UnitType unitType in Enum.GetValues(typeof(UnitType)))
             {
                 _unitDataByType[unitType] = new List<UnitDataSO>();
@@ -152,9 +120,6 @@ namespace VikingRaven.Core.Data
 
         #region Data Loading Methods
 
-        /// <summary>
-        /// Load tất cả dữ liệu từ Resources
-        /// </summary>
         [Button("Load All Data"), TitleGroup("Debug Tools")]
         public void LoadAllData()
         {
@@ -166,21 +131,14 @@ namespace VikingRaven.Core.Data
             
             try
             {
-                // Load UnitData
                 LoadUnitData();
                 _loadProgress = 50f;
                 
-                // Load SquadData  
                 LoadSquadData();
                 _loadProgress = 100f;
                 
-                // Đánh dấu đã load xong
                 _isDataLoaded = true;
                 
-                // Notify factories
-                NotifyFactories();
-                
-                // Trigger event
                 OnDataLoaded?.Invoke();
                 
                 if (_verboseLogging)
@@ -194,12 +152,8 @@ namespace VikingRaven.Core.Data
             }
         }
         
-        /// <summary>
-        /// Load tất cả UnitDataSO từ Resources
-        /// </summary>
         private void LoadUnitData()
         {
-            // Clear existing data
             _unitDataCache.Clear();
             _allUnitData.Clear();
             foreach (var list in _unitDataByType.Values)
@@ -207,7 +161,6 @@ namespace VikingRaven.Core.Data
                 list.Clear();
             }
             
-            // Load từ Resources
             UnitDataSO[] unitDataArray = Resources.LoadAll<UnitDataSO>(_unitDataPath);
             
             if (unitDataArray == null || unitDataArray.Length == 0)
@@ -216,29 +169,25 @@ namespace VikingRaven.Core.Data
                 return;
             }
             
-            // Process mỗi UnitData
             foreach (var unitData in unitDataArray)
             {
                 if (unitData == null) continue;
                 
-                // Validate data
-                if (string.IsNullOrEmpty(unitData.UnitId))
+                // Validate data - now using uint
+                if (unitData.UnitId == 0)
                 {
-                    Debug.LogWarning($"DataManager: UnitDataSO '{unitData.name}' has empty UnitId, skipping");
+                    Debug.LogWarning($"DataManager: UnitDataSO '{unitData.name}' has invalid UnitId (0), skipping");
                     continue;
                 }
                 
-                // Check duplicate ID
                 if (_unitDataCache.ContainsKey(unitData.UnitId))
                 {
                     Debug.LogWarning($"DataManager: Duplicate UnitId '{unitData.UnitId}' found, overwriting");
                 }
                 
-                // Add to caches
                 _unitDataCache[unitData.UnitId] = unitData;
                 _allUnitData.Add(unitData);
                 
-                // Add to type-specific cache
                 if (_unitDataByType.ContainsKey(unitData.UnitType))
                 {
                     _unitDataByType[unitData.UnitType].Add(unitData);
@@ -249,16 +198,11 @@ namespace VikingRaven.Core.Data
             }
         }
         
-        /// <summary>
-        /// Load tất cả SquadDataSO từ Resources
-        /// </summary>
         private void LoadSquadData()
         {
-            // Clear existing data
             _squadDataCache.Clear();
             _allSquadData.Clear();
             
-            // Load từ Resources
             SquadDataSO[] squadDataArray = Resources.LoadAll<SquadDataSO>(_squadDataPath);
             
             if (squadDataArray == null || squadDataArray.Length == 0)
@@ -267,25 +211,22 @@ namespace VikingRaven.Core.Data
                 return;
             }
             
-            // Process mỗi SquadData
             foreach (var squadData in squadDataArray)
             {
                 if (squadData == null) continue;
                 
-                // Validate data
-                if (string.IsNullOrEmpty(squadData.SquadId))
+                // Validate data - now using uint
+                if (squadData.SquadId == 0)
                 {
-                    Debug.LogWarning($"DataManager: SquadDataSO '{squadData.name}' has empty SquadId, skipping");
+                    Debug.LogWarning($"DataManager: SquadDataSO '{squadData.name}' has invalid SquadId (0), skipping");
                     continue;
                 }
                 
-                // Check duplicate ID
                 if (_squadDataCache.ContainsKey(squadData.SquadId))
                 {
                     Debug.LogWarning($"DataManager: Duplicate SquadId '{squadData.SquadId}' found, overwriting");
                 }
                 
-                // Add to caches
                 _squadDataCache[squadData.SquadId] = squadData;
                 _allSquadData.Add(squadData);
                 
@@ -296,104 +237,14 @@ namespace VikingRaven.Core.Data
 
         #endregion
 
-        #region Factory Notification
-
-        /// <summary>
-        /// Thông báo các Factory về việc data đã được load
-        /// </summary>
-        private void NotifyFactories()
-        {
-            // Notify UnitFactory
-            var unitFactory = FindObjectOfType<VikingRaven.Core.Factory.UnitFactory>();
-            if (unitFactory != null)
-            {
-                // Gọi method để UnitFactory tạo templates từ data
-                NotifyUnitFactory(unitFactory);
-            }
-            else
-            {
-                Debug.LogWarning("DataManager: UnitFactory not found in scene");
-            }
-            
-            // Notify SquadFactory
-            var squadFactory = SquadFactory.Instance;
-            if (squadFactory != null)
-            {
-                // Gọi method để SquadFactory tạo templates từ data
-                NotifySquadFactory(squadFactory);
-            }
-            else
-            {
-                Debug.LogWarning("DataManager: SquadFactory not found");
-            }
-        }
-        
-        /// <summary>
-        /// Thông báo UnitFactory để tạo các template models
-        /// </summary>
-        private void NotifyUnitFactory(VikingRaven.Core.Factory.UnitFactory unitFactory)
-        {
-            try
-            {
-                // Gọi reflection để call private method
-                var method = typeof(VikingRaven.Core.Factory.UnitFactory)
-                    .GetMethod("OnDataManagerLoaded", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                
-                if (method != null)
-                {
-                    method.Invoke(unitFactory, new object[] { _allUnitData });
-                    if (_verboseLogging)
-                        Debug.Log("DataManager: Notified UnitFactory successfully");
-                }
-                else
-                {
-                    Debug.LogWarning("DataManager: OnDataManagerLoaded method not found in UnitFactory");
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"DataManager: Error notifying UnitFactory - {e.Message}");
-            }
-        }
-        
-        /// <summary>
-        /// Thông báo SquadFactory để tạo các template models
-        /// </summary>
-        private void NotifySquadFactory(VikingRaven.Core.Factory.SquadFactory squadFactory)
-        {
-            try
-            {
-                // Gọi reflection để call private method
-                var method = typeof(VikingRaven.Core.Factory.SquadFactory)
-                    .GetMethod("OnDataManagerLoaded", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                
-                if (method != null)
-                {
-                    method.Invoke(squadFactory, new object[] { _allSquadData });
-                    if (_verboseLogging)
-                        Debug.Log("DataManager: Notified SquadFactory successfully");
-                }
-                else
-                {
-                    Debug.LogWarning("DataManager: OnDataManagerLoaded method not found in SquadFactory");
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"DataManager: Error notifying SquadFactory - {e.Message}");
-            }
-        }
-
-        #endregion
-
         #region Public API Methods
 
         /// <summary>
-        /// Lấy UnitDataSO theo ID
+        /// Get UnitDataSO by ID
         /// </summary>
-        public UnitDataSO GetUnitData(string unitId)
+        public UnitDataSO GetUnitData(uint unitId)
         {
-            if (string.IsNullOrEmpty(unitId))
+            if (unitId == 0)
                 return null;
                 
             if (_unitDataCache.TryGetValue(unitId, out UnitDataSO unitData))
@@ -407,11 +258,11 @@ namespace VikingRaven.Core.Data
         }
         
         /// <summary>
-        /// Lấy SquadDataSO theo ID
+        /// Get SquadDataSO by ID
         /// </summary>
-        public SquadDataSO GetSquadData(string squadId)
+        public SquadDataSO GetSquadData(uint squadId)
         {
-            if (string.IsNullOrEmpty(squadId))
+            if (squadId == 0)
                 return null;
                 
             if (_squadDataCache.TryGetValue(squadId, out SquadDataSO squadData))
@@ -425,7 +276,7 @@ namespace VikingRaven.Core.Data
         }
         
         /// <summary>
-        /// Lấy tất cả UnitDataSO
+        /// Get all UnitDataSO
         /// </summary>
         public List<UnitDataSO> GetAllUnitData()
         {
@@ -433,7 +284,7 @@ namespace VikingRaven.Core.Data
         }
         
         /// <summary>
-        /// Lấy tất cả SquadDataSO
+        /// Get all SquadDataSO
         /// </summary>
         public List<SquadDataSO> GetAllSquadData()
         {
@@ -441,7 +292,7 @@ namespace VikingRaven.Core.Data
         }
         
         /// <summary>
-        /// Lấy UnitDataSO theo loại đơn vị
+        /// Get UnitDataSO by unit type
         /// </summary>
         public List<UnitDataSO> GetUnitDataByType(UnitType unitType)
         {
@@ -454,41 +305,25 @@ namespace VikingRaven.Core.Data
         }
         
         /// <summary>
-        /// Lấy UnitDataSO ngẫu nhiên theo loại
+        /// Check if unit data exists
         /// </summary>
-        public UnitDataSO GetRandomUnitDataByType(UnitType unitType)
+        public bool HasUnitData(uint unitId)
         {
-            var unitDataList = GetUnitDataByType(unitType);
-            
-            if (unitDataList.Count == 0)
-                return null;
-                
-            return unitDataList[UnityEngine.Random.Range(0, unitDataList.Count)];
+            return unitId != 0 && _unitDataCache.ContainsKey(unitId);
         }
         
         /// <summary>
-        /// Kiểm tra xem có UnitData với ID cụ thể không
+        /// Check if squad data exists
         /// </summary>
-        public bool HasUnitData(string unitId)
+        public bool HasSquadData(uint squadId)
         {
-            return !string.IsNullOrEmpty(unitId) && _unitDataCache.ContainsKey(unitId);
-        }
-        
-        /// <summary>
-        /// Kiểm tra xem có SquadData với ID cụ thể không
-        /// </summary>
-        public bool HasSquadData(string squadId)
-        {
-            return !string.IsNullOrEmpty(squadId) && _squadDataCache.ContainsKey(squadId);
+            return squadId != 0 && _squadDataCache.ContainsKey(squadId);
         }
 
         #endregion
 
-        #region Debug and Utility Methods
+        #region Debug Methods
 
-        /// <summary>
-        /// Màu cho thanh progress bar
-        /// </summary>
         private Color GetLoadProgressColor()
         {
             if (_loadProgress < 50f) return Color.red;
@@ -496,9 +331,6 @@ namespace VikingRaven.Core.Data
             return Color.green;
         }
         
-        /// <summary>
-        /// In thống kê dữ liệu đã load
-        /// </summary>
         [Button("Show Data Statistics"), TitleGroup("Debug Tools")]
         public void ShowDataStatistics()
         {
@@ -517,9 +349,6 @@ namespace VikingRaven.Core.Data
             Debug.Log(stats);
         }
         
-        /// <summary>
-        /// Reload tất cả dữ liệu
-        /// </summary>
         [Button("Reload All Data"), TitleGroup("Debug Tools")]
         public void ReloadAllData()
         {
@@ -527,9 +356,6 @@ namespace VikingRaven.Core.Data
             LoadAllData();
         }
         
-        /// <summary>
-        /// Clear tất cả cache
-        /// </summary>
         [Button("Clear All Caches"), TitleGroup("Debug Tools")]
         public void ClearAllCaches()
         {

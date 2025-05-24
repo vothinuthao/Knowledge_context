@@ -88,6 +88,11 @@ namespace VikingRaven.Game
         [SerializeField, ListDrawerSettings(ShowIndexLabels = true)]
         private List<Transform> _enemySpawnPoints = new List<Transform>();
         
+        [TitleGroup("All Systems in Game")]
+        [Tooltip("Systems in game")]
+        [SerializeField, ListDrawerSettings(ShowIndexLabels = true)]
+        private List<Transform> _gameSystems = new List<Transform>();
+        
         [Tooltip("Default unit types for player squads")]
         [SerializeField, EnumToggleButtons]
         private List<UnitType> _playerUnitTypes = new List<UnitType> { UnitType.Infantry, UnitType.Archer };
@@ -262,14 +267,13 @@ namespace VikingRaven.Game
             // Initialize EntityRegistry
             if (_entityRegistry != null)
             {
-                // EntityRegistry is typically auto-initialized as singleton
                 Debug.Log("GameManager: EntityRegistry ready");
             }
             
             // Initialize and register ECS systems
             if (_systemRegistry != null)
             {
-                InitializeECSSystems();
+                InitializeAllSystems();
                 yield return new WaitForSeconds(0.1f);
             }
             
@@ -283,9 +287,8 @@ namespace VikingRaven.Game
         /// <summary>
         /// Initialize ECS systems
         /// </summary>
-        private void InitializeECSSystems()
+        private void InitializeAllSystems()
         {
-            // Find and register all game systems in scene
             var allSystems = FindObjectsOfType<MonoBehaviour>();
             
             foreach (var system in allSystems)
@@ -295,10 +298,7 @@ namespace VikingRaven.Game
                     _systemRegistry.RegisterSystem(ecsSystem);
                 }
             }
-            
-            // Initialize all systems
             _systemRegistry.InitializeAllSystems();
-            
             Debug.Log("GameManager: ECS systems initialized");
         }
 
@@ -383,7 +383,7 @@ namespace VikingRaven.Game
             Vector3 spawnPosition = GetPlayerSpawnPosition(squadIndex);
             UnitType unitType = GetPlayerUnitType(squadIndex);
             
-            SquadModel newSquad = _squadFactory.CreateSimpleSquad(unitType, spawnPosition, Quaternion.identity, false);
+            SquadModel newSquad = _squadFactory.CreateSquad(1, _playerSpawnPoints[0].position, _playerSpawnPoints[0].rotation);
             
             if (newSquad != null)
             {
@@ -405,7 +405,7 @@ namespace VikingRaven.Game
             Vector3 spawnPosition = GetEnemySpawnPosition(squadIndex);
             UnitType unitType = GetEnemyUnitType(squadIndex);
             
-            SquadModel newSquad = _squadFactory.CreateSimpleSquad(unitType, spawnPosition, Quaternion.identity, true);
+            SquadModel newSquad = _squadFactory.CreateSquad(1, _playerSpawnPoints[2].position, _playerSpawnPoints[2].rotation);
             
             if (newSquad != null)
             {
@@ -690,7 +690,7 @@ namespace VikingRaven.Game
                 return null;
             }
             
-            SquadModel newSquad = _squadFactory.CreateSimpleSquad(unitType, position, Quaternion.identity, isEnemy);
+            SquadModel newSquad = _squadFactory.CreateSquad(1, _playerSpawnPoints[0].position, _playerSpawnPoints[0].rotation);
             
             if (newSquad != null)
             {
