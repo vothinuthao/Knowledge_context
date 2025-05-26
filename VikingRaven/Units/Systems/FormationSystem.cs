@@ -62,7 +62,6 @@ namespace VikingRaven.Units.Systems
             _entityRegistry = entityRegistry;
             Priority = _systemPriority;
             
-            // Initialize default spacing config if not assigned
             if (_spacingConfig == null)
             {
                 _spacingConfig = CreateDefaultSpacingConfig();
