@@ -288,38 +288,38 @@ namespace VikingRaven.Units.Systems
         private Vector3[] GenerateFormationTemplate(FormationType formationType, int unitCount)
         {
             Vector3[] positions = new Vector3[unitCount];
-            float spacing = _spacingConfig.GetSpacing(formationType);
+            // float spacing = _spacingConfig.GetSpacing(formationType);
             
-            switch (formationType)
-            {
-                case FormationType.Line:
-                    GenerateLineFormation(positions, spacing);
-                    break;
-                    
-                case FormationType.Column:
-                    GenerateColumnFormation(positions, spacing);
-                    break;
-                    
-                case FormationType.Phalanx:
-                    GeneratePhalanxFormation(positions, spacing);
-                    break;
-                    
-                case FormationType.Testudo:
-                    GenerateTestudoFormation(positions, spacing);
-                    break;
-                    
-                case FormationType.Circle:
-                    GenerateCircleFormation(positions, spacing);
-                    break;
-                    
-                case FormationType.Normal:
-                    GenerateNormalFormation(positions, spacing);
-                    break;
-                    
-                default:
-                    GenerateLineFormation(positions, spacing); // Fallback
-                    break;
-            }
+            // switch (formationType)
+            // {
+            //     case FormationType.Line:
+            //         GenerateLineFormation(positions, spacing);
+            //         break;
+            //         
+            //     case FormationType.Column:
+            //         GenerateColumnFormation(positions, spacing);
+            //         break;
+            //         
+            //     case FormationType.Phalanx:
+            //         GeneratePhalanxFormation(positions, spacing);
+            //         break;
+            //         
+            //     case FormationType.Testudo:
+            //         GenerateTestudoFormation(positions, spacing);
+            //         break;
+            //         
+            //     case FormationType.Circle:
+            //         GenerateCircleFormation(positions, spacing);
+            //         break;
+            //         
+            //     case FormationType.Normal:
+            //         GenerateNormalFormation(positions, spacing);
+            //         break;
+            //         
+            //     default:
+            //         GenerateLineFormation(positions, spacing); // Fallback
+            //         break;
+            // }
             
             return positions;
         }

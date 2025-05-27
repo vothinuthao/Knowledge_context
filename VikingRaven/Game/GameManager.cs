@@ -6,17 +6,14 @@ using Sirenix.OdinInspector;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.Factory;
 using VikingRaven.Core.Data;
+using VikingRaven.Game.DefineData;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Models;
 using VikingRaven.Units.Systems;
 
 namespace VikingRaven.Game
 {
-    /// <summary>
-    /// Enhanced GameManager quản lý toàn bộ lifecycle game từ initialization đến completion
-    /// Hoạt động như central coordinator cho tất cả hệ thống game
-    /// </summary>
-    public class GameManager : MonoBehaviour
+    public class OptimizedGameManager : MonoBehaviour
     {
         #region Game State Management
         
@@ -25,19 +22,23 @@ namespace VikingRaven.Game
         [SerializeField, ReadOnly, EnumToggleButtons] 
         private GameState _currentGameState = GameState.NotInitialized;
         
-        [Tooltip("Enable auto-progression through game states")]
+        [Tooltip("Enable automatic game progression")]
         [SerializeField, ToggleLeft]
         private bool _autoProgressGameStates = true;
         
-        [Tooltip("Time to wait between state transitions")]
+        [Tooltip("Time between state transitions")]
         [SerializeField, Range(0.1f, 5f)]
         private float _stateTransitionDelay = 1f;
 
         #endregion
 
-        #region Factory and Manager References
+        #region Core Systems (Optimized Dependencies)
         
         [TitleGroup("Core Systems")]
+        [Tooltip("Optimized system registry")]
+        [SerializeField, Required]
+        private SystemRegistry _optimizedSystemRegistry;
+        
         [Tooltip("Data manager for game data")]
         [SerializeField, Required]
         private DataManager _dataManager;
@@ -53,27 +54,40 @@ namespace VikingRaven.Game
         [Tooltip("Entity registry for ECS management")]
         [SerializeField, Required]
         private EntityRegistry _entityRegistry;
-        
-        [Tooltip("System registry for ECS systems")]
-        [SerializeField, Required]
-        private SystemRegistry _systemRegistry;
 
         #endregion
 
         #region Game Configuration
         
         [TitleGroup("Game Configuration")]
-        [Tooltip("Number of player squads to spawn at game start")]
+        [Tooltip("Number of player squads to spawn")]
         [SerializeField, Range(1, 5), ProgressBar(1, 5)]
         private int _initialPlayerSquadCount = 2;
         
-        [Tooltip("Number of enemy squads to spawn at game start")]
+        [Tooltip("Number of enemy squads to spawn")]
         [SerializeField, Range(1, 5), ProgressBar(1, 5)]
         private int _initialEnemySquadCount = 2;
+
+        #endregion
+
+        #region Reactive Update Configuration
         
-        [Tooltip("Number of units per squad")]
-        [SerializeField, Range(3, 15), ProgressBar(3, 15)]
-        private int _unitsPerSquad = 9;
+        [TitleGroup("Reactive Updates")]
+        [Tooltip("Frequency to check game conditions")]
+        [SerializeField, Range(1, 10)]
+        private float _gameConditionCheckInterval = 2f;
+        
+        [Tooltip("Frequency to update game statistics")]
+        [SerializeField, Range(1, 30)]
+        private float _statisticsUpdateInterval = 5f;
+        
+        [Tooltip("Enable performance monitoring")]
+        [SerializeField, ToggleLeft]
+        private bool _enablePerformanceMonitoring = true;
+        
+        [Tooltip("Performance monitoring interval")]
+        [SerializeField, Range(1, 60)]
+        private float _performanceMonitoringInterval = 10f;
 
         #endregion
 
@@ -88,16 +102,11 @@ namespace VikingRaven.Game
         [SerializeField, ListDrawerSettings(ShowIndexLabels = true)]
         private List<Transform> _enemySpawnPoints = new List<Transform>();
         
-        [TitleGroup("All Systems in Game")]
-        [Tooltip("Systems in game")]
-        [SerializeField, ListDrawerSettings(ShowIndexLabels = true)]
-        private List<Transform> _gameSystems = new List<Transform>();
-        
-        [Tooltip("Default unit types for player squads")]
+        [Tooltip("Player unit types")]
         [SerializeField, EnumToggleButtons]
         private List<UnitType> _playerUnitTypes = new List<UnitType> { UnitType.Infantry, UnitType.Archer };
         
-        [Tooltip("Default unit types for enemy squads")]
+        [Tooltip("Enemy unit types")]
         [SerializeField, EnumToggleButtons]
         private List<UnitType> _enemyUnitTypes = new List<UnitType> { UnitType.Infantry, UnitType.Pike };
 
@@ -113,20 +122,54 @@ namespace VikingRaven.Game
         private List<SquadModel> _enemySquads = new List<SquadModel>();
         
         [ShowInInspector, ReadOnly]
-        private List<UnitModel> _allUnits = new List<UnitModel>();
+        private HashSet<UnitModel> _allUnits = new HashSet<UnitModel>();
         
         [ShowInInspector, ReadOnly, ProgressBar(0, 1)]
         private float _gameProgressPercentage = 0f;
+        
+        [ShowInInspector, ReadOnly]
+        private GameStatistics _gameStatistics = new GameStatistics();
 
         #endregion
 
-        #region Events
+        #region Performance Data
+        
+        [TitleGroup("Performance Metrics")]
+        [ShowInInspector, ReadOnly]
+        private float _averageFrameTime = 0f;
+        
+        [ShowInInspector, ReadOnly]
+        private int _totalManagedEntities = 0;
+        
+        [ShowInInspector, ReadOnly]
+        private float _memoryUsageMB = 0f;
+
+        #endregion
+
+        #region Private Fields
+        
+        private readonly Dictionary<SquadModel, List<System.Action>> _squadEventSubscriptions = new Dictionary<SquadModel, List<System.Action>>();
+        
+        private Coroutine _gameConditionCheckCoroutine;
+        private Coroutine _statisticsUpdateCoroutine;
+        private Coroutine _performanceMonitoringCoroutine;
+        private Coroutine _gameInitializationCoroutine;
+        
+        // Performance tracking
+        private readonly Queue<float> _frameTimeHistory = new Queue<float>();
+        private const int MAX_FRAME_HISTORY = 60;
+
+        #endregion
+
+        #region Events (Event-Driven Architecture)
         
         public event Action<GameState> OnGameStateChanged;
         public event Action<SquadModel> OnSquadSpawned;
         public event Action<SquadModel> OnSquadDestroyed;
+        public event Action<GameStatistics> OnStatisticsUpdated;
         public event Action OnGameCompleted;
         public event Action OnGameFailed;
+        public event Action<float> OnGameProgressChanged;
 
         #endregion
 
@@ -138,472 +181,449 @@ namespace VikingRaven.Game
         public List<SquadModel> PlayerSquads => new List<SquadModel>(_playerSquads);
         public List<SquadModel> EnemySquads => new List<SquadModel>(_enemySquads);
         public int TotalUnitsCount => _allUnits.Count;
+        public GameStatistics Statistics => _gameStatistics;
         
-        // Public accessors for other systems (avoiding singleton pattern)
+        // Optimized system access
+        public SystemRegistry SystemRegistry => _optimizedSystemRegistry;
         public DataManager DataManager => _dataManager;
         public UnitFactory UnitFactory => _unitFactory;
         public SquadFactory SquadFactory => _squadFactory;
         public EntityRegistry EntityRegistry => _entityRegistry;
-        public SystemRegistry SystemRegistry => _systemRegistry;
 
         #endregion
 
         #region Unity Lifecycle
-
+        
         private void Awake()
         {
             ValidateReferences();
+            InitializeEventSubscriptions();
         }
-
+        
         private void Start()
         {
             if (_autoProgressGameStates)
             {
-                StartCoroutine(AutoProgressGameStates());
+                _gameInitializationCoroutine = StartCoroutine(AutoProgressGameStatesCoroutine());
             }
         }
-
-        private void Update()
-        {
-            UpdateGameLogic();
-        }
-
+        
         private void OnDestroy()
         {
+            StopAllCoroutines();
+            CleanupEventSubscriptions();
             CleanupGame();
         }
 
         #endregion
 
-        #region Initialization
-
+        #region Initialization (Event-Driven)
+        
         /// <summary>
-        /// Validate all required references are assigned
+        /// Validate tất cả dependencies và setup event subscriptions
         /// </summary>
         private void ValidateReferences()
         {
             bool hasErrors = false;
             
+            if (_optimizedSystemRegistry == null)
+            {
+                Debug.LogError("OptimizedGameManager: OptimizedSystemRegistry is missing!");
+                hasErrors = true;
+            }
+            
             if (_dataManager == null)
             {
-                Debug.LogError("GameManager: DataManager reference is missing!");
+                Debug.LogError("OptimizedGameManager: DataManager is missing!");
                 hasErrors = true;
             }
             
             if (_unitFactory == null)
             {
-                Debug.LogError("GameManager: UnitFactory reference is missing!");
+                Debug.LogError("OptimizedGameManager: UnitFactory is missing!");
                 hasErrors = true;
             }
             
             if (_squadFactory == null)
             {
-                Debug.LogError("GameManager: SquadFactory reference is missing!");
+                Debug.LogError("OptimizedGameManager: SquadFactory is missing!");
                 hasErrors = true;
             }
             
             if (_entityRegistry == null)
             {
-                Debug.LogError("GameManager: EntityRegistry reference is missing!");
-                hasErrors = true;
-            }
-            
-            if (_systemRegistry == null)
-            {
-                Debug.LogError("GameManager: SystemRegistry reference is missing!");
+                Debug.LogError("OptimizedGameManager: EntityRegistry is missing!");
                 hasErrors = true;
             }
             
             if (hasErrors)
             {
-                Debug.LogError("GameManager: Critical references missing! Please assign them in the inspector.");
+                Debug.LogError("OptimizedGameManager: Critical references missing!");
                 return;
             }
             
-            Debug.Log("GameManager: All references validated successfully");
+            Debug.Log("OptimizedGameManager: All references validated successfully");
         }
-
+        
         /// <summary>
-        /// Auto progress through game states
+        /// Khởi tạo event subscriptions cho reactive architecture
         /// </summary>
-        private IEnumerator AutoProgressGameStates()
+        private void InitializeEventSubscriptions()
         {
-            yield return StartCoroutine(InitializeGame());
+            if (_optimizedSystemRegistry != null)
+            {
+                _optimizedSystemRegistry.OnAllSystemsInitialized += OnSystemsInitialized;
+                _optimizedSystemRegistry.OnSystemUpdateCompleted += OnSystemUpdateCompleted;
+            }
+            
+            if (_squadFactory != null)
+            {
+                _squadFactory.OnSquadCreated += OnSquadCreatedHandler;
+                _squadFactory.OnSquadDisbanded += OnSquadDisbandedHandler;
+            }
+        }
+        
+        /// <summary>
+        /// Auto progression qua các game states sử dụng coroutine
+        /// </summary>
+        private IEnumerator AutoProgressGameStatesCoroutine()
+        {
+            yield return StartCoroutine(InitializeGameCoroutine());
             
             if (_currentGameState == GameState.Initialized)
             {
                 yield return new WaitForSeconds(_stateTransitionDelay);
-                yield return StartCoroutine(LoadGameData());
+                yield return StartCoroutine(LoadGameDataCoroutine());
             }
             
             if (_currentGameState == GameState.DataLoaded)
             {
                 yield return new WaitForSeconds(_stateTransitionDelay);
-                yield return StartCoroutine(SpawnInitialSquads());
+                yield return StartCoroutine(SpawnInitialSquadsCoroutine());
             }
             
             if (_currentGameState == GameState.SquadsSpawned)
             {
                 yield return new WaitForSeconds(_stateTransitionDelay);
-                StartGame();
+                StartGameReactive();
             }
         }
-
+        
         /// <summary>
-        /// Initialize core game systems
+        /// Initialize game systems với coroutine để tránh blocking
         /// </summary>
-        private IEnumerator InitializeGame()
+        private IEnumerator InitializeGameCoroutine()
         {
-            Debug.Log("GameManager: Initializing game systems...");
+            Debug.Log("OptimizedGameManager: Initializing game systems...");
             ChangeGameState(GameState.Initializing);
             
-            // Initialize DataManager first
+            // Initialize DataManager
             if (_dataManager != null && !_dataManager.IsInitialized)
             {
                 _dataManager.Initialize();
-                yield return new WaitForSeconds(0.1f); // Small delay for initialization
+                yield return new WaitForSeconds(0.1f);
             }
             
             // Initialize EntityRegistry
             if (_entityRegistry != null)
             {
-                Debug.Log("GameManager: EntityRegistry ready");
+                Debug.Log("OptimizedGameManager: EntityRegistry ready");
             }
             
-            // Initialize and register ECS systems
-            if (_systemRegistry != null)
+            // Wait for OptimizedSystemRegistry to complete initialization
+            if (_optimizedSystemRegistry != null)
             {
-                InitializeAllSystems();
-                yield return new WaitForSeconds(0.1f);
+                // OptimizedSystemRegistry will initialize itself and call OnSystemsInitialized when ready
+                while (!_optimizedSystemRegistry.HasSystem<MovementSystem>()) // Wait for at least one system
+                {
+                    yield return new WaitForSeconds(0.1f);
+                }
             }
             
-            // Initialize factories with dependencies
             InitializeFactories();
             
             ChangeGameState(GameState.Initialized);
-            Debug.Log("GameManager: Game systems initialized successfully");
+            Debug.Log("OptimizedGameManager: Game systems initialized successfully");
         }
-
+        
         /// <summary>
-        /// Initialize ECS systems
-        /// </summary>
-        private void InitializeAllSystems()
-        {
-            var allSystems = FindObjectsOfType<MonoBehaviour>();
-            
-            foreach (var system in allSystems)
-            {
-                if (system is ISystem ecsSystem)
-                {
-                    _systemRegistry.RegisterSystem(ecsSystem);
-                }
-            }
-            _systemRegistry.InitializeAllSystems();
-            Debug.Log("GameManager: ECS systems initialized");
-        }
-
-        /// <summary>
-        /// Initialize factories with proper dependencies
+        /// Initialize factories với dependencies
         /// </summary>
         private void InitializeFactories()
         {
-            // Initialize UnitFactory
-            if (_unitFactory != null)
-            {
-                // UnitFactory will use DataManager for unit data
-                Debug.Log("GameManager: UnitFactory initialized");
-            }
-            
-            // Initialize SquadFactory
-            if (_squadFactory != null)
-            {
-                // SquadFactory will use both DataManager and UnitFactory
-                Debug.Log("GameManager: SquadFactory initialized");
-            }
+            Debug.Log("OptimizedGameManager: Factories initialized");
         }
 
         #endregion
 
         #region Data Loading
-
+        
         /// <summary>
-        /// Load all game data
+        /// Load game data sử dụng coroutine
         /// </summary>
-        private IEnumerator LoadGameData()
+        private IEnumerator LoadGameDataCoroutine()
         {
-            Debug.Log("GameManager: Loading game data...");
+            Debug.Log("OptimizedGameManager: Loading game data...");
             ChangeGameState(GameState.LoadingData);
             
-            // Load data through DataManager
             if (_dataManager != null)
             {
-                // DataManager will handle loading unit and squad data
-                yield return new WaitForSeconds(0.1f); // Simulate loading time
+                yield return new WaitForSeconds(0.1f);
             }
             
             ChangeGameState(GameState.DataLoaded);
-            Debug.Log("GameManager: Game data loaded successfully");
+            Debug.Log("OptimizedGameManager: Game data loaded successfully");
         }
 
         #endregion
 
-        #region Squad Spawning
-
+        #region Squad Spawning (Optimized)
+        
         /// <summary>
-        /// Spawn initial squads for the game
+        /// Spawn initial squads với coroutine và event handling
         /// </summary>
-        private IEnumerator SpawnInitialSquads()
+        private IEnumerator SpawnInitialSquadsCoroutine()
         {
-            Debug.Log("GameManager: Spawning initial squads...");
+            Debug.Log("OptimizedGameManager: Spawning initial squads...");
             ChangeGameState(GameState.SpawningSquads);
             
             // Spawn player squads
             for (int i = 0; i < _initialPlayerSquadCount; i++)
             {
-                yield return StartCoroutine(SpawnPlayerSquad(i));
-                yield return new WaitForSeconds(0.2f); // Small delay between spawns
+                yield return StartCoroutine(SpawnPlayerSquadCoroutine(i));
+                yield return new WaitForSeconds(0.2f);
             }
             
             // Spawn enemy squads
             for (int i = 0; i < _initialEnemySquadCount; i++)
             {
-                yield return StartCoroutine(SpawnEnemySquad(i));
+                yield return StartCoroutine(SpawnEnemySquadCoroutine(i));
                 yield return new WaitForSeconds(0.2f);
             }
             
             ChangeGameState(GameState.SquadsSpawned);
-            Debug.Log($"GameManager: Spawned {_playerSquads.Count} player squads and {_enemySquads.Count} enemy squads");
+            Debug.Log($"OptimizedGameManager: Spawned {_playerSquads.Count} player squads and {_enemySquads.Count} enemy squads");
         }
-
+        
         /// <summary>
-        /// Spawn a single player squad
+        /// Spawn player squad với async approach
         /// </summary>
-        private IEnumerator SpawnPlayerSquad(int squadIndex)
+        private IEnumerator SpawnPlayerSquadCoroutine(int squadIndex)
         {
             Vector3 spawnPosition = GetPlayerSpawnPosition(squadIndex);
-            UnitType unitType = GetPlayerUnitType(squadIndex);
+            Quaternion spawnRotation = GetPlayerSpawnRotation(squadIndex);
             
-            SquadModel newSquad = _squadFactory.CreateSquad(1, _playerSpawnPoints[0].position, _playerSpawnPoints[0].rotation);
+            SquadModel newSquad = _squadFactory.CreateSquad(1, spawnPosition, spawnRotation);
             
             if (newSquad != null)
             {
                 _playerSquads.Add(newSquad);
+                RegisterSquadEvents(newSquad);
                 CollectUnitsFromSquad(newSquad);
-                OnSquadSpawned?.Invoke(newSquad);
                 
-                Debug.Log($"GameManager: Spawned player squad {newSquad.SquadId} with {newSquad.UnitCount} {unitType} units at {spawnPosition}");
+                // Event sẽ được trigger tự động qua OnSquadCreatedHandler
+                Debug.Log($"OptimizedGameManager: Spawned player squad {newSquad.SquadId} with {newSquad.UnitCount} units");
             }
             
             yield return null;
         }
-
+        
         /// <summary>
-        /// Spawn a single enemy squad
+        /// Spawn enemy squad với async approach
         /// </summary>
-        private IEnumerator SpawnEnemySquad(int squadIndex)
+        private IEnumerator SpawnEnemySquadCoroutine(int squadIndex)
         {
             Vector3 spawnPosition = GetEnemySpawnPosition(squadIndex);
-            UnitType unitType = GetEnemyUnitType(squadIndex);
+            Quaternion spawnRotation = GetEnemySpawnRotation(squadIndex);
             
-            SquadModel newSquad = _squadFactory.CreateSquad(1, _playerSpawnPoints[2].position, _playerSpawnPoints[2].rotation);
+            SquadModel newSquad = _squadFactory.CreateSquad(1, spawnPosition, spawnRotation);
             
             if (newSquad != null)
             {
                 _enemySquads.Add(newSquad);
+                RegisterSquadEvents(newSquad);
                 CollectUnitsFromSquad(newSquad);
-                OnSquadSpawned?.Invoke(newSquad);
                 
-                Debug.Log($"GameManager: Spawned enemy squad {newSquad.SquadId} with {newSquad.UnitCount} {unitType} units at {spawnPosition}");
+                Debug.Log($"OptimizedGameManager: Spawned enemy squad {newSquad.SquadId} with {newSquad.UnitCount} units");
             }
             
             yield return null;
         }
-
+        
         /// <summary>
-        /// Collect all units from a squad for tracking
+        /// Register events cho squad để reactive handling
         /// </summary>
-        private void CollectUnitsFromSquad(SquadModel squad)
+        private void RegisterSquadEvents(SquadModel squad)
         {
             if (squad == null) return;
             
-            foreach (var unit in squad.Units)
-            {
-                if (unit != null && !_allUnits.Contains(unit))
-                {
-                    _allUnits.Add(unit);
-                }
-            }
+            var eventSubscriptions = new List<System.Action>();
+            
+            // Subscribe to squad events
+            System.Action<UnitModel> onUnitDied = (unit) => OnUnitDiedHandler(squad, unit);
+            System.Action<FormationType> onFormationChanged = (formation) => OnSquadFormationChanged(squad, formation);
+            System.Action<bool> onCombatStateChanged = (inCombat) => OnSquadCombatStateChanged(squad, inCombat);
+            
+            squad.OnUnitDied += onUnitDied;
+            squad.OnFormationChanged += onFormationChanged;
+            squad.OnCombatStateChanged += onCombatStateChanged;
+            
+            // Store subscriptions for cleanup
+            eventSubscriptions.Add(() => squad.OnUnitDied -= onUnitDied);
+            eventSubscriptions.Add(() => squad.OnFormationChanged -= onFormationChanged);
+            eventSubscriptions.Add(() => squad.OnCombatStateChanged -= onCombatStateChanged);
+            
+            _squadEventSubscriptions[squad] = eventSubscriptions;
         }
 
         #endregion
 
-        #region Spawn Position Management
-
-        /// <summary>
-        /// Get spawn position for player squad
-        /// </summary>
-        private Vector3 GetPlayerSpawnPosition(int squadIndex)
+        #region Reactive Game Flow (Thay thế Update)
+        public void StartGameReactive()
         {
-            if (_playerSpawnPoints.Count > 0)
-            {
-                int spawnIndex = squadIndex % _playerSpawnPoints.Count;
-                return _playerSpawnPoints[spawnIndex].position;
-            }
-            
-            // Default spawn positions if no spawn points assigned
-            return new Vector3(-10f + squadIndex * 5f, 0, 0);
-        }
-
-        /// <summary>
-        /// Get spawn position for enemy squad
-        /// </summary>
-        private Vector3 GetEnemySpawnPosition(int squadIndex)
-        {
-            if (_enemySpawnPoints.Count > 0)
-            {
-                int spawnIndex = squadIndex % _enemySpawnPoints.Count;
-                return _enemySpawnPoints[spawnIndex].position;
-            }
-            
-            // Default spawn positions if no spawn points assigned
-            return new Vector3(10f + squadIndex * 5f, 0, 0);
-        }
-
-        /// <summary>
-        /// Get unit type for player squad
-        /// </summary>
-        private UnitType GetPlayerUnitType(int squadIndex)
-        {
-            if (_playerUnitTypes.Count > 0)
-            {
-                int typeIndex = squadIndex % _playerUnitTypes.Count;
-                return _playerUnitTypes[typeIndex];
-            }
-            
-            return UnitType.Infantry; // Default
-        }
-
-        /// <summary>
-        /// Get unit type for enemy squad
-        /// </summary>
-        private UnitType GetEnemyUnitType(int squadIndex)
-        {
-            if (_enemyUnitTypes.Count > 0)
-            {
-                int typeIndex = squadIndex % _enemyUnitTypes.Count;
-                return _enemyUnitTypes[typeIndex];
-            }
-            
-            return UnitType.Infantry; // Default
-        }
-
-        #endregion
-
-        #region Game Flow Management
-
-        /// <summary>
-        /// Start the actual gameplay
-        /// </summary>
-        public void StartGame()
-        {
-            Debug.Log("GameManager: Starting game...");
+            Debug.Log("OptimizedGameManager: Starting reactive game...");
             ChangeGameState(GameState.Playing);
+            
+            // Start reactive update coroutines
+            StartReactiveUpdateCoroutines();
         }
-
+        
         /// <summary>
-        /// Pause the game
+        /// Start các coroutines cho reactive updates
         /// </summary>
-        public void PauseGame()
+        private void StartReactiveUpdateCoroutines()
         {
-            if (_currentGameState == GameState.Playing)
+            // Game condition checking (thay thế Update logic)
+            _gameConditionCheckCoroutine = StartCoroutine(GameConditionCheckCoroutine());
+            
+            // Statistics updates
+            _statisticsUpdateCoroutine = StartCoroutine(StatisticsUpdateCoroutine());
+            
+            // Performance monitoring
+            if (_enablePerformanceMonitoring)
             {
-                ChangeGameState(GameState.Paused);
-                Time.timeScale = 0f;
-                Debug.Log("GameManager: Game paused");
+                _performanceMonitoringCoroutine = StartCoroutine(PerformanceMonitoringCoroutine());
             }
         }
-
-        /// <summary>
-        /// Resume the game
-        /// </summary>
-        public void ResumeGame()
+        
+        private IEnumerator GameConditionCheckCoroutine()
         {
-            if (_currentGameState == GameState.Paused)
+            var waitTime = new WaitForSeconds(_gameConditionCheckInterval);
+            
+            while (_currentGameState == GameState.Playing)
             {
-                ChangeGameState(GameState.Playing);
-                Time.timeScale = 1f;
-                Debug.Log("GameManager: Game resumed");
+                CheckGameConditionsReactive();
+                UpdateGameProgressReactive();
+                yield return waitTime;
             }
         }
-
-        /// <summary>
-        /// End the game with victory condition
-        /// </summary>
-        public void CompleteGame()
+        
+        private IEnumerator StatisticsUpdateCoroutine()
         {
-            Debug.Log("GameManager: Game completed successfully!");
-            ChangeGameState(GameState.Completed);
-            OnGameCompleted?.Invoke();
-        }
-
-        /// <summary>
-        /// End the game with failure condition
-        /// </summary>
-        public void FailGame()
-        {
-            Debug.Log("GameManager: Game failed!");
-            ChangeGameState(GameState.Failed);
-            OnGameFailed?.Invoke();
-        }
-
-        /// <summary>
-        /// Restart the game
-        /// </summary>
-        public void RestartGame()
-        {
-            Debug.Log("GameManager: Restarting game...");
+            var waitTime = new WaitForSeconds(_statisticsUpdateInterval);
             
-            CleanupGame();
-            
-            // Reset state and restart
-            ChangeGameState(GameState.NotInitialized);
-            
-            if (_autoProgressGameStates)
+            while (_currentGameState == GameState.Playing)
             {
-                StartCoroutine(AutoProgressGameStates());
+                UpdateGameStatistics();
+                OnStatisticsUpdated?.Invoke(_gameStatistics);
+                yield return waitTime;
+            }
+        }
+        
+        private IEnumerator PerformanceMonitoringCoroutine()
+        {
+            var waitTime = new WaitForSeconds(_performanceMonitoringInterval);
+            
+            while (_currentGameState == GameState.Playing)
+            {
+                UpdatePerformanceMetrics();
+                yield return waitTime;
             }
         }
 
         #endregion
 
-        #region Game Logic Updates
-
-        /// <summary>
-        /// Update game logic each frame
-        /// </summary>
-        private void UpdateGameLogic()
+        #region Event Handlers (Reactive Logic)
+        
+        private void OnSystemsInitialized()
         {
-            if (_currentGameState != GameState.Playing) return;
+            Debug.Log("OptimizedGameManager: All systems initialized via event");
+        }
+        
+        private void OnSystemUpdateCompleted()
+        {
             
-            // Update ECS systems
-            if (_systemRegistry != null)
+        }
+        
+        private void OnSquadCreatedHandler(SquadModel squad)
+        {
+            OnSquadSpawned?.Invoke(squad);
+        }
+        
+        /// <summary>
+        /// Handler khi squad bị disbanded
+        /// </summary>
+        private void OnSquadDisbandedHandler(SquadModel squad)
+        {
+            OnSquadDestroyed?.Invoke(squad);
+            UnregisterSquadEvents(squad);
+        }
+        
+        /// <summary>
+        /// Handler khi unit chết
+        /// </summary>
+        private void OnUnitDiedHandler(SquadModel squad, UnitModel unit)
+        {
+            _allUnits.Remove(unit);
+            _gameStatistics.TotalDeaths++;
+            
+            // Check nếu squad không còn viable
+            if (!squad.IsViable())
             {
-                _systemRegistry.ExecuteAllSystems();
+                if (_playerSquads.Contains(squad))
+                {
+                    _playerSquads.Remove(squad);
+                }
+                else if (_enemySquads.Contains(squad))
+                {
+                    _enemySquads.Remove(squad);
+                }
+                
+                // Reactive check cho game end conditions
+                CheckGameConditionsReactive();
             }
-            
-            // Check win/lose conditions
-            CheckGameConditions();
-            
-            // Update game progress
-            UpdateGameProgress();
+        }
+        
+        /// <summary>
+        /// Handler khi squad thay đổi formation
+        /// </summary>
+        private void OnSquadFormationChanged(SquadModel squad, FormationType formation)
+        {
+            _gameStatistics.FormationChanges++;
+            Debug.Log($"OptimizedGameManager: Squad {squad.SquadId} changed formation to {formation}");
+        }
+        
+        /// <summary>
+        /// Handler khi squad combat state thay đổi
+        /// </summary>
+        private void OnSquadCombatStateChanged(SquadModel squad, bool inCombat)
+        {
+            if (inCombat)
+            {
+                _gameStatistics.CombatEngagements++;
+            }
         }
 
+        #endregion
+
+        #region Game Logic (Optimized Reactive)
+        
         /// <summary>
-        /// Check for game win/lose conditions
+        /// Check game conditions reactively thay vì mỗi frame
         /// </summary>
-        private void CheckGameConditions()
+        private void CheckGameConditionsReactive()
         {
-            // Check if all enemy squads are destroyed
+            // Check victory condition
             int viableEnemySquads = 0;
             foreach (var squad in _enemySquads)
             {
@@ -619,7 +639,7 @@ namespace VikingRaven.Game
                 return;
             }
             
-            // Check if all player squads are destroyed
+            // Check defeat condition
             int viablePlayerSquads = 0;
             foreach (var squad in _playerSquads)
             {
@@ -635,11 +655,11 @@ namespace VikingRaven.Game
                 return;
             }
         }
-
+        
         /// <summary>
-        /// Update game progress percentage
+        /// Update game progress reactively
         /// </summary>
-        private void UpdateGameProgress()
+        private void UpdateGameProgressReactive()
         {
             if (_enemySquads.Count == 0) return;
             
@@ -654,16 +674,210 @@ namespace VikingRaven.Game
                 }
             }
             
-            _gameProgressPercentage = (float)destroyedEnemySquads / totalEnemySquads;
+            float newProgress = (float)destroyedEnemySquads / totalEnemySquads;
+            
+            if (Mathf.Abs(newProgress - _gameProgressPercentage) > 0.01f)
+            {
+                _gameProgressPercentage = newProgress;
+                OnGameProgressChanged?.Invoke(_gameProgressPercentage);
+            }
+        }
+        
+        /// <summary>
+        /// Update game statistics
+        /// </summary>
+        private void UpdateGameStatistics()
+        {
+            _gameStatistics.PlayTime = Time.time;
+            _gameStatistics.TotalUnits = _allUnits.Count;
+            _gameStatistics.ActivePlayerSquads = _playerSquads.Count;
+            _gameStatistics.ActiveEnemySquads = _enemySquads.Count;
+            
+            // Calculate average squad health
+            float totalHealth = 0f;
+            int squadCount = 0;
+            
+            foreach (var squad in _playerSquads)
+            {
+                if (squad != null && squad.IsViable())
+                {
+                    totalHealth += squad.GetAverageHealthPercentage();
+                    squadCount++;
+                }
+            }
+            
+            _gameStatistics.AverageSquadHealth = squadCount > 0 ? totalHealth / squadCount : 0f;
+        }
+        
+        /// <summary>
+        /// Update performance metrics
+        /// </summary>
+        private void UpdatePerformanceMetrics()
+        {
+            // Frame time tracking
+            _frameTimeHistory.Enqueue(Time.unscaledDeltaTime * 1000f);
+            if (_frameTimeHistory.Count > MAX_FRAME_HISTORY)
+            {
+                _frameTimeHistory.Dequeue();
+            }
+            
+            if (_frameTimeHistory.Count > 0)
+            {
+                float sum = 0f;
+                foreach (float time in _frameTimeHistory)
+                {
+                    sum += time;
+                }
+                _averageFrameTime = sum / _frameTimeHistory.Count;
+            }
+            
+            // Entity count
+            _totalManagedEntities = _allUnits.Count;
+            
+            // Memory usage (approximation)
+            _memoryUsageMB = System.GC.GetTotalMemory(false) / (1024f * 1024f);
+        }
+
+        #endregion
+
+        #region Helper Methods
+        
+        private Vector3 GetPlayerSpawnPosition(int squadIndex)
+        {
+            if (_playerSpawnPoints.Count > 0)
+            {
+                int spawnIndex = squadIndex % _playerSpawnPoints.Count;
+                return _playerSpawnPoints[spawnIndex].position;
+            }
+            return new Vector3(-10f + squadIndex * 5f, 0, 0);
+        }
+        
+        private Quaternion GetPlayerSpawnRotation(int squadIndex)
+        {
+            if (_playerSpawnPoints.Count > 0)
+            {
+                int spawnIndex = squadIndex % _playerSpawnPoints.Count;
+                return _playerSpawnPoints[spawnIndex].rotation;
+            }
+            return Quaternion.identity;
+        }
+        
+        private Vector3 GetEnemySpawnPosition(int squadIndex)
+        {
+            if (_enemySpawnPoints.Count > 0)
+            {
+                int spawnIndex = squadIndex % _enemySpawnPoints.Count;
+                return _enemySpawnPoints[spawnIndex].position;
+            }
+            return new Vector3(10f + squadIndex * 5f, 0, 0);
+        }
+        
+        private Quaternion GetEnemySpawnRotation(int squadIndex)
+        {
+            if (_enemySpawnPoints.Count > 0)
+            {
+                int spawnIndex = squadIndex % _enemySpawnPoints.Count;
+                return _enemySpawnPoints[spawnIndex].rotation;
+            }
+            return Quaternion.identity;
+        }
+        
+        private void CollectUnitsFromSquad(SquadModel squad)
+        {
+            if (squad == null) return;
+            
+            foreach (var unit in squad.Units)
+            {
+                if (unit != null)
+                {
+                    _allUnits.Add(unit);
+                }
+            }
+        }
+
+        #endregion
+
+        #region Game Flow Control
+        
+        public void PauseGame()
+        {
+            if (_currentGameState == GameState.Playing)
+            {
+                ChangeGameState(GameState.Paused);
+                
+                // Pause system registry
+                if (_optimizedSystemRegistry != null)
+                {
+                    _optimizedSystemRegistry.PauseUpdates();
+                }
+                
+                Time.timeScale = 0f;
+                Debug.Log("OptimizedGameManager: Game paused");
+            }
+        }
+        
+        public void ResumeGame()
+        {
+            if (_currentGameState == GameState.Paused)
+            {
+                ChangeGameState(GameState.Playing);
+                
+                // Resume system registry
+                if (_optimizedSystemRegistry != null)
+                {
+                    _optimizedSystemRegistry.ResumeUpdates();
+                }
+                
+                Time.timeScale = 1f;
+                StartReactiveUpdateCoroutines();
+                Debug.Log("OptimizedGameManager: Game resumed");
+            }
+        }
+        
+        public void CompleteGame()
+        {
+            Debug.Log("OptimizedGameManager: Game completed successfully!");
+            ChangeGameState(GameState.Completed);
+            StopReactiveUpdates();
+            OnGameCompleted?.Invoke();
+        }
+        
+        public void FailGame()
+        {
+            Debug.Log("OptimizedGameManager: Game failed!");
+            ChangeGameState(GameState.Failed);
+            StopReactiveUpdates();
+            OnGameFailed?.Invoke();
+        }
+        
+        /// <summary>
+        /// Stop tất cả reactive update coroutines
+        /// </summary>
+        private void StopReactiveUpdates()
+        {
+            if (_gameConditionCheckCoroutine != null)
+            {
+                StopCoroutine(_gameConditionCheckCoroutine);
+                _gameConditionCheckCoroutine = null;
+            }
+            
+            if (_statisticsUpdateCoroutine != null)
+            {
+                StopCoroutine(_statisticsUpdateCoroutine);
+                _statisticsUpdateCoroutine = null;
+            }
+            
+            if (_performanceMonitoringCoroutine != null)
+            {
+                StopCoroutine(_performanceMonitoringCoroutine);
+                _performanceMonitoringCoroutine = null;
+            }
         }
 
         #endregion
 
         #region State Management
-
-        /// <summary>
-        /// Change game state and notify listeners
-        /// </summary>
+        
         private void ChangeGameState(GameState newState)
         {
             if (_currentGameState == newState) return;
@@ -671,150 +885,103 @@ namespace VikingRaven.Game
             GameState oldState = _currentGameState;
             _currentGameState = newState;
             
-            Debug.Log($"GameManager: State changed from {oldState} to {newState}");
+            Debug.Log($"OptimizedGameManager: State changed from {oldState} to {newState}");
             OnGameStateChanged?.Invoke(newState);
         }
 
         #endregion
 
-        #region Public Interface
-
+        #region Cleanup (Event-Driven)
+        
         /// <summary>
-        /// Create a new squad at runtime
+        /// Cleanup event subscriptions
         /// </summary>
-        public SquadModel CreateSquad(UnitType unitType, Vector3 position, bool isEnemy = false)
+        private void CleanupEventSubscriptions()
         {
-            if (_squadFactory == null)
+            if (_optimizedSystemRegistry != null)
             {
-                Debug.LogError("GameManager: SquadFactory is not available");
-                return null;
+                _optimizedSystemRegistry.OnAllSystemsInitialized -= OnSystemsInitialized;
+                _optimizedSystemRegistry.OnSystemUpdateCompleted -= OnSystemUpdateCompleted;
             }
             
-            SquadModel newSquad = _squadFactory.CreateSquad(1, _playerSpawnPoints[0].position, _playerSpawnPoints[0].rotation);
-            
-            if (newSquad != null)
-            {
-                if (isEnemy)
-                {
-                    _enemySquads.Add(newSquad);
-                }
-                else
-                {
-                    _playerSquads.Add(newSquad);
-                }
-                
-                CollectUnitsFromSquad(newSquad);
-                OnSquadSpawned?.Invoke(newSquad);
-                
-                Debug.Log($"GameManager: Created {(isEnemy ? "enemy" : "player")} squad {newSquad.SquadId} with {unitType} units");
-            }
-            
-            return newSquad;
-        }
-
-        /// <summary>
-        /// Get squad by ID
-        /// </summary>
-        public SquadModel GetSquad(int squadId)
-        {
             if (_squadFactory != null)
             {
-                return _squadFactory.GetSquad(squadId);
+                _squadFactory.OnSquadCreated -= OnSquadCreatedHandler;
+                _squadFactory.OnSquadDisbanded -= OnSquadDisbandedHandler;
             }
             
-            return null;
-        }
-
-        /// <summary>
-        /// Destroy a squad
-        /// </summary>
-        public void DestroySquad(int squadId)
-        {
-            if (_squadFactory == null) return;
-            
-            SquadModel squad = _squadFactory.GetSquad(squadId);
-            if (squad != null)
+            // Cleanup squad event subscriptions
+            foreach (var kvp in _squadEventSubscriptions)
             {
-                _playerSquads.Remove(squad);
-                _enemySquads.Remove(squad);
-                foreach (var unit in squad.Units)
+                foreach (var cleanup in kvp.Value)
                 {
-                    _allUnits.Remove(unit);
+                    cleanup?.Invoke();
                 }
-                _squadFactory.DisbandSquad(squadId);
-                OnSquadDestroyed?.Invoke(squad);
+            }
+            _squadEventSubscriptions.Clear();
+        }
+        
+        /// <summary>
+        /// Unregister events cho specific squad
+        /// </summary>
+        private void UnregisterSquadEvents(SquadModel squad)
+        {
+            if (_squadEventSubscriptions.TryGetValue(squad, out var eventSubscriptions))
+            {
+                foreach (var cleanup in eventSubscriptions)
+                {
+                    cleanup?.Invoke();
+                }
+                _squadEventSubscriptions.Remove(squad);
             }
         }
-
-        #endregion
-
-        #region Cleanup
-
+        
         /// <summary>
-        /// Cleanup all game resources
+        /// Cleanup tất cả game resources
         /// </summary>
         private void CleanupGame()
         {
-            Debug.Log("GameManager: Cleaning up game resources...");
+            Debug.Log("OptimizedGameManager: Cleaning up game resources...");
             
-            // Clear tracking lists
+            // Stop reactive updates
+            StopReactiveUpdates();
+            
+            // Clear tracking collections
             _playerSquads.Clear();
             _enemySquads.Clear();
             _allUnits.Clear();
             
-            // Cleanup factories
-            if (_squadFactory != null)
-            {
-                // SquadFactory should handle its own cleanup
-            }
-            
-            if (_unitFactory != null)
-            {
-                // UnitFactory should handle its own cleanup
-            }
-            
             // Reset time scale
             Time.timeScale = 1f;
             
-            // Reset progress
+            // Reset statistics
+            _gameStatistics = new GameStatistics();
             _gameProgressPercentage = 0f;
             
-            Debug.Log("GameManager: Cleanup completed");
+            Debug.Log("OptimizedGameManager: Cleanup completed");
         }
 
         #endregion
 
         #region Debug Tools
-
-        [Button("Force Initialize Game"), TitleGroup("Debug Tools")]
-        public void ForceInitializeGame()
-        {
-            if (_currentGameState == GameState.NotInitialized)
-            {
-                StartCoroutine(InitializeGame());
-            }
-        }
-
-        [Button("Force Start Game"), TitleGroup("Debug Tools")]
-        public void ForceStartGame()
+        
+        [Button("Force Start Reactive Game"), TitleGroup("Debug Tools")]
+        public void ForceStartReactiveGame()
         {
             if (_currentGameState != GameState.Playing)
             {
-                StartGame();
+                StartGameReactive();
             }
         }
-
-        [Button("Create Test Squad"), TitleGroup("Debug Tools")]
-        public void CreateTestSquad()
+        
+        [Button("Show Performance Stats"), TitleGroup("Debug Tools")]
+        public void ShowPerformanceStats()
         {
-            CreateSquad(UnitType.Infantry, Vector3.zero, false);
-        }
-
-        [Button("Show Game Stats"), TitleGroup("Debug Tools")]
-        public void ShowGameStats()
-        {
-            string stats = "=== Game Manager Statistics ===\n";
+            string stats = "=== Optimized GameManager Performance ===\n";
             stats += $"Game State: {_currentGameState}\n";
+            stats += $"Average Frame Time: {_averageFrameTime:F2}ms\n";
+            stats += $"Total Managed Entities: {_totalManagedEntities}\n";
+            stats += $"Memory Usage: {_memoryUsageMB:F1}MB\n";
             stats += $"Player Squads: {_playerSquads.Count}\n";
             stats += $"Enemy Squads: {_enemySquads.Count}\n";
             stats += $"Total Units: {_allUnits.Count}\n";
@@ -822,25 +989,31 @@ namespace VikingRaven.Game
             
             Debug.Log(stats);
         }
+        
+        [Button("Test Reactive Events"), TitleGroup("Debug Tools")]
+        public void TestReactiveEvents()
+        {
+            OnGameProgressChanged?.Invoke(0.5f);
+            OnStatisticsUpdated?.Invoke(_gameStatistics);
+            Debug.Log("OptimizedGameManager: Reactive events tested");
+        }
 
         #endregion
     }
-
+    
     /// <summary>
-    /// Enum defining different game states
+    /// Game statistics data structure
     /// </summary>
-    public enum GameState
+    [Serializable]
+    public class GameStatistics
     {
-        NotInitialized,
-        Initializing,
-        Initialized,
-        LoadingData,
-        DataLoaded,
-        SpawningSquads,
-        SquadsSpawned,
-        Playing,
-        Paused,
-        Completed,
-        Failed
+        public float PlayTime;
+        public int TotalUnits;
+        public int TotalDeaths;
+        public int CombatEngagements;
+        public int FormationChanges;
+        public int ActivePlayerSquads;
+        public int ActiveEnemySquads;
+        public float AverageSquadHealth;
     }
 }

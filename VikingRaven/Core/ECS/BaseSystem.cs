@@ -28,14 +28,5 @@ namespace VikingRaven.Core.ECS
         public abstract void Execute();
         
         public virtual void Cleanup() { }
-        
-        private void OnDestroy()
-        {
-            // Auto-unregister from SystemRegistry when destroyed
-            if (SystemRegistry.HasInstance)
-            {
-                SystemRegistry.Instance.UnregisterSystem(this);
-            }
-        }
     }
 }
