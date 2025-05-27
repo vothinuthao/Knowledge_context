@@ -168,7 +168,7 @@ namespace VikingRaven.Units.Systems
             _squadTargetRotations[squadId] = targetRotation;
             
             // Get formation type for this squad
-            FormationType formationType = FormationType.Line;
+            FormationType formationType = FormationType.Normal;
             if (_squadFormationTypes.TryGetValue(squadId, out var storedFormationType))
             {
                 formationType = storedFormationType;
@@ -253,8 +253,6 @@ namespace VikingRaven.Units.Systems
         private Vector3[] GenerateSimpleFormationTemplate(FormationType formationType, int count)
         {
             Vector3[] positions = new Vector3[count];
-            
-            // Use simple spacing values - hardcoded for simplicity
             float lineSpacing = 2.0f;
             float columnSpacing = 2.0f;
             float phalanxSpacing = 1.2f;
@@ -264,26 +262,8 @@ namespace VikingRaven.Units.Systems
             
             switch (formationType)
             {
-                case FormationType.Line:
-                    // Line formation - horizontal row
-                    for (int i = 0; i < count; i++)
-                    {
-                        float xOffset = i - (count - 1) / 2.0f;
-                        positions[i] = new Vector3(xOffset * lineSpacing, 0, 0);
-                    }
-                    break;
-                    
-                case FormationType.Column:
-                    // Column formation - vertical column
-                    for (int i = 0; i < count; i++)
-                    {
-                        float zOffset = i - (count - 1) / 2.0f;
-                        positions[i] = new Vector3(0, 0, zOffset * columnSpacing);
-                    }
-                    break;
                     
                 case FormationType.Phalanx:
-                    // Phalanx - grid formation
                     int phalanxWidth = Mathf.CeilToInt(Mathf.Sqrt(count));
                     for (int i = 0; i < count; i++)
                     {
@@ -301,7 +281,6 @@ namespace VikingRaven.Units.Systems
                     break;
                     
                 case FormationType.Testudo:
-                    // Testudo - tighter grid
                     int testudoWidth = Mathf.CeilToInt(Mathf.Sqrt(count));
                     for (int i = 0; i < count; i++)
                     {
@@ -315,19 +294,6 @@ namespace VikingRaven.Units.Systems
                             xOffset * testudoSpacing, 
                             0, 
                             zOffset * testudoSpacing);
-                    }
-                    break;
-                    
-                case FormationType.Circle:
-                    // Circle formation
-                    positions[0] = Vector3.zero; // Center position
-                    
-                    for (int i = 1; i < count; i++)
-                    {
-                        float angle = ((i - 1) * 2 * Mathf.PI) / (count - 1);
-                        float x = Mathf.Sin(angle) * circleRadius;
-                        float z = Mathf.Cos(angle) * circleRadius;
-                        positions[i] = new Vector3(x, 0, z);
                     }
                     break;
                     

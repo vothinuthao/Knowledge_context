@@ -220,6 +220,22 @@ namespace VikingRaven.Game
         #region Initialization (Event-Driven)
         
         /// <summary>
+        /// Start game initialization
+        /// </summary>
+        [Button("Initialize Game"), TitleGroup("Initialization")]
+        public void InitializeGame()
+        {
+            if (_currentGameState != GameState.NotInitialized)
+            {
+                Debug.LogWarning("OptimizedGameManager: Game is already initialized or in progress!");
+                return;
+            }
+            
+            ChangeGameState(GameState.Initializing);
+            _gameInitializationCoroutine = StartCoroutine(InitializeGameCoroutine());
+        }
+        
+        /// <summary>
         /// Validate tất cả dependencies và setup event subscriptions
         /// </summary>
         private void ValidateReferences()
@@ -310,11 +326,10 @@ namespace VikingRaven.Game
         }
         
         /// <summary>
-        /// Initialize game systems với coroutine để tránh blocking
-        /// </summary>
+        /// 
         private IEnumerator InitializeGameCoroutine()
         {
-            Debug.Log("OptimizedGameManager: Initializing game systems...");
+            Debug.Log("GameManager: Initializing game systems...");
             ChangeGameState(GameState.Initializing);
             
             // Initialize DataManager
@@ -324,7 +339,7 @@ namespace VikingRaven.Game
                 yield return new WaitForSeconds(0.1f);
             }
             
-            // Initialize EntityRegistry
+            // modidy EntityRegistry initialization
             if (_entityRegistry != null)
             {
                 Debug.Log("OptimizedGameManager: EntityRegistry ready");

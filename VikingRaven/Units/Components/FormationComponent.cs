@@ -24,7 +24,7 @@ namespace VikingRaven.Units.Components
         
         [Tooltip("Current formation type")]
         [SerializeField, ReadOnly, EnumToggleButtons]
-        private FormationType _currentFormationType = FormationType.Line;
+        private FormationType _currentFormationType = FormationType.Normal;
 
         #endregion
 
@@ -295,80 +295,12 @@ namespace VikingRaven.Units.Components
 
         #region Formation Queries (Enhanced + Backward Compatible)
 
-        /// <summary>
-        /// ENHANCED: Check if this unit should maintain strict formation
-        /// </summary>
-        public bool ShouldMaintainStrictFormation()
-        {
-            return _formationDiscipline > 0.6f && _formationPriority != FormationPriority.Low;
-        }
-
-        /// <summary>
-        /// ENHANCED: Check if this unit can break formation for combat
-        /// </summary>
-        public bool CanBreakFormationForCombat()
-        {
-            return _canBreakFormation && _formationPriority != FormationPriority.Critical;
-        }
-
-        /// <summary>
-        /// ENHANCED: Get formation effectiveness multiplier based on current state
-        /// </summary>
         public float GetFormationEffectiveness()
         {
             if (!_isInFormationPosition)
-                return 0.5f; // Reduced effectiveness when out of position
+                return 0.5f;
                 
-            return _formationDiscipline; // Full effectiveness when in position
-        }
-
-        /// <summary>
-        /// ENHANCED: Check if this unit has specific formation ability
-        /// </summary>
-        public bool HasFormationAbility(FormationAbility ability)
-        {
-            return (_formationAbilities & ability) == ability;
-        }
-
-        /// <summary>
-        /// BACKWARD COMPATIBILITY + ENHANCED: Get formation discipline multiplier
-        /// Used by existing PhalanxBehavior and other systems
-        /// </summary>
-        public float GetFormationDisciplineMultiplier()
-        {
-            switch (_currentFormationType)
-            {
-                case FormationType.Phalanx:
-                    return 1.2f * _formationDiscipline; // Enhanced with discipline factor
-                    
-                case FormationType.Testudo:
-                    return 1.5f * _formationDiscipline; // Enhanced with discipline factor
-                    
-                case FormationType.Circle:
-                    return 0.9f * _formationDiscipline;
-                    
-                case FormationType.Line:
-                    return 0.8f * _formationDiscipline;
-                    
-                case FormationType.Column:
-                    return 0.8f * _formationDiscipline;
-                    
-                default:
-                    return 1.0f * _formationDiscipline;
-            }
-        }
-
-        /// <summary>
-        /// BACKWARD COMPATIBILITY: Calculate target position based on squad center and formation offset
-        /// Used by existing formation calculations
-        /// </summary>
-        public Vector3 CalculateFormationPosition(Vector3 squadCenter, Quaternion squadRotation)
-        {
-            // Apply rotation to offset
-            Vector3 rotatedOffset = squadRotation * _formationOffset;
-            
-            // Calculate world position
-            return squadCenter + rotatedOffset;
+            return _formationDiscipline;
         }
 
         #endregion
@@ -472,14 +404,13 @@ namespace VikingRaven.Units.Components
                 }
             }
             
-            // ENHANCED: Update formation discipline based on new type
             switch (newType)
             {
                 case FormationType.Phalanx:
                 case FormationType.Testudo:
-                    _formationPriority = FormationPriority.High; // Strict formations
+                    _formationPriority = FormationPriority.High;
                     break;
-                case FormationType.Circle:
+                case FormationType.Normal:
                     _formationPriority = FormationPriority.Normal;
                     break;
                 default:
@@ -493,7 +424,7 @@ namespace VikingRaven.Units.Components
             // BACKWARD COMPATIBILITY: Reset all data to maintain existing behavior
             _squadId = -1;
             _formationSlotIndex = -1;
-            _currentFormationType = FormationType.Line;
+            _currentFormationType = FormationType.Normal;
             _formationOffset = Vector3.zero;
             _targetFormationPosition = Vector3.zero;
             _squadCenterPosition = Vector3.zero;

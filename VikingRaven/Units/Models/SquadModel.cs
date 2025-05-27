@@ -8,13 +8,8 @@ using VikingRaven.Units.Models;
 
 namespace VikingRaven.Units.Models
 {
-    /// <summary>
-    /// Enhanced model class for managing squad data and state
-    /// Acts as a coordinator for all units in a squad
-    /// </summary>
     public class SquadModel
     {
-        // Squad identification
         private int _squadId;
         private SquadDataSO _squadData;
         
@@ -22,27 +17,26 @@ namespace VikingRaven.Units.Models
         private List<UnitModel> _unitModels = new List<UnitModel>();
         private Dictionary<int, UnitModel> _unitModelsById = new Dictionary<int, UnitModel>();
         private Dictionary<UnitType, List<UnitModel>> _unitModelsByType = new Dictionary<UnitType, List<UnitModel>>();
-        
-        // Formation and position tracking
         private FormationType _currentFormation;
         private Vector3 _currentPosition;
         private Quaternion _currentRotation;
         private float _formationSpacing;
+        private FormationSpacingConfig _formationSpacingConfig;
         
         // Formation offsets cache
         private Dictionary<int, Vector3> _formationOffsets = new Dictionary<int, Vector3>();
         
         // State tracking
         private bool _isMoving = false;
-        private bool _isEngaged = false; // In combat
-        private bool _isReforming = false; // Changing formation
+        private bool _isEngaged = false;
+        private bool _isReforming = false;
         private bool _isInitialized = false;
         
         // Squad statistics
         private int _totalKills = 0;
         private float _totalDamageDealt = 0f;
         private float _totalDamageReceived = 0f;
-        private int _combatStreak = 0; // Number of consecutive victories
+        private int _combatStreak = 0;
         private float _lastCombatTime = 0f;
         
         // Events
@@ -61,7 +55,12 @@ namespace VikingRaven.Units.Models
         public FormationType CurrentFormation => _currentFormation;
         public Vector3 CurrentPosition => _currentPosition;
         public Quaternion CurrentRotation => _currentRotation;
-        public float FormationSpacing => _formationSpacing;
+        
+        /// <summary>
+        /// ENHANCED: FormationSpacing now uses both legacy and new system
+        /// </summary>
+        public float FormationSpacing => GetEffectiveFormationSpacing(_currentFormation);
+        
         public bool IsMoving => _isMoving;
         public bool IsEngaged => _isEngaged;
         public bool IsReforming => _isReforming;
@@ -75,12 +74,9 @@ namespace VikingRaven.Units.Models
         public IReadOnlyDictionary<int, Vector3> FormationOffsets => _formationOffsets;
         
         /// <summary>
-        /// Constructor for a new squad
+        /// ENHANCED: Constructor with Formation Config Integration
+        /// Maintains backward compatibility with legacy SpacingMultiplier
         /// </summary>
-        /// <param name="squadId">Unique Squad ID</param>
-        /// <param name="squadData">Squad data configuration</param>
-        /// <param name="position">Initial position</param>
-        /// <param name="rotation">Initial rotation</param>
         public SquadModel(int squadId, SquadDataSO squadData, Vector3 position, Quaternion rotation)
         {
             _squadId = squadId;
@@ -93,25 +89,109 @@ namespace VikingRaven.Units.Models
             _unitModelsByType[UnitType.Archer] = new List<UnitModel>();
             _unitModelsByType[UnitType.Pike] = new List<UnitModel>();
             
+            // FIXED: Initialize formation spacing - supports both systems
+            InitializeFormationSpacing(squadData);
+            
             // Set default formation from data if available
             _currentFormation = squadData != null 
                 ? squadData.DefaultFormationType 
-                : FormationType.Line;
+                : FormationType.Normal; // Changed from FormationType.Line to FormationType.Normal
                 
-            // Set formation spacing
-            _formationSpacing = squadData != null 
-                ? squadData.SpacingMultiplier 
-                : 1.0f;
-            
             _isInitialized = true;
             
-            Debug.Log($"SquadModel: Created new squad with ID {squadId}, formation: {_currentFormation}");
+            Debug.Log($"SquadModel: Created squad {squadId} with formation {_currentFormation}, " +
+                     $"spacing: {GetEffectiveFormationSpacing(_currentFormation):F2}");
+        }
+        
+        /// <summary>
+        /// FIXED: Initialize formation spacing from squadData
+        /// Supports both legacy SpacingMultiplier and new FormationSpacingConfig
+        /// </summary>
+        private void InitializeFormationSpacing(SquadDataSO squadData)
+        {
+            if (squadData != null)
+            {
+                // FIXED: Get SpacingMultiplier from squadData (legacy compatibility)
+                _formationSpacing = squadData.SpacingMultiplier;
+                
+                // NEW: Get FormationSpacingConfig for enhanced formation control
+                _formationSpacingConfig = squadData.FormationSpacingConfig;
+                
+                if (_formationSpacingConfig != null)
+                {
+                    Debug.Log($"SquadModel: Using FormationSpacingConfig '{_formationSpacingConfig.name}' " +
+                             $"with base multiplier {_formationSpacing:F2}");
+                }
+                else
+                {
+                    Debug.Log($"SquadModel: Using legacy spacing multiplier {_formationSpacing:F2}");
+                }
+            }
+            else
+            {
+                // Fallback values
+                _formationSpacing = 1.0f;
+                _formationSpacingConfig = null;
+                Debug.LogWarning("SquadModel: No squad data provided, using default spacing");
+            }
+        }
+        
+        /// <summary>
+        /// ENHANCED: Get effective formation spacing for specific formation type
+        /// Combines legacy SpacingMultiplier with new FormationSpacingConfig
+        /// </summary>
+        public float GetEffectiveFormationSpacing(FormationType formationType)
+        {
+            if (_squadData != null)
+            {
+                // Use SquadDataSO method which handles both legacy and new system
+                return _squadData.GetFormationSpacing(formationType);
+            }
+            
+            // Fallback calculation if no squad data
+            float baseSpacing = GetLegacyFormationSpacing(formationType);
+            return baseSpacing * _formationSpacing;
+        }
+        
+        /// <summary>
+        /// Legacy formation spacing calculation for fallback
+        /// </summary>
+        private float GetLegacyFormationSpacing(FormationType formationType)
+        {
+            return formationType switch
+            {
+                FormationType.Normal => 2.5f,
+                FormationType.Phalanx => 1.8f,
+                FormationType.Testudo => 1.2f,
+                _ => 2.0f
+            };
+        }
+        
+        /// <summary>
+        /// ENHANCED: Get position tolerance for formation positioning
+        /// Uses FormationSpacingConfig if available, otherwise uses default
+        /// </summary>
+        public float GetPositionTolerance()
+        {
+            if (_squadData != null)
+            {
+                return _squadData.GetPositionTolerance();
+            }
+            
+            return 0.3f; // Default tolerance
+        }
+        
+        /// <summary>
+        /// Check if squad has enhanced formation configuration
+        /// </summary>
+        public bool HasFormationConfig()
+        {
+            return _formationSpacingConfig != null;
         }
         
         /// <summary>
         /// Add a unit to the squad
         /// </summary>
-        /// <param name="unitModel">Unit model to add</param>
         public void AddUnit(UnitModel unitModel)
         {
             if (unitModel == null || unitModel.Entity == null) return;
@@ -130,15 +210,6 @@ namespace VikingRaven.Units.Models
                 _unitModelsByType[unitType].Add(unitModel);
             }
             
-            // Set formation component if available
-            // var formationComponent = unitModel.GetComponent<FormationComponent>();
-            // if (formationComponent != null)
-            // {
-            //     formationComponent.SetSquadId(_squadId);
-            //     formationComponent.SetFormationSlot(_unitModels.Count - 1);
-            //     formationComponent.SetFormationType(_currentFormation);
-            // }
-            
             // Generate formation offset for the unit
             UpdateUnitFormationOffset(unitModel);
             
@@ -154,7 +225,6 @@ namespace VikingRaven.Units.Models
         /// <summary>
         /// Add multiple units to the squad
         /// </summary>
-        /// <param name="unitModels">List of unit models to add</param>
         public void AddUnits(List<UnitModel> unitModels)
         {
             if (unitModels == null) return;
@@ -171,7 +241,6 @@ namespace VikingRaven.Units.Models
         /// <summary>
         /// Remove a unit from the squad
         /// </summary>
-        /// <param name="unitModel">Unit model to remove</param>
         public void RemoveUnit(UnitModel unitModel)
         {
             if (unitModel == null || unitModel.Entity == null) return;
@@ -197,13 +266,6 @@ namespace VikingRaven.Units.Models
                 // Unsubscribe from events
                 UnsubscribeFromUnitEvents(unitModel);
                 
-                // Reset formation component
-                // var formationComponent = unitModel.GetComponent<FormationComponent>();
-                // if (formationComponent != null)
-                // {
-                //     formationComponent.SetSquadId(-1);
-                // }
-                
                 // Trigger event
                 OnUnitRemoved?.Invoke(unitModel);
                 
@@ -211,18 +273,6 @@ namespace VikingRaven.Units.Models
                 
                 // Update formation slots for remaining units
                 UpdateFormationSlots();
-            }
-        }
-        
-        /// <summary>
-        /// Remove a unit by entity ID
-        /// </summary>
-        /// <param name="entityId">ID of the entity to remove</param>
-        public void RemoveUnitById(int entityId)
-        {
-            if (_unitModelsById.TryGetValue(entityId, out UnitModel unitModel))
-            {
-                RemoveUnit(unitModel);
             }
         }
         
@@ -310,27 +360,9 @@ namespace VikingRaven.Units.Models
         }
         
         /// <summary>
-        /// Update formation slots for all units
-        /// </summary>
-        private void UpdateFormationSlots()
-        {
-            // for (int i = 0; i < _unitModels.Count; i++)
-            // {
-            //     var formationComponent = _unitModels[i].GetComponent<FormationComponent>();
-            //     if (formationComponent != null)
-            //     {
-            //         formationComponent.SetFormationSlot(i);
-            //     }
-            // }
-            
-            // Recalculate formation offsets after changing slots
-            RecalculateAllFormationOffsets();
-        }
-        
-        /// <summary>
         /// Set the formation type for the squad
+        /// ENHANCED: Uses new spacing calculation system
         /// </summary>
-        /// <param name="formationType">New formation type</param>
         public void SetFormation(FormationType formationType)
         {
             if (_currentFormation == formationType) return;
@@ -339,49 +371,19 @@ namespace VikingRaven.Units.Models
             _currentFormation = formationType;
             _isReforming = true;
             
-            // Recalculate formation offsets for all units
+            // Recalculate formation offsets for all units with new spacing
             RecalculateAllFormationOffsets();
-            
-            // Update all unit formation components
-            foreach (var unitModel in _unitModels)
-            {
-                // var formationComponent = unitModel.GetComponent<FormationComponent>();
-                // if (formationComponent != null)
-                // {
-                //     formationComponent.SetFormationType(formationType, true); // Use smooth transition
-                // }
-            }
             
             // Trigger event
             OnFormationChanged?.Invoke(formationType);
             
-            Debug.Log($"SquadModel: Changed formation of squad {_squadId} from {oldFormation} to {formationType}");
-            
-            // Reset reforming flag after a delay
-            // In a MonoBehaviour, we would use a coroutine
-            // For now, we'll use a simple approach that assumes this is checked externally
-        }
-        
-        /// <summary>
-        /// Set the formation spacing for the squad
-        /// </summary>
-        /// <param name="spacing">New spacing multiplier</param>
-        public void SetFormationSpacing(float spacing)
-        {
-            if (_formationSpacing == spacing) return;
-            
-            _formationSpacing = spacing;
-            
-            // Recalculate formation offsets with new spacing
-            RecalculateAllFormationOffsets();
-            
-            Debug.Log($"SquadModel: Changed formation spacing of squad {_squadId} to {spacing}");
+            Debug.Log($"SquadModel: Changed formation of squad {_squadId} from {oldFormation} to {formationType}, " +
+                     $"new spacing: {GetEffectiveFormationSpacing(formationType):F2}");
         }
         
         /// <summary>
         /// Set the target position for the squad
         /// </summary>
-        /// <param name="position">New target position</param>
         public void SetTargetPosition(Vector3 position)
         {
             if (_currentPosition == position) return;
@@ -401,7 +403,6 @@ namespace VikingRaven.Units.Models
         /// <summary>
         /// Set the target rotation for the squad
         /// </summary>
-        /// <param name="rotation">New target rotation</param>
         public void SetTargetRotation(Quaternion rotation)
         {
             if (_currentRotation == rotation) return;
@@ -423,22 +424,23 @@ namespace VikingRaven.Units.Models
                 
                 if (_formationOffsets.TryGetValue(entityId, out Vector3 offset))
                 {
-                    // var navigationComponent = unitModel.GetComponent<NavigationComponent>();
-                    // if (navigationComponent != null)
-                    // {
-                    //     // Set formation info with squad center, formation offset
-                    //     navigationComponent.SetFormationInfo(
-                    //         _currentPosition, 
-                    //         offset, 
-                    //         NavigationCommandPriority.High
-                    //     );
-                    // }
+                    var navigationComponent = unitModel.Entity.GetComponent<NavigationComponent>();
+                    if (navigationComponent != null)
+                    {
+                        // Set formation info with squad center, formation offset
+                        navigationComponent.SetFormationInfo(
+                            _currentPosition, 
+                            offset, 
+                            NavigationCommandPriority.High
+                        );
+                    }
                 }
             }
         }
         
         /// <summary>
         /// Recalculate formation offsets for all units
+        /// ENHANCED: Uses new spacing calculation system
         /// </summary>
         private void RecalculateAllFormationOffsets()
         {
@@ -448,14 +450,8 @@ namespace VikingRaven.Units.Models
             // Calculate new offsets based on formation type
             switch (_currentFormation)
             {
-                case FormationType.Line:
-                    CalculateLineFormation();
-                    break;
-                case FormationType.Column:
-                    CalculateColumnFormation();
-                    break;
-                case FormationType.Circle:
-                    CalculateCircleFormation();
+                case FormationType.Normal:
+                    CalculateNormalFormation();
                     break;
                 case FormationType.Phalanx:
                     CalculatePhalanxFormation();
@@ -463,16 +459,103 @@ namespace VikingRaven.Units.Models
                 case FormationType.Testudo:
                     CalculateTestudoFormation();
                     break;
-                case FormationType.Normal:
-                    CalculateNormalFormation();
-                    break;
                 default:
-                    CalculateLineFormation(); // Default to line formation
+                    CalculateNormalFormation(); // Default to normal formation
                     break;
             }
             
             // Apply offsets to formation components
             ApplyFormationOffsets();
+        }
+        
+        /// <summary>
+        /// Calculate normal formation (3x3 grid)
+        /// ENHANCED: Uses effective spacing calculation
+        /// </summary>
+        private void CalculateNormalFormation()
+        {
+            int unitCount = _unitModels.Count;
+            if (unitCount == 0) return;
+            
+            float spacing = GetEffectiveFormationSpacing(FormationType.Normal);
+            const int gridWidth = 3;
+            
+            for (int i = 0; i < _unitModels.Count; i++)
+            {
+                UnitModel unit = _unitModels[i];
+                int entityId = unit.Entity.Id;
+                
+                int row = i / gridWidth;
+                int col = i % gridWidth;
+                
+                // Center the grid around origin
+                float x = (col - 1) * spacing;  // -1, 0, 1 for columns 0, 1, 2
+                float z = (row - 1) * spacing;  // -1, 0, 1 for rows 0, 1, 2
+                
+                Vector3 offset = new Vector3(x, 0, z);
+                _formationOffsets[entityId] = offset;
+            }
+        }
+        
+        /// <summary>
+        /// Calculate phalanx formation (tight combat grid)
+        /// ENHANCED: Uses effective spacing calculation
+        /// </summary>
+        private void CalculatePhalanxFormation()
+        {
+            int unitCount = _unitModels.Count;
+            if (unitCount == 0) return;
+            
+            float spacing = GetEffectiveFormationSpacing(FormationType.Phalanx);
+            int width = Mathf.CeilToInt(Mathf.Sqrt(unitCount));
+            int height = Mathf.CeilToInt((float)unitCount / width);
+            
+            for (int i = 0; i < _unitModels.Count; i++)
+            {
+                UnitModel unit = _unitModels[i];
+                int entityId = unit.Entity.Id;
+                
+                int row = i / width;
+                int col = i % width;
+                
+                // Center the grid around origin
+                float x = (col - (width - 1) * 0.5f) * spacing;
+                float z = (row - (height - 1) * 0.5f) * spacing;
+                
+                Vector3 offset = new Vector3(x, 0, z);
+                _formationOffsets[entityId] = offset;
+            }
+        }
+        
+        /// <summary>
+        /// Calculate testudo formation (very tight defensive grid)
+        /// ENHANCED: Uses effective spacing calculation
+        /// </summary>
+        private void CalculateTestudoFormation()
+        {
+            // Similar to phalanx but with tighter spacing
+            int unitCount = _unitModels.Count;
+            if (unitCount == 0) return;
+            
+            float spacing = GetEffectiveFormationSpacing(FormationType.Testudo);
+            int width = Mathf.CeilToInt(Mathf.Sqrt(unitCount));
+            int height = Mathf.CeilToInt((float)unitCount / width);
+            
+            for (int i = 0; i < _unitModels.Count; i++)
+            {
+                UnitModel unit = _unitModels[i];
+                int entityId = unit.Entity.Id;
+                
+                int row = i / width;
+                int col = i % width;
+                
+                // Center the grid around origin
+                float x = (col - (width - 1) * 0.5f) * spacing;
+                float z = (row - (height - 1) * 0.5f) * spacing;
+                
+                Vector3 offset = new Vector3(x, 0, z);
+                _formationOffsets[entityId] = offset;
+            }
         }
         
         /// <summary>
@@ -498,12 +581,11 @@ namespace VikingRaven.Units.Models
             // Get formation offset
             if (_formationOffsets.TryGetValue(entityId, out Vector3 offset))
             {
-                // Update formation component
-                // var formationComponent = unitModel.GetComponent<FormationComponent>();
-                // if (formationComponent != null)
-                // {
-                //     formationComponent.SetFormationOffset(offset, true); // Use smooth transition
-                // }
+                var formationComponent = unitModel.Entity.GetComponent<FormationComponent>();
+                if (formationComponent != null)
+                {
+                    formationComponent.SetFormationOffset(offset, true); // Use smooth transition
+                }
             }
             else
             {
@@ -514,12 +596,11 @@ namespace VikingRaven.Units.Models
                     Vector3 newOffset = CalculateFormationOffsetForSlot(slotIndex, unitModel.UnitType);
                     _formationOffsets[entityId] = newOffset;
                     
-                    // Update formation component
-                    // var formationComponent = unitModel.GetComponent<FormationComponent>();
-                    // if (formationComponent != null)
-                    // {
-                    //     formationComponent.SetFormationOffset(newOffset, false); // No transition for initial setup
-                    // }
+                    var formationComponent = unitModel.Entity.GetComponent<FormationComponent>();
+                    if (formationComponent != null)
+                    {
+                        formationComponent.SetFormationOffset(newOffset, false); // No transition for initial setup
+                    }
                 }
             }
         }
@@ -529,438 +610,44 @@ namespace VikingRaven.Units.Models
         /// </summary>
         private Vector3 CalculateFormationOffsetForSlot(int slotIndex, UnitType unitType)
         {
-            // Get unit counts by type
-            int infantryCount = _unitModelsByType[UnitType.Infantry].Count;
-            int archerCount = _unitModelsByType[UnitType.Archer].Count;
-            int pikeCount = _unitModelsByType[UnitType.Pike].Count;
+            float spacing = GetEffectiveFormationSpacing(_currentFormation);
             
-            // Calculate type-specific index
-            int typeIndex = 0;
-            if (unitType == UnitType.Infantry)
+            switch (_currentFormation)
             {
-                typeIndex = _unitModelsByType[UnitType.Infantry].IndexOf(_unitModels[slotIndex]);
-            }
-            else if (unitType == UnitType.Archer)
-            {
-                typeIndex = _unitModelsByType[UnitType.Archer].IndexOf(_unitModels[slotIndex]);
-            }
-            else if (unitType == UnitType.Pike)
-            {
-                typeIndex = _unitModelsByType[UnitType.Pike].IndexOf(_unitModels[slotIndex]);
-            }
-            
-            // Fallback to simple offset calculation
-            float spacing = 1.0f * _formationSpacing;
-            float x = (slotIndex % 3) * spacing - spacing;
-            float z = (slotIndex / 3) * spacing - spacing;
-            
-            return new Vector3(x, 0, z);
-        }
-        
-        /// <summary>
-        /// Calculate line formation (units side by side)
-        /// </summary>
-        private void CalculateLineFormation()
-        {
-            int unitCount = _unitModels.Count;
-            if (unitCount == 0) return;
-            
-            float spacing = 1.0f * _formationSpacing;
-            float totalWidth = unitCount * spacing;
-            float startX = -totalWidth / 2 + spacing / 2;
-            
-            // Order by unit type priority (Pike > Infantry > Archer)
-            List<UnitModel> orderedUnits = OrderUnitsByTypePriority();
-            
-            for (int i = 0; i < orderedUnits.Count; i++)
-            {
-                UnitModel unit = orderedUnits[i];
-                int entityId = unit.Entity.Id;
-                
-                // Calculate position in line
-                float x = startX + i * spacing;
-                Vector3 offset = new Vector3(x, 0, 0);
-                
-                // Store offset
-                _formationOffsets[entityId] = offset;
-            }
-        }
-        
-        /// <summary>
-        /// Calculate column formation (units one behind the other)
-        /// </summary>
-        private void CalculateColumnFormation()
-        {
-            int unitCount = _unitModels.Count;
-            if (unitCount == 0) return;
-            
-            float spacing = 1.0f * _formationSpacing;
-            float totalDepth = unitCount * spacing;
-            float startZ = totalDepth / 2 - spacing / 2;
-            
-            // Order by unit type priority (Pike > Infantry > Archer)
-            List<UnitModel> orderedUnits = OrderUnitsByTypePriority();
-            
-            for (int i = 0; i < orderedUnits.Count; i++)
-            {
-                UnitModel unit = orderedUnits[i];
-                int entityId = unit.Entity.Id;
-                
-                // Calculate position in column
-                float z = startZ - i * spacing;
-                Vector3 offset = new Vector3(0, 0, z);
-                
-                // Store offset
-                _formationOffsets[entityId] = offset;
-            }
-        }
-        
-        /// <summary>
-        /// Calculate circle formation (units in a circle around center)
-        /// </summary>
-        private void CalculateCircleFormation()
-        {
-            int unitCount = _unitModels.Count;
-            if (unitCount == 0) return;
-            
-            float spacing = 1.0f * _formationSpacing;
-            float radius = unitCount * spacing / (2 * Mathf.PI);
-            radius = Mathf.Max(radius, 2.0f * spacing); // Ensure minimum radius
-            
-            // First place units that should be in the center (like archers)
-            List<UnitModel> centerUnits = new List<UnitModel>();
-            List<UnitModel> circleUnits = new List<UnitModel>();
-            
-            // Archers in the center, others on the circle
-            foreach (var unit in _unitModels)
-            {
-                if (unit.UnitType == UnitType.Archer)
-                {
-                    centerUnits.Add(unit);
-                }
-                else
-                {
-                    circleUnits.Add(unit);
-                }
-            }
-            
-            // Place center units
-            for (int i = 0; i < centerUnits.Count; i++)
-            {
-                UnitModel unit = centerUnits[i];
-                int entityId = unit.Entity.Id;
-                
-                // Calculate position in center (small circle or grid)
-                float innerRadius = radius * 0.5f;
-                float angle = i * (2 * Mathf.PI / Mathf.Max(centerUnits.Count, 1));
-                
-                float x = Mathf.Sin(angle) * innerRadius;
-                float z = Mathf.Cos(angle) * innerRadius;
-                
-                Vector3 offset = new Vector3(x, 0, z);
-                _formationOffsets[entityId] = offset;
-            }
-            
-            // Place circle units
-            for (int i = 0; i < circleUnits.Count; i++)
-            {
-                UnitModel unit = circleUnits[i];
-                int entityId = unit.Entity.Id;
-                
-                // Calculate position on circle
-                float angle = i * (2 * Mathf.PI / Mathf.Max(circleUnits.Count, 1));
-                
-                float x = Mathf.Sin(angle) * radius;
-                float z = Mathf.Cos(angle) * radius;
-                
-                Vector3 offset = new Vector3(x, 0, z);
-                _formationOffsets[entityId] = offset;
-            }
-        }
-        
-        /// <summary>
-        /// Calculate phalanx formation (tight grid optimized for pike units)
-        /// </summary>
-        private void CalculatePhalanxFormation()
-        {
-            int unitCount = _unitModels.Count;
-            if (unitCount == 0) return;
-            
-            float spacing = 0.8f * _formationSpacing; // Tighter spacing for phalanx
-            
-            // Calculate grid dimensions
-            int rows = Mathf.CeilToInt(Mathf.Sqrt(unitCount));
-            int cols = Mathf.CeilToInt((float)unitCount / rows);
-            
-            // Sort units by type (Pike in front, then Infantry, then Archers)
-            List<UnitModel> orderedUnits = OrderUnitsByFormationPosition();
-            
-            // Assign positions in grid
-            for (int i = 0; i < orderedUnits.Count; i++)
-            {
-                UnitModel unit = orderedUnits[i];
-                int entityId = unit.Entity.Id;
-                
-                // Calculate row and column
-                int row = i / cols;
-                int col = i % cols;
-                
-                // Calculate position in grid
-                float x = (col - (cols - 1) / 2.0f) * spacing;
-                float z = (rows - 1) / 2.0f - row * spacing; // Front row has highest z
-                
-                Vector3 offset = new Vector3(x, 0, z);
-                _formationOffsets[entityId] = offset;
-            }
-        }
-        
-        /// <summary>
-        /// Calculate testudo formation (very tight defensive formation)
-        /// </summary>
-        private void CalculateTestudoFormation()
-        {
-            int unitCount = _unitModels.Count;
-            if (unitCount == 0) return;
-            
-            float spacing = 0.6f * _formationSpacing; // Very tight spacing for testudo
-            
-            // Calculate grid dimensions (more square-like)
-            int rows = Mathf.CeilToInt(Mathf.Sqrt(unitCount));
-            int cols = Mathf.CeilToInt((float)unitCount / rows);
-            
-            // Sort units by type (Infantry outside, Archers inside)
-            List<UnitModel> borderUnits = new List<UnitModel>();
-            List<UnitModel> innerUnits = new List<UnitModel>();
-            
-            foreach (var unit in _unitModels)
-            {
-                if (unit.UnitType == UnitType.Infantry || unit.UnitType == UnitType.Pike)
-                {
-                    borderUnits.Add(unit);
-                }
-                else
-                {
-                    innerUnits.Add(unit);
-                }
-            }
-            
-            // Assign border positions first
-            int borderIndex = 0;
-            
-            for (int r = 0; r < rows && borderIndex < borderUnits.Count; r++)
-            {
-                for (int c = 0; c < cols && borderIndex < borderUnits.Count; c++)
-                {
-                    // Only process border positions (first/last row, first/last column)
-                    if (r == 0 || r == rows - 1 || c == 0 || c == cols - 1)
+                case FormationType.Normal:
                     {
-                        UnitModel unit = borderUnits[borderIndex];
-                        int entityId = unit.Entity.Id;
-                        
-                        // Calculate position
-                        float x = (c - (cols - 1) / 2.0f) * spacing;
-                        float z = (rows - 1) / 2.0f - r * spacing;
-                        
-                        Vector3 offset = new Vector3(x, 0, z);
-                        _formationOffsets[entityId] = offset;
-                        
-                        borderIndex++;
+                        const int gridWidth = 3;
+                        int row = slotIndex / gridWidth;
+                        int col = slotIndex % gridWidth;
+                        float x = (col - 1) * spacing;
+                        float z = (row - 1) * spacing;
+                        return new Vector3(x, 0, z);
                     }
-                }
-            }
-            
-            // Assign inner positions
-            int innerIndex = 0;
-            
-            for (int r = 1; r < rows - 1 && innerIndex < innerUnits.Count; r++)
-            {
-                for (int c = 1; c < cols - 1 && innerIndex < innerUnits.Count; c++)
-                {
-                    UnitModel unit = innerUnits[innerIndex];
-                    int entityId = unit.Entity.Id;
                     
-                    // Calculate position
-                    float x = (c - (cols - 1) / 2.0f) * spacing;
-                    float z = (rows - 1) / 2.0f - r * spacing;
+                case FormationType.Phalanx:
+                case FormationType.Testudo:
+                    {
+                        int unitCount = _unitModels.Count;
+                        int width = Mathf.CeilToInt(Mathf.Sqrt(unitCount));
+                        int row = slotIndex / width;
+                        int col = slotIndex % width;
+                        float x = (col - (width - 1) * 0.5f) * spacing;
+                        float z = (row - ((unitCount - 1) / width) * 0.5f) * spacing;
+                        return new Vector3(x, 0, z);
+                    }
                     
-                    Vector3 offset = new Vector3(x, 0, z);
-                    _formationOffsets[entityId] = offset;
-                    
-                    innerIndex++;
-                }
-            }
-            
-            // If we have leftover units, place them in a simple grid
-            List<UnitModel> leftoverUnits = new List<UnitModel>();
-            leftoverUnits.AddRange(borderUnits.GetRange(borderIndex, Mathf.Max(0, borderUnits.Count - borderIndex)));
-            leftoverUnits.AddRange(innerUnits.GetRange(innerIndex, Mathf.Max(0, innerUnits.Count - innerIndex)));
-            
-            for (int i = 0; i < leftoverUnits.Count; i++)
-            {
-                UnitModel unit = leftoverUnits[i];
-                int entityId = unit.Entity.Id;
-                
-                // Calculate simple grid position
-                int row = i / cols;
-                int col = i % cols;
-                
-                float x = (col - (cols - 1) / 2.0f) * spacing;
-                float z = -rows * spacing - row * spacing; // Place behind main formation
-                
-                Vector3 offset = new Vector3(x, 0, z);
-                _formationOffsets[entityId] = offset;
+                default:
+                    return Vector3.zero;
             }
         }
         
         /// <summary>
-        /// Calculate normal formation (simple grid)
+        /// Update formation slots for all units
         /// </summary>
-        private void CalculateNormalFormation()
+        private void UpdateFormationSlots()
         {
-            int unitCount = _unitModels.Count;
-            if (unitCount == 0) return;
-            
-            float spacing = 1.0f * _formationSpacing;
-            
-            // Calculate grid dimensions
-            int cols = 3; // Fixed width of 3 units
-            int rows = Mathf.CeilToInt((float)unitCount / cols);
-            
-            // Sort units by type
-            List<UnitModel> orderedUnits = OrderUnitsByTypePriority();
-            
-            // Assign positions in grid
-            for (int i = 0; i < orderedUnits.Count; i++)
-            {
-                UnitModel unit = orderedUnits[i];
-                int entityId = unit.Entity.Id;
-                
-                // Calculate row and column
-                int row = i / cols;
-                int col = i % cols;
-                
-                // Calculate position in grid
-                float x = (col - (cols - 1) / 2.0f) * spacing;
-                float z = -row * spacing;
-                
-                Vector3 offset = new Vector3(x, 0, z);
-                _formationOffsets[entityId] = offset;
-            }
-        }
-        
-        /// <summary>
-        /// Order units by type priority (Pike > Infantry > Archer)
-        /// </summary>
-        private List<UnitModel> OrderUnitsByTypePriority()
-        {
-            List<UnitModel> ordered = new List<UnitModel>();
-            
-            // Add pikes first
-            ordered.AddRange(_unitModelsByType[UnitType.Pike]);
-            
-            // Add infantry next
-            ordered.AddRange(_unitModelsByType[UnitType.Infantry]);
-            
-            // Add archers last
-            ordered.AddRange(_unitModelsByType[UnitType.Archer]);
-            
-            return ordered;
-        }
-        
-        /// <summary>
-        /// Order units by formation position from SquadData
-        /// </summary>
-        private List<UnitModel> OrderUnitsByFormationPosition()
-        {
-            // Create a list to hold units in each position
-            Dictionary<FormationPosition, List<UnitModel>> positionGroups = new Dictionary<FormationPosition, List<UnitModel>>
-            {
-                { FormationPosition.Front, new List<UnitModel>() },
-                { FormationPosition.Middle, new List<UnitModel>() },
-                { FormationPosition.Back, new List<UnitModel>() },
-                { FormationPosition.Left, new List<UnitModel>() },
-                { FormationPosition.Right, new List<UnitModel>() },
-                { FormationPosition.Auto, new List<UnitModel>() }
-            };
-            
-            // Examine the unit compositions from squad data to determine positions
-            if (_squadData != null)
-            {
-                // Create a map of unit type to formation position
-                Dictionary<UnitType, FormationPosition> typePositions = new Dictionary<UnitType, FormationPosition>();
-                
-                foreach (var composition in _squadData.UnitCompositions)
-                {
-                    if (composition.UnitData != null && composition.FormationPosition != FormationPosition.Auto)
-                    {
-                        typePositions[composition.UnitData.UnitType] = composition.FormationPosition;
-                    }
-                }
-                
-                // Assign units to position groups
-                foreach (var unit in _unitModels)
-                {
-                    FormationPosition position;
-                    
-                    // Use the position from squad data if available
-                    if (typePositions.TryGetValue(unit.UnitType, out position))
-                    {
-                        positionGroups[position].Add(unit);
-                    }
-                    else
-                    {
-                        // Otherwise, use default positions based on unit type
-                        switch (unit.UnitType)
-                        {
-                            case UnitType.Pike:
-                                positionGroups[FormationPosition.Front].Add(unit);
-                                break;
-                            case UnitType.Infantry:
-                                positionGroups[FormationPosition.Middle].Add(unit);
-                                break;
-                            case UnitType.Archer:
-                                positionGroups[FormationPosition.Back].Add(unit);
-                                break;
-                            default:
-                                positionGroups[FormationPosition.Auto].Add(unit);
-                                break;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                // Without squad data, use default positions based on unit type
-                foreach (var unit in _unitModels)
-                {
-                    switch (unit.UnitType)
-                    {
-                        case UnitType.Pike:
-                            positionGroups[FormationPosition.Front].Add(unit);
-                            break;
-                        case UnitType.Infantry:
-                            positionGroups[FormationPosition.Middle].Add(unit);
-                            break;
-                        case UnitType.Archer:
-                            positionGroups[FormationPosition.Back].Add(unit);
-                            break;
-                        default:
-                            positionGroups[FormationPosition.Auto].Add(unit);
-                            break;
-                    }
-                }
-            }
-            
-            // Combine groups in formation order
-            List<UnitModel> ordered = new List<UnitModel>();
-            ordered.AddRange(positionGroups[FormationPosition.Front]);
-            ordered.AddRange(positionGroups[FormationPosition.Middle]);
-            ordered.AddRange(positionGroups[FormationPosition.Back]);
-            ordered.AddRange(positionGroups[FormationPosition.Left]);
-            ordered.AddRange(positionGroups[FormationPosition.Right]);
-            ordered.AddRange(positionGroups[FormationPosition.Auto]);
-            
-            return ordered;
+            // Recalculate formation offsets after changing slots
+            RecalculateAllFormationOffsets();
         }
         
         /// <summary>
@@ -1021,10 +708,11 @@ namespace VikingRaven.Units.Models
             int movingCount = 0;
             foreach (var unitModel in _unitModels)
             {
-                // if (!unitModel.HasReachedDestination)
-                // {
-                //     movingCount++;
-                // }
+                var navigationComponent = unitModel.Entity.GetComponent<NavigationComponent>();
+                if (navigationComponent != null && !navigationComponent.HasReachedDestination)
+                {
+                    movingCount++;
+                }
             }
             
             // If less than 20% of units are still moving, consider the squad stopped
@@ -1052,12 +740,13 @@ namespace VikingRaven.Units.Models
             bool anyEngaged = false;
             foreach (var unitModel in _unitModels)
             {
-                // if (unitModel.IsInCombat())
-                // {
-                //     anyEngaged = true;
-                //     _lastCombatTime = Time.time;
-                //     break;
-                // }
+                var combatComponent = unitModel.Entity.GetComponent<CombatComponent>();
+                if (combatComponent != null && combatComponent.IsInCombat)
+                {
+                    anyEngaged = true;
+                    _lastCombatTime = Time.time;
+                    break;
+                }
             }
             
             // If no units are engaged and it's been a while since combat, exit combat state
@@ -1080,8 +769,6 @@ namespace VikingRaven.Units.Models
         /// <summary>
         /// Get a unit model by entity ID
         /// </summary>
-        /// <param name="entityId">Entity ID</param>
-        /// <returns>Unit model or null if not found</returns>
         public UnitModel GetUnitById(int entityId)
         {
             if (_unitModelsById.TryGetValue(entityId, out UnitModel unitModel))
@@ -1094,8 +781,6 @@ namespace VikingRaven.Units.Models
         /// <summary>
         /// Get all unit models of a specific type
         /// </summary>
-        /// <param name="unitType">Unit type to filter by</param>
-        /// <returns>List of unit models</returns>
         public List<UnitModel> GetUnitsByType(UnitType unitType)
         {
             if (_unitModelsByType.TryGetValue(unitType, out var units))
@@ -1108,7 +793,6 @@ namespace VikingRaven.Units.Models
         /// <summary>
         /// Get all unit entities
         /// </summary>
-        /// <returns>List of entity references</returns>
         public List<IEntity> GetAllUnitEntities()
         {
             List<IEntity> result = new List<IEntity>();
@@ -1122,8 +806,6 @@ namespace VikingRaven.Units.Models
         /// <summary>
         /// Check if this squad has any units of a specific type
         /// </summary>
-        /// <param name="unitType">Unit type to check</param>
-        /// <returns>True if the squad has at least one unit of the specified type</returns>
         public bool HasUnitType(UnitType unitType)
         {
             return _unitModelsByType.TryGetValue(unitType, out var units) && units.Count > 0;
@@ -1132,7 +814,6 @@ namespace VikingRaven.Units.Models
         /// <summary>
         /// Calculate the average health percentage of the squad
         /// </summary>
-        /// <returns>Average health percentage (0-1)</returns>
         public float GetAverageHealthPercentage()
         {
             if (_unitModels.Count == 0) return 0f;
@@ -1152,7 +833,6 @@ namespace VikingRaven.Units.Models
         /// <summary>
         /// Check if this squad is still viable (has enough units)
         /// </summary>
-        /// <returns>True if the squad has enough units to be viable</returns>
         public bool IsViable()
         {
             return _unitModels.Count > 0;
@@ -1160,22 +840,25 @@ namespace VikingRaven.Units.Models
         
         /// <summary>
         /// Update the squad's data
+        /// ENHANCED: Reinitialize formation spacing when data changes
         /// </summary>
-        /// <param name="newData">New squad data configuration</param>
         public void UpdateData(SquadDataSO newData)
         {
             if (newData == null) return;
             
             _squadData = newData;
             
+            // Reinitialize formation spacing with new data
+            InitializeFormationSpacing(newData);
+            
             // Update formation settings
             _currentFormation = newData.DefaultFormationType;
-            _formationSpacing = newData.SpacingMultiplier;
             
-            // Recalculate formation offsets
+            // Recalculate formation offsets with new spacing
             RecalculateAllFormationOffsets();
             
-            Debug.Log($"SquadModel: Updated data for squad {_squadId} to {newData.DisplayName}");
+            Debug.Log($"SquadModel: Updated data for squad {_squadId} to {newData.DisplayName}, " +
+                     $"new spacing: {GetEffectiveFormationSpacing(_currentFormation):F2}");
         }
         
         /// <summary>
@@ -1205,11 +888,13 @@ namespace VikingRaven.Units.Models
         
         /// <summary>
         /// Create a string representation of the squad
+        /// ENHANCED: Shows formation spacing info
         /// </summary>
         public override string ToString()
         {
             return $"SquadModel(ID: {_squadId}, Units: {_unitModels.Count}, Formation: {_currentFormation}, " +
-                   $"Position: {_currentPosition}, Moving: {_isMoving}, Engaged: {_isEngaged})";
+                   $"Spacing: {GetEffectiveFormationSpacing(_currentFormation):F2}, Position: {_currentPosition}, " +
+                   $"Moving: {_isMoving}, Engaged: {_isEngaged})";
         }
     }
 }

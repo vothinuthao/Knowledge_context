@@ -1,43 +1,27 @@
 ﻿namespace VikingRaven.Units.Components
 {
     /// <summary>
-    /// Định nghĩa các loại đội hình có thể được sử dụng
+    /// Simplified formation types focusing on 3 core formations
+    /// Reduced from 7 to 3 formations for better focus and stability
     /// </summary>
     public enum FormationType
     {
         /// <summary>
-        /// Không có đội hình cụ thể
+        /// Standard 3x3 grid formation - balanced for movement and combat
+        /// Units arranged in a 3x3 grid with even spacing
         /// </summary>
-        None = 0,
+        Normal = 0,
         
         /// <summary>
-        /// Đội hình hàng ngang - các đơn vị xếp thành một hàng bên cạnh nhau
+        /// Phalanx formation - tight combat grid optimized for melee
+        /// Units arranged in close formation for maximum combat effectiveness
         /// </summary>
-        Line = 1,
+        Phalanx = 1,
         
         /// <summary>
-        /// Đội hình hàng dọc - các đơn vị xếp thành một cột trước sau
+        /// Testudo formation - very tight defensive formation
+        /// Units arranged in extremely close formation for maximum defense
         /// </summary>
-        Column = 2,
-        
-        /// <summary>
-        /// Đội hình lưới hình vuông - các đơn vị xếp thành đội hình vuông/chữ nhật chặt chẽ
-        /// </summary>
-        Phalanx = 3,
-        
-        /// <summary>
-        /// Đội hình rùa - các đơn vị xếp thành lưới chặt hơn, tập trung phòng thủ
-        /// </summary>
-        Testudo = 4,
-        
-        /// <summary>
-        /// Đội hình tròn - các đơn vị xếp thành vòng tròn để bảo vệ tâm
-        /// </summary>
-        Circle = 5,
-        
-        /// <summary>
-        /// Đội hình chuẩn 3x3 - lưới 3x3 cố định với 9 vị trí có khoảng cách đều
-        /// </summary>
-        Normal = 6
+        Testudo = 2
     }
 }

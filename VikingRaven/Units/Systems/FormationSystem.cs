@@ -2,72 +2,56 @@
 using UnityEngine;
 using VikingRaven.Core.ECS;
 using VikingRaven.Units.Components;
+using VikingRaven.Units.Data;
 
 namespace VikingRaven.Units.Systems
 {
     /// <summary>
-    /// Enhanced FormationSystem theo chuẩn ECS pattern
-    /// Xử lý tất cả logic formation, FormationComponent chỉ chứa data
-    /// Được inject dependency thay vì sử dụng singleton
+    /// Simplified FormationSystem focusing on 3 core formation types
+    /// Eliminates complexity and focuses on proper 3x3 grid positioning
+    /// Enhanced debugging and clearer formation logic flow
     /// </summary>
+    [SystemPriority(SystemPriority.Medium)]
     public class FormationSystem : BaseSystem
     {
         #region System Configuration
 
         [Header("System Settings")]
-        [Tooltip("Priority of this system in execution order")]
-        [SerializeField] private int _systemPriority = 100;
+        [Tooltip("Update frequency (lower = more frequent updates)")]
+        [SerializeField, Range(1, 10)] private int _updateFrequency = 3;
         
-        [Tooltip("Update frequency (frames) - lower is more frequent")]
-        [SerializeField, Range(1, 10)] private int _updateFrequency = 2;
+        [Tooltip("Enable debug visualization in Scene view")]
+        [SerializeField] private bool _enableDebugVisualization = true;
         
-        [Tooltip("Enable debug visualization")]
-        [SerializeField] private bool _enableDebugVisualization = false;
+        [Tooltip("Enable detailed logging for formation updates")]
+        [SerializeField] private bool _enableDetailedLogging = false;
 
         #endregion
 
-        #region Formation Configuration
+        #region Formation Data
 
-        [Header("Formation Templates")]
-        [Tooltip("Spacing between units in different formations")]
-        [SerializeField] private FormationSpacingConfig _spacingConfig;
-
-        #endregion
-
-        #region Runtime Data
-
-        // Squad formation tracking
+        // Squad formation tracking - simplified data structure
         private Dictionary<int, List<IEntity>> _squadMembers = new Dictionary<int, List<IEntity>>();
         private Dictionary<int, FormationType> _squadFormationTypes = new Dictionary<int, FormationType>();
         private Dictionary<int, Vector3> _squadCenters = new Dictionary<int, Vector3>();
         private Dictionary<int, Quaternion> _squadRotations = new Dictionary<int, Quaternion>();
+        private Dictionary<int, FormationSpacingConfig> _squadSpacingConfigs = new Dictionary<int, FormationSpacingConfig>();
         
-        // Formation templates cache
+        // Formation templates cache - only for 3 types
         private Dictionary<string, Vector3[]> _formationTemplateCache = new Dictionary<string, Vector3[]>();
         
-        // Update timing
+        // Update timing control
         private int _frameCounter = 0;
+        
+        // Performance tracking
+        private int _totalFormationUpdates = 0;
+        private float _lastUpdateTime = 0f;
 
         #endregion
 
-        #region Dependencies (Injected by GameManager)
+        #region Dependencies
 
         private EntityRegistry _entityRegistry;
-        
-        /// <summary>
-        /// Initialize system with dependencies (called by GameManager)
-        /// </summary>
-        public void Initialize(EntityRegistry entityRegistry)
-        {
-            _entityRegistry = entityRegistry;
-            Priority = _systemPriority;
-            
-            if (_spacingConfig == null)
-            {
-                _spacingConfig = CreateDefaultSpacingConfig();
-            }
-            
-        }
 
         #endregion
 
@@ -76,11 +60,17 @@ namespace VikingRaven.Units.Systems
         public override void Initialize()
         {
             base.Initialize();
-            if (!_entityRegistry)
+            
+            _entityRegistry = EntityRegistry.Instance;
+            if (_entityRegistry == null)
             {
-                Debug.LogWarning("FormationSystem: EntityRegistry not injected, using fallback");
-                _entityRegistry = EntityRegistry.Instance;
+                Debug.LogError("FormationSystem: EntityRegistry not found!");
+                return;
             }
+            
+            Priority = 150; // Set medium priority
+            
+            Debug.Log("FormationSystem: Simplified system initialized with 3 formation types (Normal, Phalanx, Testudo)");
         }
 
         public override void Execute()
@@ -89,9 +79,14 @@ namespace VikingRaven.Units.Systems
             if (_frameCounter % _updateFrequency != 0) return;
 
             if (_entityRegistry == null) return;
+            
+            _lastUpdateTime = Time.time;
+            
+            // Core formation update pipeline
             UpdateSquadMembership();
-            CalculateSquadTransforms();
+            CalculateSquadTransforms();  
             UpdateAllSquadFormations();
+            
             if (_enableDebugVisualization)
             {
                 DrawFormationDebug();
@@ -104,15 +99,23 @@ namespace VikingRaven.Units.Systems
 
         /// <summary>
         /// Update squad membership data from FormationComponents
+        /// Enhanced: Better error handling and validation
         /// </summary>
         private void UpdateSquadMembership()
         {
             _squadMembers.Clear();
             var formationEntities = _entityRegistry.GetEntitiesWithComponent<FormationComponent>();
+            
+            if (_enableDetailedLogging)
+            {
+                Debug.Log($"FormationSystem: Processing {formationEntities.Count} entities with FormationComponent");
+            }
+            
             foreach (var entity in formationEntities)
             {
                 var formationComponent = entity.GetComponent<FormationComponent>();
                 if (!formationComponent || !formationComponent.IsActive) continue;
+                
                 int squadId = formationComponent.SquadId;
                 if (squadId < 0) continue;
                 
@@ -122,8 +125,22 @@ namespace VikingRaven.Units.Systems
                     _squadMembers[squadId] = new List<IEntity>();
                 }
                 _squadMembers[squadId].Add(entity);
+                
+                // Store formation type and spacing config
                 _squadFormationTypes[squadId] = formationComponent.CurrentFormationType;
+                
+                // Try to get spacing config from formation component or entity
+                if (!_squadSpacingConfigs.ContainsKey(squadId))
+                {
+                    var spacingConfig = TryGetSpacingConfigForSquad(entity);
+                    if (spacingConfig != null)
+                    {
+                        _squadSpacingConfigs[squadId] = spacingConfig;
+                    }
+                }
             }
+            
+            // Sort members by formation slot index for consistent positioning
             foreach (var squadId in _squadMembers.Keys)
             {
                 _squadMembers[squadId].Sort((a, b) => {
@@ -131,7 +148,27 @@ namespace VikingRaven.Units.Systems
                     var formB = b.GetComponent<FormationComponent>();
                     return formA.FormationSlotIndex.CompareTo(formB.FormationSlotIndex);
                 });
+                
+                if (_enableDetailedLogging)
+                {
+                    Debug.Log($"FormationSystem: Squad {squadId} has {_squadMembers[squadId].Count} members, Formation: {_squadFormationTypes[squadId]}");
+                }
             }
+        }
+
+        /// <summary>
+        /// Try to get spacing config for a squad from various sources
+        /// </summary>
+        private FormationSpacingConfig TryGetSpacingConfigForSquad(IEntity entity)
+        {
+            // Method 1: Check if entity has direct reference to squad data
+            // This would require additional component or reference system
+            
+            // Method 2: Use default config if available
+            // In a production system, you might want to inject this or load from resources
+            
+            // For now, return null and handle in formation generation
+            return null;
         }
 
         #endregion
@@ -140,6 +177,7 @@ namespace VikingRaven.Units.Systems
 
         /// <summary>
         /// Calculate center position and rotation for each squad
+        /// Enhanced: More stable center calculation
         /// </summary>
         private void CalculateSquadTransforms()
         {
@@ -149,6 +187,7 @@ namespace VikingRaven.Units.Systems
                 var members = squadData.Value;
                  
                 if (members.Count == 0) continue;
+                
                 Vector3 centerSum = Vector3.zero;
                 Vector3 forwardSum = Vector3.zero;
                 int validCount = 0;
@@ -166,13 +205,14 @@ namespace VikingRaven.Units.Systems
                 
                 if (validCount > 0)
                 {
-                    // Store calculated transforms
+                    // Calculate average center
                     _squadCenters[squadId] = centerSum / validCount;
                     
-                    // Calculate average forward direction
+                    // Calculate stable forward direction
                     if (forwardSum.magnitude > 0.01f)
                     {
-                        _squadRotations[squadId] = Quaternion.LookRotation(forwardSum.normalized);
+                        Vector3 avgForward = forwardSum.normalized;
+                        _squadRotations[squadId] = Quaternion.LookRotation(avgForward, Vector3.up);
                     }
                     else
                     {
@@ -188,6 +228,7 @@ namespace VikingRaven.Units.Systems
 
         /// <summary>
         /// Update formation positions for all squads
+        /// Simplified: Focus on the 3 core formation types
         /// </summary>
         private void UpdateAllSquadFormations()
         {
@@ -206,19 +247,31 @@ namespace VikingRaven.Units.Systems
                     continue;
                 }
                 
+                // Get spacing config for this squad
+                FormationSpacingConfig spacingConfig = null;
+                _squadSpacingConfigs.TryGetValue(squadId, out spacingConfig);
+                
                 // Update formation for this squad
-                UpdateSquadFormation(squadId, members, squadCenter, squadRotation, formationType);
+                UpdateSquadFormation(squadId, members, squadCenter, squadRotation, formationType, spacingConfig);
+                _totalFormationUpdates++;
             }
         }
 
         /// <summary>
         /// Update formation for a specific squad
+        /// Enhanced: Better formation assignment with proper spacing
         /// </summary>
         private void UpdateSquadFormation(int squadId, List<IEntity> members, Vector3 squadCenter, 
-            Quaternion squadRotation, FormationType formationType)
+            Quaternion squadRotation, FormationType formationType, FormationSpacingConfig spacingConfig)
         {
-            // Get or generate formation template
-            Vector3[] formationTemplate = GetFormationTemplate(formationType, members.Count);
+            // Get formation template
+            Vector3[] formationTemplate = GetFormationTemplate(formationType, members.Count, spacingConfig);
+            
+            if (formationTemplate == null || formationTemplate.Length == 0)
+            {
+                Debug.LogWarning($"FormationSystem: Failed to generate template for {formationType} with {members.Count} units");
+                return;
+            }
             
             // Update each member's formation data
             for (int i = 0; i < members.Count && i < formationTemplate.Length; i++)
@@ -242,31 +295,46 @@ namespace VikingRaven.Units.Systems
                     squadRotation
                 );
                 
-                // Update formation state
+                // Calculate formation state
                 float distanceFromTarget = Vector3.Distance(transformComponent.Position, targetPosition);
-                bool isInPosition = distanceFromTarget < 0.5f; // Tolerance threshold
+                float tolerance = spacingConfig?.PositionTolerance ?? 0.3f;
+                bool isInPosition = distanceFromTarget < tolerance;
                 
                 formationComponent.UpdateFormationState(
                     isInPosition, 
                     distanceFromTarget, 
-                    false // Not transitioning in this simple implementation
+                    false
                 );
                 
-                // Set formation role based on position
+                // Set formation role
                 FormationRole role = DetermineFormationRole(i, members.Count, formationType);
                 formationComponent.SetFormationRole(role);
+                
+                // Update navigation component with formation info
+                var navigationComponent = entity.GetComponent<NavigationComponent>();
+                if (navigationComponent != null)
+                {
+                    navigationComponent.SetFormationInfo(
+                        squadCenter, 
+                        localOffset, 
+                        NavigationCommandPriority.Normal
+                    );
+                }
             }
         }
 
         #endregion
 
-        #region Formation Template Generation
+        #region Formation Template Generation (FOCUSED ON 3 TYPES)
 
         /// <summary>
         /// Get formation template for specific type and unit count
+        /// Simplified: Only handles Normal, Phalanx, Testudo
         /// </summary>
-        private Vector3[] GetFormationTemplate(FormationType formationType, int unitCount)
+        private Vector3[] GetFormationTemplate(FormationType formationType, int unitCount, FormationSpacingConfig spacingConfig)
         {
+            if (unitCount <= 0) return new Vector3[0];
+            
             string cacheKey = $"{formationType}_{unitCount}";
             
             // Check cache first
@@ -276,154 +344,129 @@ namespace VikingRaven.Units.Systems
             }
             
             // Generate new template
-            Vector3[] template = GenerateFormationTemplate(formationType, unitCount);
-            _formationTemplateCache[cacheKey] = template;
+            Vector3[] template = GenerateFormationTemplate(formationType, unitCount, spacingConfig);
+            if (template != null && template.Length > 0)
+            {
+                _formationTemplateCache[cacheKey] = template;
+            }
             
             return template;
         }
 
         /// <summary>
-        /// Generate formation template based on type and unit count
+        /// Generate formation template - ONLY FOR 3 TYPES
+        /// Focused implementation for Normal (3x3), Phalanx, and Testudo
         /// </summary>
-        private Vector3[] GenerateFormationTemplate(FormationType formationType, int unitCount)
+        private Vector3[] GenerateFormationTemplate(FormationType formationType, int unitCount, FormationSpacingConfig spacingConfig)
         {
             Vector3[] positions = new Vector3[unitCount];
-            // float spacing = _spacingConfig.GetSpacing(formationType);
             
-            // switch (formationType)
-            // {
-            //     case FormationType.Line:
-            //         GenerateLineFormation(positions, spacing);
-            //         break;
-            //         
-            //     case FormationType.Column:
-            //         GenerateColumnFormation(positions, spacing);
-            //         break;
-            //         
-            //     case FormationType.Phalanx:
-            //         GeneratePhalanxFormation(positions, spacing);
-            //         break;
-            //         
-            //     case FormationType.Testudo:
-            //         GenerateTestudoFormation(positions, spacing);
-            //         break;
-            //         
-            //     case FormationType.Circle:
-            //         GenerateCircleFormation(positions, spacing);
-            //         break;
-            //         
-            //     case FormationType.Normal:
-            //         GenerateNormalFormation(positions, spacing);
-            //         break;
-            //         
-            //     default:
-            //         GenerateLineFormation(positions, spacing); // Fallback
-            //         break;
-            // }
+            // Get spacing - use config if available, otherwise use defaults
+            float spacing = GetSpacingForFormation(formationType, spacingConfig);
+            
+            switch (formationType)
+            {
+                case FormationType.Normal:
+                    GenerateNormalFormation(positions, spacing);
+                    break;
+                    
+                case FormationType.Phalanx:
+                    GeneratePhalanxFormation(positions, spacing);
+                    break;
+                    
+                case FormationType.Testudo:
+                    GenerateTestudoFormation(positions, spacing);
+                    break;
+                    
+                default:
+                    Debug.LogWarning($"FormationSystem: Unknown formation type {formationType}, using Normal formation");
+                    GenerateNormalFormation(positions, spacing);
+                    break;
+            }
+            
+            if (_enableDetailedLogging)
+            {
+                Debug.Log($"FormationSystem: Generated {formationType} formation for {unitCount} units with {spacing} spacing");
+            }
             
             return positions;
         }
 
         /// <summary>
-        /// Generate line formation (horizontal line)
+        /// Get spacing for formation type from config or defaults
         /// </summary>
-        private void GenerateLineFormation(Vector3[] positions, float spacing)
+        private float GetSpacingForFormation(FormationType formationType, FormationSpacingConfig spacingConfig)
+        {
+            if (spacingConfig != null)
+            {
+                return spacingConfig.GetSpacing(formationType);
+            }
+            
+            // Default spacing values if no config available
+            return formationType switch
+            {
+                FormationType.Normal => 2.5f,
+                FormationType.Phalanx => 1.8f, 
+                FormationType.Testudo => 1.2f,
+                _ => 2.0f
+            };
+        }
+
+        /// <summary>
+        /// Generate Normal formation (3x3 grid)
+        /// ENHANCED: Perfect 3x3 grid with proper centering
+        /// </summary>
+        private void GenerateNormalFormation(Vector3[] positions, float spacing)
         {
             int count = positions.Length;
+            const int gridWidth = 3;
             
             for (int i = 0; i < count; i++)
             {
-                float x = (i - (count - 1) * 0.5f) * spacing;
-                positions[i] = new Vector3(x, 0, 0);
+                int row = i / gridWidth;
+                int col = i % gridWidth;
+                
+                // Center the grid around origin (0,0,0)
+                // For 3x3: positions will be (-1,-1), (-1,0), (-1,1), (0,-1), (0,0), (0,1), (1,-1), (1,0), (1,1)
+                float x = (col - 1) * spacing;  // -1, 0, 1 for columns 0, 1, 2
+                float z = (row - 1) * spacing;  // -1, 0, 1 for rows 0, 1, 2
+                
+                positions[i] = new Vector3(x, 0, z);
             }
         }
 
         /// <summary>
-        /// Generate column formation (vertical line)
-        /// </summary>
-        private void GenerateColumnFormation(Vector3[] positions, float spacing)
-        {
-            int count = positions.Length;
-            
-            for (int i = 0; i < count; i++)
-            {
-                float z = (i - (count - 1) * 0.5f) * spacing;
-                positions[i] = new Vector3(0, 0, z);
-            }
-        }
-
-        /// <summary>
-        /// Generate phalanx formation (tight grid)
+        /// Generate Phalanx formation (tight combat grid)
+        /// More compact than Normal formation for combat effectiveness
         /// </summary>
         private void GeneratePhalanxFormation(Vector3[] positions, float spacing)
         {
             int count = positions.Length;
             int width = Mathf.CeilToInt(Mathf.Sqrt(count));
+            int height = Mathf.CeilToInt((float)count / width);
             
             for (int i = 0; i < count; i++)
             {
                 int row = i / width;
                 int col = i % width;
                 
+                // Center the grid around origin
                 float x = (col - (width - 1) * 0.5f) * spacing;
-                float z = (row - ((count - 1) / width) * 0.5f) * spacing;
+                float z = (row - (height - 1) * 0.5f) * spacing;
                 
                 positions[i] = new Vector3(x, 0, z);
             }
         }
 
         /// <summary>
-        /// Generate testudo formation (very tight defensive grid)
+        /// Generate Testudo formation (very tight defensive grid)
+        /// Extremely compact formation for maximum defense
         /// </summary>
         private void GenerateTestudoFormation(Vector3[] positions, float spacing)
         {
-            // Similar to phalanx but with tighter spacing
-            GeneratePhalanxFormation(positions, spacing * 0.7f);
-        }
-
-        /// <summary>
-        /// Generate circle formation
-        /// </summary>
-        private void GenerateCircleFormation(Vector3[] positions, float spacing)
-        {
-            int count = positions.Length;
-            
-            if (count == 1)
-            {
-                positions[0] = Vector3.zero;
-                return;
-            }
-            
-            float radius = count * spacing / (2 * Mathf.PI);
-            radius = Mathf.Max(radius, spacing * 1.5f); // Minimum radius
-            
-            for (int i = 0; i < count; i++)
-            {
-                float angle = (i * 2 * Mathf.PI) / count;
-                float x = Mathf.Sin(angle) * radius;
-                float z = Mathf.Cos(angle) * radius;
-                
-                positions[i] = new Vector3(x, 0, z);
-            }
-        }
-
-        /// <summary>
-        /// Generate normal formation (3x3 grid)
-        /// </summary>
-        private void GenerateNormalFormation(Vector3[] positions, float spacing)
-        {
-            int count = positions.Length;
-            
-            for (int i = 0; i < count; i++)
-            {
-                int row = i / 3;
-                int col = i % 3;
-                
-                float x = (col - 1) * spacing;
-                float z = (row - 1) * spacing;
-                
-                positions[i] = new Vector3(x, 0, z);
-            }
+            // Use same grid logic as Phalanx but with the tighter spacing
+            // The spacing parameter already contains the reduced value from config
+            GeneratePhalanxFormation(positions, spacing);
         }
 
         #endregion
@@ -432,36 +475,30 @@ namespace VikingRaven.Units.Systems
 
         /// <summary>
         /// Determine formation role based on position and formation type
+        /// Simplified: Basic role assignment for 3 formation types
         /// </summary>
         private FormationRole DetermineFormationRole(int slotIndex, int totalUnits, FormationType formationType)
         {
             // Leader is always slot 0
-            if (slotIndex == 0)
-                return FormationRole.Leader;
+            if (slotIndex == 0) return FormationRole.Leader;
             
-            // Role assignment based on formation type
             switch (formationType)
             {
+                case FormationType.Normal:
+                    // For 3x3 grid: front row (slots 0,1,2), middle row (3,4,5), back row (6,7,8)
+                    if (slotIndex <= 2) return FormationRole.FrontLine;
+                    else if (slotIndex <= 5) return FormationRole.Follower;
+                    else return FormationRole.Support;
+                
                 case FormationType.Phalanx:
-                case FormationType.Testudo:
-                    // Front row units are front-line
+                    // Front units are front-line, others are followers
                     int width = Mathf.CeilToInt(Mathf.Sqrt(totalUnits));
-                    if (slotIndex < width)
-                        return FormationRole.FrontLine;
-                    else
-                        return FormationRole.Support;
+                    if (slotIndex < width) return FormationRole.FrontLine;
+                    else return FormationRole.Follower;
                 
-                case FormationType.Circle:
-                    return FormationRole.Flanker; // All circle units are flankers
-                
-                case FormationType.Line:
-                    return FormationRole.FrontLine; // All line units are front-line
-                
-                case FormationType.Column:
-                    if (slotIndex == 1) // Second unit in column
-                        return FormationRole.FrontLine;
-                    else
-                        return FormationRole.Support;
+                case FormationType.Testudo:
+                    // Very defensive - most units are support
+                    return FormationRole.Support;
                 
                 default:
                     return FormationRole.Follower;
@@ -470,44 +507,56 @@ namespace VikingRaven.Units.Systems
 
         #endregion
 
-        #region Public Interface (Called by GameManager/Other Systems)
+        #region Public Interface
 
         /// <summary>
         /// Force update formation for specific squad
+        /// Simplified: Clear interface for external systems
         /// </summary>
         public void UpdateSquadFormation(int squadId, FormationType newFormationType)
         {
-            if (_squadFormationTypes.ContainsKey(squadId))
+            if (squadId < 0) return;
+            
+            _squadFormationTypes[squadId] = newFormationType;
+            
+            // Update all components in this squad
+            if (_squadMembers.TryGetValue(squadId, out var members))
             {
-                _squadFormationTypes[squadId] = newFormationType;
-                
-                // Update all components in this squad
-                if (_squadMembers.TryGetValue(squadId, out var members))
+                foreach (var entity in members)
                 {
-                    foreach (var entity in members)
+                    var formationComponent = entity.GetComponent<FormationComponent>();
+                    if (formationComponent != null)
                     {
-                        var formationComponent = entity.GetComponent<FormationComponent>();
-                        if (formationComponent != null)
-                        {
-                            formationComponent.SetFormationType(newFormationType);
-                        }
+                        formationComponent.SetFormationType(newFormationType, true);
                     }
                 }
                 
-                // Clear template cache for this formation
-                string cachePattern = $"{newFormationType}_";
-                var keysToRemove = new List<string>();
-                foreach (var key in _formationTemplateCache.Keys)
+                Debug.Log($"FormationSystem: Updated squad {squadId} to formation {newFormationType} with {members.Count} units");
+            }
+            
+            // Clear cache for this formation type
+            ClearFormationCache(newFormationType);
+        }
+
+        /// <summary>
+        /// Clear formation cache for specific formation type
+        /// </summary>
+        private void ClearFormationCache(FormationType formationType)
+        {
+            var keysToRemove = new List<string>();
+            string cachePattern = $"{formationType}_";
+            
+            foreach (var key in _formationTemplateCache.Keys)
+            {
+                if (key.StartsWith(cachePattern))
                 {
-                    if (key.StartsWith(cachePattern))
-                    {
-                        keysToRemove.Add(key);
-                    }
+                    keysToRemove.Add(key);
                 }
-                foreach (var key in keysToRemove)
-                {
-                    _formationTemplateCache.Remove(key);
-                }
+            }
+            
+            foreach (var key in keysToRemove)
+            {
+                _formationTemplateCache.Remove(key);
             }
         }
 
@@ -516,7 +565,7 @@ namespace VikingRaven.Units.Systems
         /// </summary>
         public float GetSquadFormationEffectiveness(int squadId)
         {
-            if (!_squadMembers.TryGetValue(squadId, out var members))
+            if (!_squadMembers.TryGetValue(squadId, out var members) || members.Count == 0)
                 return 0f;
             
             float totalEffectiveness = 0f;
@@ -537,29 +586,11 @@ namespace VikingRaven.Units.Systems
 
         #endregion
 
-        #region Configuration
-
-        /// <summary>
-        /// Create default spacing configuration
-        /// </summary>
-        private FormationSpacingConfig CreateDefaultSpacingConfig()
-        {
-            var config = ScriptableObject.CreateInstance<FormationSpacingConfig>();
-            config.LineSpacing = 2.0f;
-            config.ColumnSpacing = 2.0f;
-            config.PhalanxSpacing = 1.5f;
-            config.TestudoSpacing = 1.0f;
-            config.CircleSpacing = 1.8f;
-            config.NormalSpacing = 2.0f;
-            return config;
-        }
-
-        #endregion
-
         #region Debug Visualization
 
         /// <summary>
         /// Draw debug visualization for formations
+        /// Enhanced: Better visual feedback with formation-specific colors
         /// </summary>
         private void DrawFormationDebug()
         {
@@ -569,9 +600,17 @@ namespace VikingRaven.Units.Systems
                 var members = squadData.Value;
                 
                 if (!_squadCenters.TryGetValue(squadId, out Vector3 center)) continue;
+                if (!_squadFormationTypes.TryGetValue(squadId, out FormationType formationType)) continue;
+                
+                // Get formation-specific color
+                Color formationColor = GetFormationDebugColor(formationType);
                 
                 // Draw squad center
-                Debug.DrawLine(center, center + Vector3.up * 2f, Color.yellow, 0.1f);
+                Debug.DrawLine(center, center + Vector3.up * 2f, formationColor, 0.1f);
+                
+                // Draw formation type indicator
+                Vector3 typeIndicator = center + Vector3.up * 2.5f;
+                Debug.DrawLine(center + Vector3.up * 2f, typeIndicator, formationColor, 0.1f);
                 
                 // Draw formation connections
                 for (int i = 0; i < members.Count; i++)
@@ -581,47 +620,88 @@ namespace VikingRaven.Units.Systems
                     
                     if (transformComponent != null && formationComponent != null)
                     {
-                        Vector3 unitPos = transformComponent.Position;
-                        Vector3 targetPos = formationComponent.TargetFormationPosition;
+                        Vector3 unitPos = transformComponent.Position + Vector3.up * 0.5f;
+                        Vector3 targetPos = formationComponent.TargetFormationPosition + Vector3.up * 0.5f;
+                        
+                        // Color coding: Green = in position, Yellow = moving, Red = far from target
+                        Color lineColor;
+                        if (formationComponent.IsInFormationPosition)
+                            lineColor = Color.green;
+                        else if (formationComponent.DistanceFromFormationPosition < 1f)
+                            lineColor = Color.yellow;
+                        else
+                            lineColor = Color.red;
                         
                         // Draw line from unit to formation target
-                        Color lineColor = formationComponent.IsInFormationPosition ? Color.green : Color.red;
                         Debug.DrawLine(unitPos, targetPos, lineColor, 0.1f);
                         
+                        // Draw slot number
+                        Debug.DrawLine(targetPos, targetPos + Vector3.up * 0.5f, formationColor, 0.1f);
                     }
                 }
             }
         }
 
-        #endregion
-    }
-
-    /// <summary>
-    /// Configuration class for formation spacing
-    /// </summary>
-    [System.Serializable]
-    public class FormationSpacingConfig : ScriptableObject
-    {
-        [Header("Formation Spacing Settings")]
-        public float LineSpacing = 2.0f;
-        public float ColumnSpacing = 2.0f;
-        public float PhalanxSpacing = 1.5f;
-        public float TestudoSpacing = 1.0f;
-        public float CircleSpacing = 1.8f;
-        public float NormalSpacing = 2.0f;
-        
-        public float GetSpacing(FormationType formationType)
+        /// <summary>
+        /// Get debug color for formation type
+        /// </summary>
+        private Color GetFormationDebugColor(FormationType formationType)
         {
-            switch (formationType)
+            return formationType switch
             {
-                case FormationType.Line: return LineSpacing;
-                case FormationType.Column: return ColumnSpacing;
-                case FormationType.Phalanx: return PhalanxSpacing;
-                case FormationType.Testudo: return TestudoSpacing;
-                case FormationType.Circle: return CircleSpacing;
-                case FormationType.Normal: return NormalSpacing;
-                default: return LineSpacing;
-            }
+                FormationType.Normal => Color.green,
+                FormationType.Phalanx => Color.red,
+                FormationType.Testudo => Color.blue,
+                _ => Color.white
+            };
         }
+
+        #endregion
+
+        #region Cleanup
+
+        public override void Cleanup()
+        {
+            base.Cleanup();
+            
+            _squadMembers.Clear();
+            _squadFormationTypes.Clear();
+            _squadCenters.Clear();
+            _squadRotations.Clear();
+            _squadSpacingConfigs.Clear();
+            _formationTemplateCache.Clear();
+            
+            Debug.Log("FormationSystem: Cleanup completed");
+        }
+
+        #endregion
+
+        #region Debug Info
+
+        /// <summary>
+        /// Get debug info about current formation system state
+        /// </summary>
+        public string GetDebugInfo()
+        {
+            string info = "=== Formation System Debug Info ===\n";
+            info += $"Active Squads: {_squadMembers.Count}\n";
+            info += $"Total Formation Updates: {_totalFormationUpdates}\n";
+            info += $"Cache Size: {_formationTemplateCache.Count}\n";
+            info += $"Last Update: {_lastUpdateTime:F2}s\n";
+            info += $"Update Frequency: Every {_updateFrequency} frames\n";
+            
+            foreach (var squadData in _squadMembers)
+            {
+                int squadId = squadData.Key;
+                var members = squadData.Value;
+                var formationType = _squadFormationTypes.GetValueOrDefault(squadId, FormationType.Normal);
+                
+                info += $"Squad {squadId}: {members.Count} units, {formationType} formation\n";
+            }
+            
+            return info;
+        }
+
+        #endregion
     }
 }
