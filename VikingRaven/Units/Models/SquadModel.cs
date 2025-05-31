@@ -8,6 +8,10 @@ using VikingRaven.Units.Models;
 
 namespace VikingRaven.Units.Models
 {
+    /// <summary>
+    /// FIXED: SquadModel with proper formation positioning logic
+    /// Ensures units are properly positioned in formation instead of stacking on one spot
+    /// </summary>
     public class SquadModel
     {
         private int _squadId;
@@ -23,8 +27,9 @@ namespace VikingRaven.Units.Models
         private float _formationSpacing;
         private FormationSpacingConfig _formationSpacingConfig;
         
-        // Formation offsets cache
+        // FIXED: Formation offsets cache with proper calculation
         private Dictionary<int, Vector3> _formationOffsets = new Dictionary<int, Vector3>();
+        private bool _formationDirty = true; // Track when formation needs recalculation
         
         // State tracking
         private bool _isMoving = false;
@@ -95,7 +100,7 @@ namespace VikingRaven.Units.Models
             // Set default formation from data if available
             _currentFormation = squadData != null 
                 ? squadData.DefaultFormationType 
-                : FormationType.Normal; // Changed from FormationType.Line to FormationType.Normal
+                : FormationType.Normal;
                 
             _isInitialized = true;
             
@@ -190,7 +195,7 @@ namespace VikingRaven.Units.Models
         }
         
         /// <summary>
-        /// Add a unit to the squad
+        /// FIXED: Add a unit to the squad with proper formation assignment
         /// </summary>
         public void AddUnit(UnitModel unitModel)
         {
@@ -210,8 +215,8 @@ namespace VikingRaven.Units.Models
                 _unitModelsByType[unitType].Add(unitModel);
             }
             
-            // Generate formation offset for the unit
-            UpdateUnitFormationOffset(unitModel);
+            // FIXED: Mark formation as dirty for recalculation
+            _formationDirty = true;
             
             // Subscribe to unit events
             SubscribeToUnitEvents(unitModel);
@@ -223,7 +228,7 @@ namespace VikingRaven.Units.Models
         }
         
         /// <summary>
-        /// Add multiple units to the squad
+        /// FIXED: Add multiple units to the squad with immediate formation calculation
         /// </summary>
         public void AddUnits(List<UnitModel> unitModels)
         {
@@ -234,8 +239,8 @@ namespace VikingRaven.Units.Models
                 AddUnit(unitModel);
             }
             
-            // After adding all units, calculate formation offsets
-            RecalculateAllFormationOffsets();
+            // FIXED: Force immediate formation calculation and application
+            ForceRecalculateFormation();
         }
         
         /// <summary>
@@ -263,6 +268,9 @@ namespace VikingRaven.Units.Models
                 // Remove from formation offsets
                 _formationOffsets.Remove(entityId);
                 
+                // Mark formation as dirty
+                _formationDirty = true;
+                
                 // Unsubscribe from events
                 UnsubscribeFromUnitEvents(unitModel);
                 
@@ -271,8 +279,8 @@ namespace VikingRaven.Units.Models
                 
                 Debug.Log($"SquadModel: Removed unit {entityId} from squad {_squadId}");
                 
-                // Update formation slots for remaining units
-                UpdateFormationSlots();
+                // FIXED: Recalculate formation for remaining units
+                ForceRecalculateFormation();
             }
         }
         
@@ -309,10 +317,8 @@ namespace VikingRaven.Units.Models
         {
             if (unitModel == null) return;
             
-            // Trigger event
             OnUnitDied?.Invoke(unitModel);
             
-            // Remove from squad
             RemoveUnit(unitModel);
             
             // Check if squad is empty
@@ -322,15 +328,10 @@ namespace VikingRaven.Units.Models
             }
         }
         
-        /// <summary>
-        /// Handle unit damage taken event
-        /// </summary>
         private void HandleUnitDamageTaken(float amount, IEntity source)
         {
             _totalDamageReceived += amount;
             OnDamageTaken?.Invoke(amount);
-            
-            // Check if we need to change combat state
             if (!_isEngaged)
             {
                 _isEngaged = true;
@@ -338,16 +339,11 @@ namespace VikingRaven.Units.Models
                 OnCombatStateChanged?.Invoke(true);
             }
         }
-        
-        /// <summary>
-        /// Handle unit attack event
-        /// </summary>
         private void HandleUnitAttackPerformed(IEntity target, float damage)
         {
             _totalDamageDealt += damage;
             OnDamageDealt?.Invoke(damage);
             
-            // Update last combat time
             _lastCombatTime = Time.time;
             
             // Check if target died
@@ -358,11 +354,6 @@ namespace VikingRaven.Units.Models
                 _combatStreak++;
             }
         }
-        
-        /// <summary>
-        /// Set the formation type for the squad
-        /// ENHANCED: Uses new spacing calculation system
-        /// </summary>
         public void SetFormation(FormationType formationType)
         {
             if (_currentFormation == formationType) return;
@@ -370,114 +361,79 @@ namespace VikingRaven.Units.Models
             FormationType oldFormation = _currentFormation;
             _currentFormation = formationType;
             _isReforming = true;
+            _formationDirty = true;
+            ForceRecalculateFormation();
             
-            // Recalculate formation offsets for all units with new spacing
-            RecalculateAllFormationOffsets();
-            
-            // Trigger event
             OnFormationChanged?.Invoke(formationType);
             
             Debug.Log($"SquadModel: Changed formation of squad {_squadId} from {oldFormation} to {formationType}, " +
                      $"new spacing: {GetEffectiveFormationSpacing(formationType):F2}");
         }
-        
-        /// <summary>
-        /// Set the target position for the squad
-        /// </summary>
         public void SetTargetPosition(Vector3 position)
         {
-            if (_currentPosition == position) return;
+            if (Vector3.Distance(_currentPosition, position) < 0.1f) return;
             
             _currentPosition = position;
             _isMoving = true;
+            _formationDirty = true;
             
-            // Update formation positions for all units
-            UpdateAllUnitPositions();
+            ForceRecalculateFormation();
             
-            // Trigger event
             OnPositionChanged?.Invoke(position);
             
             Debug.Log($"SquadModel: Set target position of squad {_squadId} to {position}");
         }
         
-        /// <summary>
-        /// Set the target rotation for the squad
-        /// </summary>
         public void SetTargetRotation(Quaternion rotation)
         {
-            if (_currentRotation == rotation) return;
+            if (Quaternion.Angle(_currentRotation, rotation) < 1f) return;
             
             _currentRotation = rotation;
+            _formationDirty = true;
             
-            // Update formation positions with new rotation
-            UpdateAllUnitPositions();
+            ForceRecalculateFormation();
         }
-        
-        /// <summary>
-        /// Update all unit positions based on formation
-        /// </summary>
-        private void UpdateAllUnitPositions()
+        public void ForceRecalculateFormation()
         {
-            foreach (var unitModel in _unitModels)
-            {
-                int entityId = unitModel.Entity.Id;
-                
-                if (_formationOffsets.TryGetValue(entityId, out Vector3 offset))
-                {
-                    var navigationComponent = unitModel.Entity.GetComponent<NavigationComponent>();
-                    if (navigationComponent != null)
-                    {
-                        // Set formation info with squad center, formation offset
-                        navigationComponent.SetFormationInfo(
-                            _currentPosition, 
-                            offset, 
-                            NavigationCommandPriority.High
-                        );
-                    }
-                }
-            }
-        }
-        
-        /// <summary>
-        /// Recalculate formation offsets for all units
-        /// ENHANCED: Uses new spacing calculation system
-        /// </summary>
-        private void RecalculateAllFormationOffsets()
-        {
-            // Clear existing offsets
+            if (_unitModels.Count == 0) return;
+            
+            // Step 1: Clear existing offsets
             _formationOffsets.Clear();
+            CalculateFormationOffsets();
             
-            // Calculate new offsets based on formation type
+            ApplyFormationOffsetsToUnits();
+            
+            // Step 4: Mark formation as clean
+            _formationDirty = false;
+            
+            Debug.Log($"SquadModel: Force recalculated formation for squad {_squadId} with {_unitModels.Count} units " +
+                     $"in {_currentFormation} formation");
+        }
+        
+        private void CalculateFormationOffsets()
+        {
+            if (_unitModels.Count == 0) return;
+            
+            float spacing = GetEffectiveFormationSpacing(_currentFormation);
+            
             switch (_currentFormation)
             {
                 case FormationType.Normal:
-                    CalculateNormalFormation();
+                    CalculateNormalFormationOffsets(spacing);
                     break;
                 case FormationType.Phalanx:
-                    CalculatePhalanxFormation();
+                    CalculatePhalanxFormationOffsets(spacing);
                     break;
                 case FormationType.Testudo:
-                    CalculateTestudoFormation();
+                    CalculateTestudoFormationOffsets(spacing);
                     break;
                 default:
-                    CalculateNormalFormation(); // Default to normal formation
+                    CalculateNormalFormationOffsets(spacing);
                     break;
             }
-            
-            // Apply offsets to formation components
-            ApplyFormationOffsets();
         }
-        
-        /// <summary>
-        /// Calculate normal formation (3x3 grid)
-        /// ENHANCED: Uses effective spacing calculation
-        /// </summary>
-        private void CalculateNormalFormation()
+        private void CalculateNormalFormationOffsets(float spacing)
         {
-            int unitCount = _unitModels.Count;
-            if (unitCount == 0) return;
-            
-            float spacing = GetEffectiveFormationSpacing(FormationType.Normal);
             const int gridWidth = 3;
             
             for (int i = 0; i < _unitModels.Count; i++)
@@ -485,28 +441,40 @@ namespace VikingRaven.Units.Models
                 UnitModel unit = _unitModels[i];
                 int entityId = unit.Entity.Id;
                 
-                int row = i / gridWidth;
-                int col = i % gridWidth;
+                // FIXED: Assign leader to center position (slot 4 in 3x3 grid)
+                int slotIndex;
+                if (i == 0) // First unit is leader, goes to center
+                {
+                    slotIndex = 4; // Center of 3x3 grid
+                }
+                else if (i <= 8) // Other units fill remaining slots
+                {
+                    slotIndex = i < 4 ? i : i + 1; // Skip slot 4 (reserved for leader)
+                }
+                else // Extra units beyond 9 wrap around
+                {
+                    slotIndex = (i - 1) % 8; // Wrap around non-center positions
+                    if (slotIndex >= 4) slotIndex++; // Skip center slot
+                }
                 
-                // Center the grid around origin
-                float x = (col - 1) * spacing;  // -1, 0, 1 for columns 0, 1, 2
-                float z = (row - 1) * spacing;  // -1, 0, 1 for rows 0, 1, 2
+                int row = slotIndex / gridWidth;
+                int col = slotIndex % gridWidth;
+                
+                // Center the grid around origin (squad center)
+                float x = (col - 1) * spacing; 
+                float z = (row - 1) * spacing;
                 
                 Vector3 offset = new Vector3(x, 0, z);
                 _formationOffsets[entityId] = offset;
+                
+                Debug.Log($"SquadModel: Unit {entityId} (slot {i}) assigned to grid position [{row},{col}] " +
+                         $"with offset {offset}");
             }
         }
         
-        /// <summary>
-        /// Calculate phalanx formation (tight combat grid)
-        /// ENHANCED: Uses effective spacing calculation
-        /// </summary>
-        private void CalculatePhalanxFormation()
+        private void CalculatePhalanxFormationOffsets(float spacing)
         {
             int unitCount = _unitModels.Count;
-            if (unitCount == 0) return;
-            
-            float spacing = GetEffectiveFormationSpacing(FormationType.Phalanx);
             int width = Mathf.CeilToInt(Mathf.Sqrt(unitCount));
             int height = Mathf.CeilToInt((float)unitCount / width);
             
@@ -527,175 +495,90 @@ namespace VikingRaven.Units.Models
             }
         }
         
-        /// <summary>
-        /// Calculate testudo formation (very tight defensive grid)
-        /// ENHANCED: Uses effective spacing calculation
-        /// </summary>
-        private void CalculateTestudoFormation()
+        private void CalculateTestudoFormationOffsets(float spacing)
         {
-            // Similar to phalanx but with tighter spacing
-            int unitCount = _unitModels.Count;
-            if (unitCount == 0) return;
-            
-            float spacing = GetEffectiveFormationSpacing(FormationType.Testudo);
-            int width = Mathf.CeilToInt(Mathf.Sqrt(unitCount));
-            int height = Mathf.CeilToInt((float)unitCount / width);
-            
-            for (int i = 0; i < _unitModels.Count; i++)
-            {
-                UnitModel unit = _unitModels[i];
-                int entityId = unit.Entity.Id;
-                
-                int row = i / width;
-                int col = i % width;
-                
-                // Center the grid around origin
-                float x = (col - (width - 1) * 0.5f) * spacing;
-                float z = (row - (height - 1) * 0.5f) * spacing;
-                
-                Vector3 offset = new Vector3(x, 0, z);
-                _formationOffsets[entityId] = offset;
-            }
+            // Similar to phalanx but with the tighter spacing already applied
+            CalculatePhalanxFormationOffsets(spacing);
         }
         
-        /// <summary>
-        /// Apply formation offsets to all units
-        /// </summary>
-        private void ApplyFormationOffsets()
+        private void ApplyFormationOffsetsToUnits()
         {
             foreach (var unitModel in _unitModels)
             {
-                UpdateUnitFormationOffset(unitModel);
-            }
-        }
-        
-        /// <summary>
-        /// Update formation offset for a specific unit
-        /// </summary>
-        private void UpdateUnitFormationOffset(UnitModel unitModel)
-        {
-            if (unitModel == null || unitModel.Entity == null) return;
-            
-            int entityId = unitModel.Entity.Id;
-            
-            // Get formation offset
-            if (_formationOffsets.TryGetValue(entityId, out Vector3 offset))
-            {
-                var formationComponent = unitModel.Entity.GetComponent<FormationComponent>();
-                if (formationComponent != null)
+                int entityId = unitModel.Entity.Id;
+                
+                if (_formationOffsets.TryGetValue(entityId, out Vector3 offset))
                 {
-                    formationComponent.SetFormationOffset(offset, true); // Use smooth transition
-                }
-            }
-            else
-            {
-                // Calculate new offset for this unit
-                int slotIndex = _unitModels.IndexOf(unitModel);
-                if (slotIndex >= 0)
-                {
-                    Vector3 newOffset = CalculateFormationOffsetForSlot(slotIndex, unitModel.UnitType);
-                    _formationOffsets[entityId] = newOffset;
-                    
+                    // FIXED: Apply to FormationComponent first
                     var formationComponent = unitModel.Entity.GetComponent<FormationComponent>();
                     if (formationComponent != null)
                     {
-                        formationComponent.SetFormationOffset(newOffset, false); // No transition for initial setup
+                        formationComponent.SetFormationOffset(offset, true); // Use smooth transition
+                        formationComponent.SetSquadId(_squadId);
+                        formationComponent.SetFormationType(_currentFormation);
+                    }
+                    
+                    // FIXED: Apply to NavigationComponent to actually move the unit
+                    var navigationComponent = unitModel.Entity.GetComponent<NavigationComponent>();
+                    if (navigationComponent != null)
+                    {
+                        navigationComponent.SetFormationInfo(
+                            _currentPosition,  // Squad center
+                            offset,           // Formation offset
+                            NavigationCommandPriority.High
+                        );
+                        
+                        Debug.Log($"SquadModel: Applied formation offset {offset} to unit {entityId} " +
+                                 $"at squad position {_currentPosition}");
                     }
                 }
             }
         }
         
-        /// <summary>
-        /// Calculate offset for a specific slot and unit type
-        /// </summary>
-        private Vector3 CalculateFormationOffsetForSlot(int slotIndex, UnitType unitType)
-        {
-            float spacing = GetEffectiveFormationSpacing(_currentFormation);
-            
-            switch (_currentFormation)
-            {
-                case FormationType.Normal:
-                    {
-                        const int gridWidth = 3;
-                        int row = slotIndex / gridWidth;
-                        int col = slotIndex % gridWidth;
-                        float x = (col - 1) * spacing;
-                        float z = (row - 1) * spacing;
-                        return new Vector3(x, 0, z);
-                    }
-                    
-                case FormationType.Phalanx:
-                case FormationType.Testudo:
-                    {
-                        int unitCount = _unitModels.Count;
-                        int width = Mathf.CeilToInt(Mathf.Sqrt(unitCount));
-                        int row = slotIndex / width;
-                        int col = slotIndex % width;
-                        float x = (col - (width - 1) * 0.5f) * spacing;
-                        float z = (row - ((unitCount - 1) / width) * 0.5f) * spacing;
-                        return new Vector3(x, 0, z);
-                    }
-                    
-                default:
-                    return Vector3.zero;
-            }
-        }
-        
-        /// <summary>
-        /// Update formation slots for all units
-        /// </summary>
-        private void UpdateFormationSlots()
-        {
-            // Recalculate formation offsets after changing slots
-            RecalculateAllFormationOffsets();
-        }
-        
-        /// <summary>
-        /// Update the squad's state (should be called each frame)
-        /// </summary>
         public void Update()
         {
-            // Update position based on average of units
+            if (_formationDirty)
+            {
+                ForceRecalculateFormation();
+            }
             UpdateCurrentPosition();
-            
-            // Update moving state
             UpdateMovingState();
-            
-            // Update engaged state
             UpdateEngagedState();
-            
-            // Complete reformation if necessary
             if (_isReforming && Time.time - _lastCombatTime > 1.0f)
             {
                 _isReforming = false;
             }
         }
         
-        /// <summary>
-        /// Update the current position based on unit positions
-        /// </summary>
         private void UpdateCurrentPosition()
         {
             if (_unitModels.Count == 0) return;
             
             Vector3 sum = Vector3.zero;
+            int validCount = 0;
+            
             foreach (var unitModel in _unitModels)
             {
-                sum += unitModel.Position;
+                if (unitModel?.Entity != null)
+                {
+                    var transformComponent = unitModel.Entity.GetComponent<TransformComponent>();
+                    if (transformComponent != null)
+                    {
+                        sum += transformComponent.Position;
+                        validCount++;
+                    }
+                }
             }
             
-            Vector3 averagePosition = sum / _unitModels.Count;
-            
-            // Only update if position has changed significantly
-            if (Vector3.Distance(_currentPosition, averagePosition) > 0.5f && !_isMoving)
+            if (validCount > 0)
             {
-                _currentPosition = averagePosition;
+                Vector3 averagePosition = sum / validCount;
+                if (Vector3.Distance(_currentPosition, averagePosition) > 0.5f && !_isMoving)
+                {
+                    _currentPosition = averagePosition;
+                }
             }
         }
-        
-        /// <summary>
-        /// Update the moving state based on unit navigation
-        /// </summary>
         private void UpdateMovingState()
         {
             if (_unitModels.Count == 0)
@@ -853,9 +736,10 @@ namespace VikingRaven.Units.Models
             
             // Update formation settings
             _currentFormation = newData.DefaultFormationType;
+            _formationDirty = true;
             
-            // Recalculate formation offsets with new spacing
-            RecalculateAllFormationOffsets();
+            // FIXED: Force immediate recalculation with new spacing
+            ForceRecalculateFormation();
             
             Debug.Log($"SquadModel: Updated data for squad {_squadId} to {newData.DisplayName}, " +
                      $"new spacing: {GetEffectiveFormationSpacing(_currentFormation):F2}");

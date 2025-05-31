@@ -6,11 +6,6 @@ using VikingRaven.Units.Components;
 
 namespace VikingRaven.Units.Data
 {
-    /// <summary>
-    /// Enhanced SquadDataSO with integrated FormationSpacingConfig
-    /// FIXED: Added SpacingMultiplier property for SquadModel compatibility
-    /// Maintains backward compatibility while adding new formation system
-    /// </summary>
     [CreateAssetMenu(fileName = "NewSquadData", menuName = "VikingRaven/Squad Data SO")]
     public class SquadDataSO : SerializedScriptableObject
     {

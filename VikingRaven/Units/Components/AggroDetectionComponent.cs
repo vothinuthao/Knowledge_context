@@ -22,8 +22,7 @@ namespace VikingRaven.Units.Components
             _enemiesInRange ??= new List<IEntity>();
             if (_enemyLayers == 0)
             {
-                _enemyLayers = LayerMask.GetMask("Enemy"); // Hoặc layer khác phù hợp với game của bạn
-                Debug.LogWarning("AggroDetectionComponent: Enemy layer not specified, using default 'Unit' layer");
+                _enemyLayers = LayerMask.GetMask("Enemy"); 
             }
         }
 
