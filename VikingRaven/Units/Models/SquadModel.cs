@@ -78,26 +78,16 @@ namespace VikingRaven.Units.Models
         public IReadOnlyList<UnitModel> Units => _unitModels;
         public IReadOnlyDictionary<int, Vector3> FormationOffsets => _formationOffsets;
         
-        /// <summary>
-        /// ENHANCED: Constructor with Formation Config Integration
-        /// Maintains backward compatibility with legacy SpacingMultiplier
-        /// </summary>
         public SquadModel(int squadId, SquadDataSO squadData, Vector3 position, Quaternion rotation)
         {
             _squadId = squadId;
             _squadData = squadData;
             _currentPosition = position;
             _currentRotation = rotation;
-            
-            // Initialize dictionaries for unit types
             _unitModelsByType[UnitType.Infantry] = new List<UnitModel>();
             _unitModelsByType[UnitType.Archer] = new List<UnitModel>();
             _unitModelsByType[UnitType.Pike] = new List<UnitModel>();
-            
-            // FIXED: Initialize formation spacing - supports both systems
             InitializeFormationSpacing(squadData);
-            
-            // Set default formation from data if available
             _currentFormation = squadData != null 
                 ? squadData.DefaultFormationType 
                 : FormationType.Normal;
@@ -107,60 +97,31 @@ namespace VikingRaven.Units.Models
             Debug.Log($"SquadModel: Created squad {squadId} with formation {_currentFormation}, " +
                      $"spacing: {GetEffectiveFormationSpacing(_currentFormation):F2}");
         }
-        
-        /// <summary>
-        /// FIXED: Initialize formation spacing from squadData
-        /// Supports both legacy SpacingMultiplier and new FormationSpacingConfig
-        /// </summary>
         private void InitializeFormationSpacing(SquadDataSO squadData)
         {
             if (squadData != null)
             {
-                // FIXED: Get SpacingMultiplier from squadData (legacy compatibility)
                 _formationSpacing = squadData.SpacingMultiplier;
-                
-                // NEW: Get FormationSpacingConfig for enhanced formation control
                 _formationSpacingConfig = squadData.FormationSpacingConfig;
-                
-                if (_formationSpacingConfig != null)
-                {
-                    Debug.Log($"SquadModel: Using FormationSpacingConfig '{_formationSpacingConfig.name}' " +
-                             $"with base multiplier {_formationSpacing:F2}");
-                }
-                else
-                {
-                    Debug.Log($"SquadModel: Using legacy spacing multiplier {_formationSpacing:F2}");
-                }
             }
             else
             {
-                // Fallback values
                 _formationSpacing = 1.0f;
                 _formationSpacingConfig = null;
-                Debug.LogWarning("SquadModel: No squad data provided, using default spacing");
             }
         }
-        
-        /// <summary>
-        /// ENHANCED: Get effective formation spacing for specific formation type
-        /// Combines legacy SpacingMultiplier with new FormationSpacingConfig
-        /// </summary>
-        public float GetEffectiveFormationSpacing(FormationType formationType)
+
+        private float GetEffectiveFormationSpacing(FormationType formationType)
         {
             if (_squadData != null)
             {
-                // Use SquadDataSO method which handles both legacy and new system
                 return _squadData.GetFormationSpacing(formationType);
             }
             
-            // Fallback calculation if no squad data
             float baseSpacing = GetLegacyFormationSpacing(formationType);
             return baseSpacing * _formationSpacing;
         }
         
-        /// <summary>
-        /// Legacy formation spacing calculation for fallback
-        /// </summary>
         private float GetLegacyFormationSpacing(FormationType formationType)
         {
             return formationType switch
@@ -171,11 +132,6 @@ namespace VikingRaven.Units.Models
                 _ => 2.0f
             };
         }
-        
-        /// <summary>
-        /// ENHANCED: Get position tolerance for formation positioning
-        /// Uses FormationSpacingConfig if available, otherwise uses default
-        /// </summary>
         public float GetPositionTolerance()
         {
             if (_squadData != null)
@@ -183,53 +139,25 @@ namespace VikingRaven.Units.Models
                 return _squadData.GetPositionTolerance();
             }
             
-            return 0.3f; // Default tolerance
+            return 0.3f; 
         }
-        
-        /// <summary>
-        /// Check if squad has enhanced formation configuration
-        /// </summary>
-        public bool HasFormationConfig()
-        {
-            return _formationSpacingConfig != null;
-        }
-        
-        /// <summary>
-        /// FIXED: Add a unit to the squad with proper formation assignment
-        /// </summary>
         public void AddUnit(UnitModel unitModel)
         {
             if (unitModel == null || unitModel.Entity == null) return;
-            
-            // Skip if already in the squad
             if (_unitModelsById.ContainsKey(unitModel.Entity.Id)) return;
             
-            // Add to collections
             _unitModels.Add(unitModel);
             _unitModelsById[unitModel.Entity.Id] = unitModel;
             
-            // Add to type-specific collection
             UnitType unitType = unitModel.UnitType;
             if (_unitModelsByType.ContainsKey(unitType))
             {
                 _unitModelsByType[unitType].Add(unitModel);
             }
-            
-            // FIXED: Mark formation as dirty for recalculation
             _formationDirty = true;
-            
-            // Subscribe to unit events
             SubscribeToUnitEvents(unitModel);
-            
-            // Trigger event
             OnUnitAdded?.Invoke(unitModel);
-            
-            Debug.Log($"SquadModel: Added unit {unitModel.Entity.Id} to squad {_squadId}, slot {_unitModels.Count - 1}");
         }
-        
-        /// <summary>
-        /// FIXED: Add multiple units to the squad with immediate formation calculation
-        /// </summary>
         public void AddUnits(List<UnitModel> unitModels)
         {
             if (unitModels == null) return;
@@ -239,13 +167,9 @@ namespace VikingRaven.Units.Models
                 AddUnit(unitModel);
             }
             
-            // FIXED: Force immediate formation calculation and application
             ForceRecalculateFormation();
         }
         
-        /// <summary>
-        /// Remove a unit from the squad
-        /// </summary>
         public void RemoveUnit(UnitModel unitModel)
         {
             if (unitModel == null || unitModel.Entity == null) return;
@@ -254,65 +178,37 @@ namespace VikingRaven.Units.Models
             
             if (_unitModelsById.ContainsKey(entityId))
             {
-                // Remove from collections
                 _unitModels.Remove(unitModel);
                 _unitModelsById.Remove(entityId);
                 
-                // Remove from type-specific collection
                 UnitType unitType = unitModel.UnitType;
                 if (_unitModelsByType.ContainsKey(unitType))
                 {
                     _unitModelsByType[unitType].Remove(unitModel);
                 }
-                
-                // Remove from formation offsets
                 _formationOffsets.Remove(entityId);
                 
-                // Mark formation as dirty
                 _formationDirty = true;
-                
-                // Unsubscribe from events
                 UnsubscribeFromUnitEvents(unitModel);
-                
-                // Trigger event
                 OnUnitRemoved?.Invoke(unitModel);
-                
-                Debug.Log($"SquadModel: Removed unit {entityId} from squad {_squadId}");
-                
-                // FIXED: Recalculate formation for remaining units
                 ForceRecalculateFormation();
             }
         }
-        
-        /// <summary>
-        /// Subscribe to unit events
-        /// </summary>
         private void SubscribeToUnitEvents(UnitModel unitModel)
         {
             if (unitModel == null) return;
-            
-            // Subscribe to damage and death events
             unitModel.OnDamageTaken += HandleUnitDamageTaken;
             unitModel.OnDeath += () => HandleUnitDeath(unitModel);
             unitModel.OnAttackPerformed += HandleUnitAttackPerformed;
         }
-        
-        /// <summary>
-        /// Unsubscribe from unit events
-        /// </summary>
         private void UnsubscribeFromUnitEvents(UnitModel unitModel)
         {
             if (unitModel == null) return;
-            
-            // Unsubscribe from events
             unitModel.OnDamageTaken -= HandleUnitDamageTaken;
+            // ReSharper disable once EventUnsubscriptionViaAnonymousDelegate
             unitModel.OnDeath -= () => HandleUnitDeath(unitModel);
             unitModel.OnAttackPerformed -= HandleUnitAttackPerformed;
         }
-        
-        /// <summary>
-        /// Handle unit death event
-        /// </summary>
         private void HandleUnitDeath(UnitModel unitModel)
         {
             if (unitModel == null) return;
@@ -320,8 +216,6 @@ namespace VikingRaven.Units.Models
             OnUnitDied?.Invoke(unitModel);
             
             RemoveUnit(unitModel);
-            
-            // Check if squad is empty
             if (_unitModels.Count == 0)
             {
                 Debug.Log($"SquadModel: Squad {_squadId} has no more units");

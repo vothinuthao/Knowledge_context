@@ -13,7 +13,7 @@ using VikingRaven.Units.Systems;
 
 namespace VikingRaven.Game
 {
-    public class OptimizedGameManager : MonoBehaviour
+    public class GameManager : MonoBehaviour
     {
         #region Game State Management
         

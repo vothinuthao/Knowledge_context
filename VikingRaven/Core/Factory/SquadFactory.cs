@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 using Sirenix.OdinInspector;
 using Core.Utils;
@@ -7,86 +8,53 @@ using VikingRaven.Core.ECS;
 using VikingRaven.Units.Data;
 using VikingRaven.Units.Models;
 using VikingRaven.Units.Components;
+using Random = UnityEngine.Random;
 
 namespace VikingRaven.Core.Factory
 {
-    /// <summary>
-    /// Enhanced Squad Factory - Creates squads with proper formation prefabs
-    /// ENHANCED: Now creates squad GameObjects and spawns units in proper formation positions
-    /// Maintains object pooling while providing better squad management
-    /// </summary>
     public class SquadFactory : Singleton<SquadFactory>
     {
-        #region Configuration
+        #region Configuration - Simplified
 
-        [TitleGroup("Squad Prefab Configuration")]
-        [Tooltip("Default squad container prefab")]
-        [SerializeField, AssetsOnly]
-        private GameObject _defaultSquadPrefab;
-        
-        [Tooltip("Enable squad prefab creation for better organization")]
+        [TitleGroup("Formation Spawn Settings")]
+        [Tooltip("Enable direct formation positioning on spawn")]
         [SerializeField, ToggleLeft]
-        private bool _createSquadPrefabs = true;
+        private bool _useDirectFormationSpawn = true;
         
-        [Tooltip("Parent transform for all squad containers")]
+        [Tooltip("Formation spacing for spawn positioning")]
+        [SerializeField, Range(1.5f, 4f)]
+        private float _baseFormationSpacing = 2.5f;
+        
+        [Tooltip("Random offset for natural positioning")]
+        [SerializeField, Range(0f, 0.5f)]
+        private float _spawnRandomOffset = 0.2f;
+        
+        [Tooltip("Parent container for all squads")]
         [SerializeField]
         private Transform _squadParentContainer;
-
-        #endregion
-
-        #region Formation Configuration
-
-        [TitleGroup("Formation Settings")]
-        [Tooltip("Use initial formation positioning when spawning units")]
-        [SerializeField, ToggleLeft]
-        private bool _useInitialFormationPositioning = true;
-        
-        [Tooltip("Formation spacing for initial spawn")]
-        [SerializeField, Range(1f, 5f)]
-        private float _initialFormationSpacing = 2.0f;
-        
-        [Tooltip("Random offset range for natural positioning")]
-        [SerializeField, Range(0f, 1f)]
-        private float _spawnRandomOffset = 0.2f;
 
         #endregion
 
         #region Dependencies
         
         [TitleGroup("Dependencies")]
-        [Tooltip("Unit factory reference")]
         [SerializeField, Required]
         private UnitFactory _unitFactory;
         
-        [Tooltip("Data manager reference")]
         [SerializeField, Required]
         private DataManager _dataManager;
 
         #endregion
 
-        #region Runtime Data
+        #region Runtime Data - Simplified
         
         [TitleGroup("Runtime Information")]
         [ShowInInspector, ReadOnly]
         private int ActiveSquadsCount => _activeSquads?.Count ?? 0;
         
-        [ShowInInspector, ReadOnly]
-        private int NextSquadId => _nextSquadId;
-        
-        [ShowInInspector, ReadOnly]
-        private int TotalSquadPrefabsCreated => _squadPrefabsCreated;
-
-        #endregion
-
-        #region Private Fields
-        
-        // Active squads tracking
         private Dictionary<int, SquadModel> _activeSquads = new Dictionary<int, SquadModel>();
-        private Dictionary<int, GameObject> _squadPrefabs = new Dictionary<int, GameObject>();
-        
-        // Squad ID generation
+        private Dictionary<int, GameObject> _squadContainers = new Dictionary<int, GameObject>();
         private int _nextSquadId = 1;
-        private int _squadPrefabsCreated = 0;
 
         #endregion
 
@@ -94,141 +62,65 @@ namespace VikingRaven.Core.Factory
         
         public event System.Action<SquadModel> OnSquadCreated;
         public event System.Action<SquadModel> OnSquadDisbanded;
-        public event System.Action<SquadModel, GameObject> OnSquadPrefabCreated;
-
-        #endregion
-
-        #region Unity Lifecycle
-        
-        protected override void OnInitialize()
-        {
-            base.OnInitialize();
-            ValidateDependencies();
-            SetupSquadParentContainer();
-            CreateDefaultSquadPrefab();
-        }
 
         #endregion
 
         #region Initialization
 
-        /// <summary>
-        /// Validate dependencies and setup default configurations
-        /// </summary>
+        protected override void OnInitialize()
+        {
+            base.OnInitialize();
+            ValidateDependencies();
+            SetupSquadParentContainer();
+        }
+
+        [Obsolete("Obsolete")]
         private void ValidateDependencies()
         {
             if (_unitFactory == null)
-            {
                 _unitFactory = FindObjectOfType<UnitFactory>();
-                if (_unitFactory == null)
-                {
-                    Debug.LogError("SquadFactory: UnitFactory dependency is missing!");
-                }
-            }
             
             if (_dataManager == null)
-            {
                 _dataManager = DataManager.Instance;
-                if (_dataManager == null)
-                {
-                    Debug.LogError("SquadFactory: DataManager dependency is missing!");
-                }
-            }
         }
 
-        /// <summary>
-        /// Setup squad parent container for organization
-        /// </summary>
         private void SetupSquadParentContainer()
         {
             if (_squadParentContainer == null)
             {
-                GameObject containerObj = new GameObject("Squad Containers");
-                containerObj.transform.SetParent(transform);
-                _squadParentContainer = containerObj.transform;
-                
-                Debug.Log("SquadFactory: Created default squad parent container");
+                GameObject container = new GameObject("Squad Containers");
+                container.transform.SetParent(transform);
+                _squadParentContainer = container.transform;
             }
-        }
-
-        /// <summary>
-        /// Create default squad prefab if not assigned
-        /// </summary>
-        private void CreateDefaultSquadPrefab()
-        {
-            if (_defaultSquadPrefab == null && _createSquadPrefabs)
-            {
-                _defaultSquadPrefab = CreateDefaultSquadPrefabAsset();
-                Debug.Log("SquadFactory: Created default squad prefab");
-            }
-        }
-
-        /// <summary>
-        /// Create a default squad prefab asset programmatically
-        /// </summary>
-        private GameObject CreateDefaultSquadPrefabAsset()
-        {
-            GameObject prefab = new GameObject("DefaultSquadPrefab");
-            
-            // Add squad identifier component
-            var squadIdentifier = prefab.AddComponent<SquadIdentifier>();
-            
-            // Add transform component for positioning
-            prefab.transform.position = Vector3.zero;
-            prefab.transform.rotation = Quaternion.identity;
-            
-            // Don't destroy this prefab when changing scenes
-            DontDestroyOnLoad(prefab);
-            
-            return prefab;
         }
 
         #endregion
 
-        #region Core Factory Methods
-        
-        /// <summary>
-        /// Create squad by squad data ID with enhanced formation positioning
-        /// ENHANCED: Now creates squad prefab and spawns units in proper formation
-        /// </summary>
-        /// <param name="squadDataId">Squad data identifier</param>
-        /// <param name="position">Squad spawn position</param>
-        /// <param name="rotation">Squad spawn rotation</param>
-        /// <returns>Created squad model or null if failed</returns>
+        #region Core Factory Methods - Simplified
         public SquadModel CreateSquad(uint squadDataId, Vector3 position, Quaternion rotation)
         {
-            // Get squad data
             SquadDataSO squadData = _dataManager.GetSquadData(squadDataId);
             if (squadData == null)
             {
-                Debug.LogError($"SquadFactory: Squad data not found for ID: {squadDataId}");
                 return null;
             }
             
-            // Create squad model
             int squadId = _nextSquadId++;
+            
             SquadModel squadModel = new SquadModel(squadId, squadData, position, rotation);
+            GameObject squadContainer = CreateSquadContainer(squadId, squadData, position, rotation);
+            List<UnitModel> squadUnits = CreateUnitsWithFormationIndex(
+                squadData, 
+                position, 
+                rotation, 
+                squadId, 
+                squadContainer
+            );
             
-            // Create squad prefab container
-            GameObject squadPrefab = null;
-            if (_createSquadPrefabs)
-            {
-                squadPrefab = CreateSquadPrefabContainer(squadId, squadData, position, rotation);
-                _squadPrefabs[squadId] = squadPrefab;
-            }
-            
-            // Create units for squad with proper formation positioning
-            List<UnitModel> squadUnits = CreateSquadUnitsWithFormation(squadData, position, rotation, squadId, squadPrefab);
             if (squadUnits.Count == 0)
             {
                 Debug.LogError($"SquadFactory: Failed to create units for squad: {squadDataId}");
-                
-                // Cleanup squad prefab if units creation failed
-                if (squadPrefab != null)
-                {
-                    DestroyImmediate(squadPrefab);
-                    _squadPrefabs.Remove(squadId);
-                }
+                CleanupSquadContainer(squadId);
                 return null;
             }
             
@@ -237,25 +129,17 @@ namespace VikingRaven.Core.Factory
             
             // Track squad
             _activeSquads[squadId] = squadModel;
+            _squadContainers[squadId] = squadContainer;
             
             // Trigger events
             OnSquadCreated?.Invoke(squadModel);
-            if (squadPrefab != null)
-            {
-                OnSquadPrefabCreated?.Invoke(squadModel, squadPrefab);
-            }
             
-            Debug.Log($"SquadFactory: Created squad {squadId} from template {squadDataId} with {squadUnits.Count} units" +
-                     $"{(squadPrefab ? " with squad prefab" : "")}");
+            Debug.Log($"SquadFactory: Created squad {squadId} with {squadUnits.Count} units " +
+                     $"in {squadData.DefaultFormationType} formation");
             
             return squadModel;
         }
         
-        /// <summary>
-        /// Disband squad and return units to pool
-        /// ENHANCED: Also destroys squad prefab container
-        /// </summary>
-        /// <param name="squadId">Squad identifier</param>
         public void DisbandSquad(int squadId)
         {
             if (!_activeSquads.TryGetValue(squadId, out SquadModel squadModel))
@@ -264,33 +148,19 @@ namespace VikingRaven.Core.Factory
                 return;
             }
             
-            // Trigger event before disbanding
             OnSquadDisbanded?.Invoke(squadModel);
             
-            // Return all units to pool
-            List<IEntity> unitEntities = squadModel.GetAllUnitEntities();
-            foreach (var entity in unitEntities)
+            // Return units to pool
+            foreach (var entity in squadModel.GetAllUnitEntities())
             {
-                if (entity != null && _unitFactory != null)
-                {
+                if (entity != null)
                     _unitFactory.ReturnUnit(entity);
-                }
             }
             
-            // Destroy squad prefab if exists
-            if (_squadPrefabs.TryGetValue(squadId, out GameObject squadPrefab))
-            {
-                if (squadPrefab != null)
-                {
-                    DestroyImmediate(squadPrefab);
-                }
-                _squadPrefabs.Remove(squadId);
-            }
-            
-            // Clean up squad model
+            // Cleanup squad
+            CleanupSquadContainer(squadId);
             squadModel.Cleanup();
             
-            // Remove from tracking
             _activeSquads.Remove(squadId);
             
             Debug.Log($"SquadFactory: Disbanded squad {squadId}");
@@ -298,178 +168,113 @@ namespace VikingRaven.Core.Factory
 
         #endregion
 
-        #region Squad Prefab Creation
+        #region Squad Container Management
 
-        /// <summary>
-        /// Create squad prefab container for organization
-        /// </summary>
-        private GameObject CreateSquadPrefabContainer(int squadId, SquadDataSO squadData, Vector3 position, Quaternion rotation)
+        private GameObject CreateSquadContainer(int squadId, SquadDataSO squadData, Vector3 position, Quaternion rotation)
         {
-            GameObject squadPrefab;
+            GameObject container = new GameObject($"Squad_{squadId}_{squadData.DisplayName}");
+            container.transform.SetParent(_squadParentContainer);
+            container.transform.position = position;
+            container.transform.rotation = rotation;
             
-            if (_defaultSquadPrefab != null)
-            {
-                squadPrefab = Instantiate(_defaultSquadPrefab, position, rotation, _squadParentContainer);
-            }
-            else
-            {
-                squadPrefab = new GameObject($"Squad_{squadId}_{squadData.DisplayName}");
-                squadPrefab.transform.SetParent(_squadParentContainer);
-                squadPrefab.transform.position = position;
-                squadPrefab.transform.rotation = rotation;
-            }
+            // Add squad identifier
+            var identifier = container.AddComponent<SquadIdentifier>();
+            identifier.SetSquadData(squadId, squadData);
             
-            // Setup squad identifier
-            var squadIdentifier = squadPrefab.GetComponent<SquadIdentifier>();
-            if (squadIdentifier == null)
-            {
-                squadIdentifier = squadPrefab.AddComponent<SquadIdentifier>();
-            }
-            
-            squadIdentifier.SetSquadData(squadId, squadData);
-            
-            // Add visual indicators for debugging
-            if (Application.isEditor)
-            {
-                AddSquadDebugVisualization(squadPrefab, squadData);
-            }
-            
-            _squadPrefabsCreated++;
-            
-            Debug.Log($"SquadFactory: Created squad prefab container for squad {squadId}");
-            return squadPrefab;
+            return container;
         }
 
-        /// <summary>
-        /// Add debug visualization to squad prefab
-        /// </summary>
-        private void AddSquadDebugVisualization(GameObject squadPrefab, SquadDataSO squadData)
+        private void CleanupSquadContainer(int squadId)
         {
-            // Add a simple sphere as visual indicator
-            GameObject indicator = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            indicator.name = "SquadCenter_Debug";
-            indicator.transform.SetParent(squadPrefab.transform);
-            indicator.transform.localPosition = Vector3.zero;
-            indicator.transform.localScale = Vector3.one * 0.5f;
-            
-            // Remove collider as it's just visual
-            Collider indicatorCollider = indicator.GetComponent<Collider>();
-            if (indicatorCollider != null)
+            if (_squadContainers.TryGetValue(squadId, out GameObject container))
             {
-                DestroyImmediate(indicatorCollider);
+                if (container != null)
+                    DestroyImmediate(container);
+                _squadContainers.Remove(squadId);
             }
-            
-            // Set color based on squad data
-            Renderer renderer = indicator.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                Material mat = new Material(Shader.Find("Standard"));
-                mat.color = GetSquadDebugColor(squadData);
-                renderer.material = mat;
-            }
-        }
-
-        /// <summary>
-        /// Get debug color for squad visualization
-        /// </summary>
-        private Color GetSquadDebugColor(SquadDataSO squadData)
-        {
-            // Generate color based on squad ID hash
-            int hash = squadData.SquadId.GetHashCode();
-            float hue = (hash * 0.618034f) % 1f; // Golden ratio for better distribution
-            return Color.HSVToRGB(hue, 0.7f, 0.9f);
         }
 
         #endregion
 
-        #region Enhanced Unit Creation with Formation
+        #region Formation-Based Unit Creation - SIMPLIFIED CORE LOGIC
 
         /// <summary>
-        /// Create squad units with proper formation positioning
-        /// ENHANCED: Units are spawned in formation positions from the start
+        /// SIMPLIFIED: Create units with direct formation index assignment
+        /// Each unit gets correct formation index, slot, and position immediately
         /// </summary>
-        private List<UnitModel> CreateSquadUnitsWithFormation(SquadDataSO squadData, Vector3 squadPosition, 
-            Quaternion squadRotation, int squadId, GameObject squadPrefab)
+        private List<UnitModel> CreateUnitsWithFormationIndex(SquadDataSO squadData, Vector3 squadPosition, 
+            Quaternion squadRotation, int squadId, GameObject squadContainer)
         {
             List<UnitModel> squadUnits = new List<UnitModel>();
             
-            if (_unitFactory == null)
-            {
-                Debug.LogError("SquadFactory: UnitFactory is not available");
-                return squadUnits;
-            }
+            if (_unitFactory == null) return squadUnits;
             
-            // Calculate total unit count for formation
-            int totalUnits = 0;
-            foreach (var composition in squadData.UnitCompositions)
-            {
-                if (composition.UnitData != null)
-                {
-                    totalUnits += composition.Count;
-                }
-            }
+            // Calculate total units for formation planning
+            int totalUnits = CalculateTotalUnits(squadData);
+            if (totalUnits == 0) return squadUnits;
             
-            // Generate formation positions
-            Vector3[] formationPositions = GenerateInitialFormationPositions(
+            // Get formation spacing for this squad type
+            float spacing = GetFormationSpacing(squadData.DefaultFormationType, squadData);
+            
+            // Generate formation positions based on formation type
+            Vector3[] formationPositions = GenerateFormationPositions(
                 squadData.DefaultFormationType, 
                 totalUnits, 
+                spacing, 
                 squadPosition, 
                 squadRotation
             );
             
             int unitIndex = 0;
             
-            // Create units based on composition
+            // Create units with formation data
             foreach (var composition in squadData.UnitCompositions)
             {
                 if (!composition.UnitData) continue;
                 
-                uint unitDataId = composition.UnitData.UnitId;
-                
                 for (int i = 0; i < composition.Count; i++)
                 {
-                    // Get formation position for this unit
-                    Vector3 unitPosition = squadPosition; // Default fallback
-                    if (unitIndex < formationPositions.Length)
+                    if (unitIndex >= formationPositions.Length) break;
+                    
+                    // Get spawn position with small random offset
+                    Vector3 spawnPosition = formationPositions[unitIndex];
+                    if (_spawnRandomOffset > 0)
                     {
-                        unitPosition = formationPositions[unitIndex];
-                        
-                        // Add small random offset for natural look
-                        if (_spawnRandomOffset > 0)
-                        {
-                            Vector3 randomOffset = new Vector3(
-                                Random.Range(-_spawnRandomOffset, _spawnRandomOffset),
-                                0,
-                                Random.Range(-_spawnRandomOffset, _spawnRandomOffset)
-                            );
-                            unitPosition += randomOffset;
-                        }
+                        spawnPosition += GetRandomOffset();
                     }
                     
-                    // Create unit at formation position
-                    IEntity unitEntity = _unitFactory.CreateUnit(unitDataId, unitPosition, squadRotation);
+                    // Create unit
+                    IEntity unitEntity = _unitFactory.CreateUnit(
+                        composition.UnitData.UnitId, 
+                        spawnPosition, 
+                        squadRotation
+                    );
                     
                     if (unitEntity != null)
                     {
-                        // Set unit parent to squad prefab if available
-                        if (squadPrefab != null)
+                        // Set unit parent
+                        if (squadContainer != null)
                         {
                             var unitObj = unitEntity as MonoBehaviour;
                             if (unitObj != null)
-                            {
-                                unitObj.transform.SetParent(squadPrefab.transform);
-                            }
+                                unitObj.transform.SetParent(squadContainer.transform);
                         }
                         
-                        // Setup unit model
+                        // Setup unit with formation data immediately
                         UnitModel unitModel = _unitFactory.GetUnitModel(unitEntity);
                         if (unitModel != null)
                         {
                             unitModel.SetSquadId(squadId);
                             squadUnits.Add(unitModel);
                             
-                            // Setup formation component
-                            SetupUnitFormationComponent(unitEntity, squadId, unitIndex, squadData.DefaultFormationType);
+                            // CORE: Setup formation component with correct index
+                            SetupFormationComponentDirect(
+                                unitEntity, 
+                                squadId, 
+                                unitIndex, 
+                                squadData.DefaultFormationType,
+                                formationPositions[unitIndex] - squadPosition // Local offset
+                            );
                         }
                     }
                     
@@ -477,65 +282,79 @@ namespace VikingRaven.Core.Factory
                 }
             }
             
-            Debug.Log($"SquadFactory: Created {squadUnits.Count} units with {squadData.DefaultFormationType} formation");
+            Debug.Log($"SquadFactory: Created {squadUnits.Count} units with {squadData.DefaultFormationType} " +
+                     $"formation, spacing: {spacing}");
+            
             return squadUnits;
         }
 
+        #endregion
+
+        #region Formation Position Generation - CORE LOGIC
+
         /// <summary>
-        /// Generate initial formation positions for units
+        /// SIMPLIFIED: Generate formation positions for 3 formation types
+        /// Returns world positions for each unit slot
         /// </summary>
-        private Vector3[] GenerateInitialFormationPositions(FormationType formationType, int unitCount, 
-            Vector3 squadPosition, Quaternion squadRotation)
+        private Vector3[] GenerateFormationPositions(FormationType formationType, int unitCount, 
+            float spacing, Vector3 squadCenter, Quaternion squadRotation)
         {
-            if (unitCount <= 0) return new Vector3[0];
-            
             Vector3[] localPositions = new Vector3[unitCount];
-            float spacing = _initialFormationSpacing;
             
-            // Generate formation based on type
+            // Generate local formation positions
             switch (formationType)
             {
+                case FormationType.Normal:
+                    GenerateNormalFormationPositions(localPositions, spacing);
+                    break;
+                    
                 case FormationType.Phalanx:
                     GeneratePhalanxFormationPositions(localPositions, spacing);
                     break;
+                    
                 case FormationType.Testudo:
                     GenerateTestudoFormationPositions(localPositions, spacing);
                     break;
-                case FormationType.Normal:
+                    
+                default:
                     GenerateNormalFormationPositions(localPositions, spacing);
                     break;
             }
             
+            // Convert to world positions
             Vector3[] worldPositions = new Vector3[unitCount];
             for (int i = 0; i < unitCount; i++)
             {
                 Vector3 rotatedPosition = squadRotation * localPositions[i];
-                worldPositions[i] = squadPosition + rotatedPosition;
+                worldPositions[i] = squadCenter + rotatedPosition;
             }
             
             return worldPositions;
         }
 
-        private void GenerateLineFormationPositions(Vector3[] positions, float spacing)
+        /// <summary>
+        /// Generate Normal formation (3x3 grid) - SIMPLIFIED
+        /// </summary>
+        private void GenerateNormalFormationPositions(Vector3[] positions, float spacing)
         {
             int count = positions.Length;
+            const int gridWidth = 3;
+            
             for (int i = 0; i < count; i++)
             {
-                float x = (i - (count - 1) * 0.5f) * spacing;
-                positions[i] = new Vector3(x, 0, 0);
+                int row = i / gridWidth;
+                int col = i % gridWidth;
+                
+                float x = (col - 1) * spacing;  // -1, 0, 1
+                float z = (row - 1) * spacing;  // -1, 0, 1
+                
+                positions[i] = new Vector3(x, 0, z);
             }
         }
 
-        private void GenerateColumnFormationPositions(Vector3[] positions, float spacing)
-        {
-            int count = positions.Length;
-            for (int i = 0; i < count; i++)
-            {
-                float z = (i - (count - 1) * 0.5f) * spacing;
-                positions[i] = new Vector3(0, 0, z);
-            }
-        }
-
+        /// <summary>
+        /// Generate Phalanx formation - SIMPLIFIED
+        /// </summary>
         private void GeneratePhalanxFormationPositions(Vector3[] positions, float spacing)
         {
             int count = positions.Length;
@@ -547,104 +366,127 @@ namespace VikingRaven.Core.Factory
                 int col = i % width;
                 
                 float x = (col - (width - 1) * 0.5f) * spacing;
-                float z = (row - ((count - 1) / width) * 0.5f) * spacing;
-                
-                positions[i] = new Vector3(x, 0, z);
-            }
-        }
-
-        private void GenerateTestudoFormationPositions(Vector3[] positions, float spacing)
-        {
-            GeneratePhalanxFormationPositions(positions, spacing * 0.7f); // Tighter formation
-        }
-
-        private void GenerateCircleFormationPositions(Vector3[] positions, float spacing)
-        {
-            int count = positions.Length;
-            
-            if (count == 1)
-            {
-                positions[0] = Vector3.zero;
-                return;
-            }
-            
-            float radius = count * spacing / (2 * Mathf.PI);
-            radius = Mathf.Max(radius, spacing * 1.5f);
-            
-            for (int i = 0; i < count; i++)
-            {
-                float angle = (i * 2 * Mathf.PI) / count;
-                float x = Mathf.Sin(angle) * radius;
-                float z = Mathf.Cos(angle) * radius;
-                
-                positions[i] = new Vector3(x, 0, z);
-            }
-        }
-
-        private void GenerateNormalFormationPositions(Vector3[] positions, float spacing)
-        {
-            int count = positions.Length;
-            const int gridWidth = 3;
-            
-            for (int i = 0; i < count; i++)
-            {
-                int row = i / gridWidth;
-                int col = i % gridWidth;
-                
-                float x = (col - 1) * spacing;
-                float z = (row - 1) * spacing;
+                float z = (row - (Mathf.CeilToInt((float)count / width) - 1) * 0.5f) * spacing;
                 
                 positions[i] = new Vector3(x, 0, z);
             }
         }
 
         /// <summary>
-        /// Setup formation component for unit
+        /// Generate Testudo formation - SIMPLIFIED
         /// </summary>
-        private void SetupUnitFormationComponent(IEntity unitEntity, int squadId, int slotIndex, FormationType formationType)
+        private void GenerateTestudoFormationPositions(Vector3[] positions, float spacing)
+        {
+            // Use same logic as Phalanx but with tighter spacing
+            GeneratePhalanxFormationPositions(positions, spacing);
+        }
+
+        #endregion
+
+        #region Formation Component Setup - DIRECT ASSIGNMENT
+
+        /// <summary>
+        /// SIMPLIFIED: Setup formation component with direct assignment
+        /// No complex calculations, just direct index and offset assignment
+        /// </summary>
+        private void SetupFormationComponentDirect(IEntity unitEntity, int squadId, int formationIndex, 
+            FormationType formationType, Vector3 localOffset)
         {
             var formationComponent = unitEntity.GetComponent<FormationComponent>();
-            if (formationComponent != null)
+            if (formationComponent == null) return;
+            
+            // Direct assignment - no complex logic
+            formationComponent.SetSquadId(squadId);
+            formationComponent.SetFormationSlot(formationIndex);
+            formationComponent.SetFormationType(formationType, false); // No smooth transition on spawn
+            formationComponent.SetFormationOffset(localOffset, false); // Direct assignment
+            
+            // Set formation role based on index
+            FormationRole role = DetermineFormationRole(formationIndex, formationType);
+            formationComponent.SetFormationRole(role);
+            
+            Debug.Log($"SquadFactory: Unit {unitEntity.Id} assigned formation index {formationIndex}, " +
+                     $"offset {localOffset}, role {role}");
+        }
+
+        /// <summary>
+        /// SIMPLIFIED: Determine formation role based on index
+        /// </summary>
+        private FormationRole DetermineFormationRole(int index, FormationType formationType)
+        {
+            if (index == 0) return FormationRole.Leader;
+            
+            switch (formationType)
             {
-                formationComponent.SetSquadId(squadId);
-                formationComponent.SetFormationSlot(slotIndex);
-                formationComponent.SetFormationType(formationType, false);
+                case FormationType.Normal:
+                    return index <= 2 ? FormationRole.FrontLine : FormationRole.Follower;
+                    
+                case FormationType.Phalanx:
+                    return index <= 3 ? FormationRole.FrontLine : FormationRole.Support;
+                    
+                case FormationType.Testudo:
+                    return FormationRole.Support;
+                    
+                default:
+                    return FormationRole.Follower;
             }
         }
 
         #endregion
 
-        #region Public Queries
-        
-        /// <summary>
-        /// Get squad by ID
-        /// </summary>
+        #region Helper Methods - SIMPLIFIED
+
+        private int CalculateTotalUnits(SquadDataSO squadData)
+        {
+            int total = 0;
+            foreach (var composition in squadData.UnitCompositions)
+            {
+                if (composition.UnitData != null)
+                    total += composition.Count;
+            }
+            return total;
+        }
+
+        private float GetFormationSpacing(FormationType formationType, SquadDataSO squadData)
+        {
+            // Use squad data spacing if available
+            if (squadData != null)
+                return squadData.GetFormationSpacing(formationType);
+            
+            // Fallback to base spacing
+            return formationType switch
+            {
+                FormationType.Normal => _baseFormationSpacing,
+                FormationType.Phalanx => _baseFormationSpacing * 0.8f,
+                FormationType.Testudo => _baseFormationSpacing * 0.6f,
+                _ => _baseFormationSpacing
+            };
+        }
+
+        private Vector3 GetRandomOffset()
+        {
+            return new Vector3(
+                Random.Range(-_spawnRandomOffset, _spawnRandomOffset),
+                0,
+                Random.Range(-_spawnRandomOffset, _spawnRandomOffset)
+            );
+        }
+
+        #endregion
+
+        #region Public Interface
+
         public SquadModel GetSquad(int squadId)
         {
             _activeSquads.TryGetValue(squadId, out SquadModel squad);
             return squad;
         }
-        
-        /// <summary>
-        /// Get squad prefab by ID
-        /// </summary>
-        public GameObject GetSquadPrefab(int squadId)
-        {
-            _squadPrefabs.TryGetValue(squadId, out GameObject prefab);
-            return prefab;
-        }
-        
-        /// <summary>
-        /// Get all active squads
-        /// </summary>
+
         public List<SquadModel> GetAllSquads()
         {
             return new List<SquadModel>(_activeSquads.Values);
         }
-        
-        /// <summary>
-        /// Check if squad exists
-        /// </summary>
+
         public bool HasSquad(int squadId)
         {
             return _activeSquads.ContainsKey(squadId);
@@ -654,30 +496,43 @@ namespace VikingRaven.Core.Factory
 
         #region Debug Tools
 
-        [Button("Show Squad Factory Stats"), TitleGroup("Debug Tools")]
-        public void ShowSquadFactoryStats()
+        [Button("Show Formation Spawn Stats"), TitleGroup("Debug Tools")]
+        public void ShowFormationSpawnStats()
         {
-            string stats = "=== Squad Factory Statistics ===\n";
+            string stats = "=== Formation Spawn Statistics ===\n";
             stats += $"Active Squads: {ActiveSquadsCount}\n";
-            stats += $"Next Squad ID: {NextSquadId}\n";
-            stats += $"Squad Prefabs Created: {TotalSquadPrefabsCreated}\n";
-            stats += $"Use Formation Positioning: {_useInitialFormationPositioning}\n";
-            stats += $"Create Squad Prefabs: {_createSquadPrefabs}\n";
-            stats += $"Formation Spacing: {_initialFormationSpacing}\n";
+            stats += $"Use Direct Formation Spawn: {_useDirectFormationSpawn}\n";
+            stats += $"Base Formation Spacing: {_baseFormationSpacing}\n";
+            stats += $"Spawn Random Offset: {_spawnRandomOffset}\n";
             
             Debug.Log(stats);
         }
 
-        [Button("Force Clean All Squads"), TitleGroup("Debug Tools")]
-        public void ForceCleanAllSquads()
+        [Button("Test Formation Generation"), TitleGroup("Debug Tools")]
+        public void TestFormationGeneration()
         {
-            var squadIds = new List<int>(_activeSquads.Keys);
-            foreach (int squadId in squadIds)
-            {
-                DisbandSquad(squadId);
-            }
+            Debug.Log("=== Testing Formation Generation ===");
             
-            Debug.Log("SquadFactory: Force cleaned all squads");
+            int testUnitCount = 9;
+            Vector3 testPosition = Vector3.zero;
+            Quaternion testRotation = Quaternion.identity;
+            
+            foreach (FormationType formationType in System.Enum.GetValues(typeof(FormationType)))
+            {
+                Vector3[] positions = GenerateFormationPositions(
+                    formationType, 
+                    testUnitCount, 
+                    _baseFormationSpacing, 
+                    testPosition, 
+                    testRotation
+                );
+                
+                Debug.Log($"Formation {formationType}: Generated {positions.Length} positions");
+                for (int i = 0; i < positions.Length; i++)
+                {
+                    Debug.Log($"  Unit {i}: {positions[i]}");
+                }
+            }
         }
 
         #endregion
@@ -686,7 +541,6 @@ namespace VikingRaven.Core.Factory
 
         protected override void OnDestroy()
         {
-            // Disband all squads
             var squadIds = new List<int>(_activeSquads.Keys);
             foreach (int squadId in squadIds)
             {
@@ -694,7 +548,7 @@ namespace VikingRaven.Core.Factory
             }
             
             _activeSquads.Clear();
-            _squadPrefabs.Clear();
+            _squadContainers.Clear();
         }
 
         #endregion

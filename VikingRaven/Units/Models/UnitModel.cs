@@ -6,16 +6,10 @@ using VikingRaven.Units.Data;
 
 namespace VikingRaven.Units.Models
 {
-    /// <summary>
-    /// Model class quản lý dữ liệu và trạng thái đơn vị
-    /// Đã được tách biệt khỏi logic component để tránh lỗi tham chiếu null
-    /// </summary>
     public class UnitModel
     {
-        // Entity reference - chỉ lưu trữ tham chiếu, không xử lý logic
         private IEntity _entity;
         
-        // Core unit properties (lưu trữ trực tiếp thay vì tham chiếu đến UnitDataSO)
         private UnitType _unitType;
         private uint _unitId;
         private string _displayName;
@@ -38,20 +32,19 @@ namespace VikingRaven.Units.Models
         private float _detectionRange = 10f;       // Tầm phát hiện kẻ địch
         
         // Ability properties
-        private string _ability = "";              // Tên kỹ năng
-        private float _abilityCost = 0f;           // Chi phí kỹ năng
-        private float _abilityCooldown = 0f;       // Hồi chiêu kỹ năng
-        private string _abilityParameters = "";    // Tham số kỹ năng
+        private string _ability = "";
+        private float _abilityCost = 0f;
+        private float _abilityCooldown = 0f;
+        private string _abilityParameters = "";
         
         // Visual properties
-        private Color _unitColor = Color.white;    // Màu đại diện
+        private Color _unitColor = Color.white;
 
-        // State tracking - chỉ lưu trữ dữ liệu, không xử lý logic
-        private float _currentHealth;              // Máu hiện tại
-        private float _currentShield;              // Khiên hiện tại
-        private int _squadId = -1;                 // ID của đội hình
-        private Vector3 _position;                 // Vị trí (sao lưu)
-        private Quaternion _rotation;              // Hướng (sao lưu)
+        private float _currentHealth;
+        private float _currentShield;
+        private int _squadId = -1;
+        private Vector3 _position;
+        private Quaternion _rotation;
         
         public event Action OnDeath;
         public event Action<float, IEntity> OnDamageTaken;
@@ -59,7 +52,6 @@ namespace VikingRaven.Units.Models
         public event Action<float> OnHealthChanged;
         public event Action<float> OnShieldChanged;
         
-        // Properties - chỉ trả về dữ liệu, không xử lý logic
         public IEntity Entity => _entity;
         public UnitType UnitType => _unitType;
         public uint UnitId => _unitId;
@@ -161,11 +153,6 @@ namespace VikingRaven.Units.Models
                 _deployTime = unitData.DeployTime;
                 _detectionRange = unitData.DetectionRange;
                 
-                // _ability = unitData.Ability;
-                // _abilityCost = unitData.AbilityCost;
-                // _abilityCooldown = unitData.AbilityCooldown;
-                // _abilityParameters = unitData.AbilityParameters;
-                
                 _unitColor = unitData.UnitColor;
                 _currentHealth = _hitPoints;
                 _currentShield = _shieldHitPoints;
@@ -179,33 +166,16 @@ namespace VikingRaven.Units.Models
                 _currentHealth = _hitPoints;
                 _currentShield = _shieldHitPoints;
             }
-            
-            // Lưu vị trí ban đầu nếu có transform
             if (entity != null)
             {
                 var entityObj = entity as MonoBehaviour;
-                if (entityObj != null)
+                if (entityObj)
                 {
                     _position = entityObj.transform.position;
                     _rotation = entityObj.transform.rotation;
                 }
             }
         }
-        
-        
-        public void UpdateTransformData()
-        {
-            if (_entity != null)
-            {
-                var entityObj = _entity as MonoBehaviour;
-                if (entityObj != null)
-                {
-                    _position = entityObj.transform.position;
-                    _rotation = entityObj.transform.rotation;
-                }
-            }
-        }
-        
         public void SetSquadId(int squadId)
         {
             _squadId = squadId;

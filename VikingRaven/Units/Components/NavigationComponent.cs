@@ -159,11 +159,8 @@ namespace VikingRaven.Units.Components
             if (!IsActive || _navMeshAgent == null || !_navMeshAgent.isOnNavMesh)
                 return;
     
-            // If already at exact position, do nothing
             if (_hasReachedExactPosition)
                 return;
-    
-            // Reduce priority over time
             float timeSinceLastCommand = Time.time - _lastCommandTime;
             if (timeSinceLastCommand > _priorityDecayTime && _currentCommandPriority > NavigationCommandPriority.Low)
             {
@@ -171,32 +168,31 @@ namespace VikingRaven.Units.Components
                 _lastCommandTime = Time.time;
             }
     
-            // Check if we're near destination
-            if (!_navMeshAgent.pathPending && _navMeshAgent.remainingDistance <= _navMeshAgent.stoppingDistance)
-            {
-                // Formation position handling
-                if (_useFormationPosition && _hasFormationInfo)
-                {
-                    // Update exact position for current formation info
-                    _exactPosition = _squadCenter + _formationOffset;
-            
-                    // When very close to destination, lock into exact position
-                    if (Vector3.Distance(transform.position, _exactPosition) < 0.2f)
-                    {
-                        // Stop the agent and snap to exact position
-                        _navMeshAgent.isStopped = true;
-                        _navMeshAgent.updatePosition = false;
-                        _navMeshAgent.velocity = Vector3.zero;
-                        transform.position = _exactPosition;
-                        _hasReachedExactPosition = true;
-                    }
-                }
-                else
-                {
-                    _navMeshAgent.isStopped = true;
-                    _hasReachedExactPosition = true;
-                }
-            }
+            // if (!_navMeshAgent.pathPending && _navMeshAgent.remainingDistance <= _navMeshAgent.stoppingDistance)
+            // {
+            //     // Formation position handling
+            //     if (_useFormationPosition && _hasFormationInfo)
+            //     {
+            //         // Update exact position for current formation info
+            //         _exactPosition = _squadCenter + _formationOffset;
+            //
+            //         // When very close to destination, lock into exact position
+            //         // if (Vector3.Distance(transform.position, _exactPosition) < 0.2f)
+            //         // {
+            //         //     // Stop the agent and snap to exact position
+            //         //     _navMeshAgent.isStopped = true;
+            //         //     _navMeshAgent.updatePosition = false;
+            //         //     _navMeshAgent.velocity = Vector3.zero;
+            //         //     transform.position = _exactPosition;
+            //         //     _hasReachedExactPosition = true;
+            //         // }
+            //     }
+            //     else
+            //     {
+            //         _navMeshAgent.isStopped = true;
+            //         _hasReachedExactPosition = true;
+            //     }
+            // }
         }
 
         /// <summary>
@@ -238,31 +234,11 @@ namespace VikingRaven.Units.Components
                 // If already at locked position, update immediately
                 if (_hasReachedExactPosition)
                 {
-                    // Unlock, move to new position
                     _hasReachedExactPosition = false;
                     SetDestination(_exactPosition, _currentCommandPriority);
                 }
             }
         }
-        
-        /// <summary>
-        /// Unlock position to allow movement
-        /// </summary>
-        public void UnlockPosition()
-        {
-            _hasReachedExactPosition = false;
-            
-            if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
-            {
-                _navMeshAgent.isStopped = false;
-                _navMeshAgent.updatePosition = true;
-                _navMeshAgent.updateRotation = true;
-            }
-        }
-        
-        /// <summary>
-        /// Cleanup resources
-        /// </summary>
         public override void Cleanup()
         {
             if (_navMeshAgent != null && _navMeshAgent.enabled && _navMeshAgent.isOnNavMesh)
