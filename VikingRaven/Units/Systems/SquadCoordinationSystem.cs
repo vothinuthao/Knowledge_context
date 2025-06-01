@@ -7,44 +7,69 @@ using VikingRaven.Units.Components;
 namespace VikingRaven.Units.Systems
 {
     /// <summary>
-    /// SIMPLIFIED: Squad Coordination System with direct command interface
-    /// No complex formation recalculation - uses assigned formation indices
-    /// Provides simple commands for squad movement and formation changes
-    /// Works with enhanced FormationSystem for coordinated unit management
+    /// Enhanced Squad Coordination System with smart movement integration
+    /// ENHANCED: Integrates with NavigationComponent's smart movement phases
+    /// NEW FEATURES: Leader-follower coordination, smart movement statistics
+    /// BACKWARD COMPATIBLE: All existing methods still work
     /// </summary>
     [SystemPriority(SystemPriority.High)]
     public class SquadCoordinationSystem : BaseSystem
     {
-        #region System Configuration - SIMPLIFIED
+        #region System Configuration
 
         [TitleGroup("System Settings")]
         [Tooltip("System execution priority")]
-        [SerializeField, Range(100, 300)] private int _systemPriority = 200;
+        [SerializeField, Range(100, 300)] 
+        private int _systemPriority = 200;
         
+        [TitleGroup("System Settings")]
         [Tooltip("Enable debug logging for squad commands")]
-        [SerializeField, ToggleLeft] private bool _enableDebugLogging = false;
+        [SerializeField, ToggleLeft] 
+        private bool _enableDebugLogging = false;
         
+        [TitleGroup("System Settings")]
         [Tooltip("Update frequency for squad state monitoring")]
-        [SerializeField, Range(1, 10)] private int _updateFrequency = 5;
+        [SerializeField, Range(1, 10)] 
+        private int _updateFrequency = 5;
 
         #endregion
 
-        #region Squad Management Data - SIMPLIFIED
+        #region Smart Movement Configuration
+
+        [TitleGroup("Smart Movement Integration")]
+        [Tooltip("Enable smart movement coordination")]
+        [SerializeField, ToggleLeft]
+        private bool _enableSmartMovementCoordination = true;
+        
+        [TitleGroup("Smart Movement Integration")]
+        [Tooltip("Auto-update leader positions for followers")]
+        [SerializeField, ToggleLeft]
+        private bool _autoUpdateLeaderPositions = true;
+        
+        [TitleGroup("Smart Movement Integration")]
+        [Tooltip("Leader position update frequency")]
+        [SerializeField, Range(0.1f, 2f)]
+        private float _leaderPositionUpdateInterval = 0.5f;
+
+        #endregion
+
+        #region Squad Management Data
 
         // Track active squads and their states
-        private Dictionary<int, SquadState> _squadStates = new Dictionary<int, SquadState>();
+        private Dictionary<int, EnhancedSquadState> _squadStates = new Dictionary<int, EnhancedSquadState>();
         
-        // Formation command queue
+        // Command queues
         private Queue<FormationCommand> _formationCommands = new Queue<FormationCommand>();
-        
-        // Movement command queue  
         private Queue<MovementCommand> _movementCommands = new Queue<MovementCommand>();
+        private Queue<SmartMovementCommand> _smartMovementCommands = new Queue<SmartMovementCommand>();
         
         // Update timing
         private int _frameCounter = 0;
+        private float _lastLeaderPositionUpdate = 0f;
         
         // Performance tracking
         private int _totalCommandsProcessed = 0;
+        private int _smartMovementCommandsProcessed = 0;
 
         #endregion
 
@@ -77,7 +102,7 @@ namespace VikingRaven.Units.Systems
             
             Priority = _systemPriority;
             
-            Debug.Log($"SquadCoordinationSystem: Initialized with priority {Priority}");
+            Debug.Log($"SquadCoordinationSystem: Initialized with smart movement integration, priority {Priority}");
         }
 
         public override void Execute()
@@ -87,48 +112,68 @@ namespace VikingRaven.Units.Systems
 
             if (_entityRegistry == null) return;
             
-            // SIMPLIFIED: Core execution pipeline
+            // Enhanced execution pipeline
             ProcessFormationCommands();
             ProcessMovementCommands();
+            ProcessSmartMovementCommands();
             UpdateSquadStates();
+            
+            // Auto-update leader positions
+            if (_enableSmartMovementCoordination && _autoUpdateLeaderPositions)
+            {
+                UpdateLeaderPositions();
+            }
         }
 
         #endregion
 
-        #region Command Processing - SIMPLIFIED
+        #region Enhanced Command Processing
 
         /// <summary>
-        /// SIMPLIFIED: Process queued formation commands
-        /// Direct formation type changes without complex recalculation
+        /// Process queued formation commands with smart movement integration
         /// </summary>
         private void ProcessFormationCommands()
         {
             while (_formationCommands.Count > 0)
             {
                 var command = _formationCommands.Dequeue();
-                ExecuteFormationCommand(command);
+                ExecuteEnhancedFormationCommand(command);
                 _totalCommandsProcessed++;
             }
         }
 
         /// <summary>
-        /// SIMPLIFIED: Process queued movement commands
-        /// Direct position updates using existing formation indices
+        /// Process queued movement commands
         /// </summary>
         private void ProcessMovementCommands()
         {
             while (_movementCommands.Count > 0)
             {
                 var command = _movementCommands.Dequeue();
-                ExecuteMovementCommand(command);
+                ExecuteEnhancedMovementCommand(command);
                 _totalCommandsProcessed++;
             }
         }
 
         /// <summary>
-        /// SIMPLIFIED: Execute formation command for a squad
+        /// Process queued smart movement commands
+        /// NEW FEATURE: Smart movement command processing
         /// </summary>
-        private void ExecuteFormationCommand(FormationCommand command)
+        private void ProcessSmartMovementCommands()
+        {
+            while (_smartMovementCommands.Count > 0)
+            {
+                var command = _smartMovementCommands.Dequeue();
+                ExecuteSmartMovementCommand(command);
+                _smartMovementCommandsProcessed++;
+                _totalCommandsProcessed++;
+            }
+        }
+
+        /// <summary>
+        /// ENHANCED: Formation command execution with smart movement coordination
+        /// </summary>
+        private void ExecuteEnhancedFormationCommand(FormationCommand command)
         {
             var squadMembers = GetSquadMembers(command.SquadId);
             if (squadMembers.Count == 0)
@@ -146,10 +191,20 @@ namespace VikingRaven.Units.Systems
                 {
                     formationComponent.SetFormationType(command.FormationType, command.SmoothTransition);
                 }
+
+                // ENHANCED: Configure smart movement for formation changes
+                if (_enableSmartMovementCoordination)
+                {
+                    var navigationComponent = entity.GetComponent<NavigationComponent>();
+                    if (navigationComponent != null)
+                    {
+                        navigationComponent.SetSmartMovementEnabled(true);
+                    }
+                }
             }
             
             // Update squad state
-            UpdateSquadState(command.SquadId, command.FormationType);
+            UpdateSquadStateFormation(command.SquadId, command.FormationType);
             
             // Notify FormationSystem if available
             if (_formationSystem != null)
@@ -159,15 +214,14 @@ namespace VikingRaven.Units.Systems
             
             if (_enableDebugLogging)
             {
-                Debug.Log($"SquadCoordinationSystem: Squad {command.SquadId} formation changed to {command.FormationType}");
+                Debug.Log($"SquadCoordinationSystem: Squad {command.SquadId} formation changed to {command.FormationType} with smart movement");
             }
         }
 
         /// <summary>
-        /// SIMPLIFIED: Execute movement command for a squad
-        /// Uses existing formation indices - no recalculation needed
+        /// ENHANCED: Movement command execution with smart movement support
         /// </summary>
-        private void ExecuteMovementCommand(MovementCommand command)
+        private void ExecuteEnhancedMovementCommand(MovementCommand command)
         {
             var squadMembers = GetSquadMembers(command.SquadId);
             if (squadMembers.Count == 0)
@@ -176,8 +230,85 @@ namespace VikingRaven.Units.Systems
                     Debug.LogWarning($"SquadCoordinationSystem: No members found for squad {command.SquadId}");
                 return;
             }
-            
-            // Get current formation type for the squad
+
+            // ENHANCED: Identify leader and followers for smart movement
+            IEntity leader = null;
+            List<IEntity> followers = new List<IEntity>();
+
+            foreach (var entity in squadMembers)
+            {
+                var formationComponent = entity.GetComponent<FormationComponent>();
+                if (formationComponent != null)
+                {
+                    if (formationComponent.FormationSlotIndex == 0 || 
+                        formationComponent.FormationRole == FormationRole.Leader)
+                    {
+                        leader = entity;
+                    }
+                    else
+                    {
+                        followers.Add(entity);
+                    }
+                }
+            }
+
+            // SMART MOVEMENT: Handle leader and followers differently
+            if (leader != null && _enableSmartMovementCoordination)
+            {
+                ExecuteSmartCoordinatedMovement(command, leader, followers);
+            }
+            else
+            {
+                // FALLBACK: Traditional formation movement
+                ExecuteTraditionalMovement(command, squadMembers);
+            }
+
+            // Update squad state
+            UpdateSquadStateMovement(command.SquadId, command.TargetPosition, command.TargetRotation);
+
+            if (_enableDebugLogging)
+            {
+                Debug.Log($"SquadCoordinationSystem: Squad {command.SquadId} executing movement to {command.TargetPosition}");
+            }
+        }
+
+        /// <summary>
+        /// NEW: Execute smart coordinated movement
+        /// </summary>
+        private void ExecuteSmartCoordinatedMovement(MovementCommand command, IEntity leader, List<IEntity> followers)
+        {
+            // Leader moves directly to target position
+            var leaderNavigation = leader.GetComponent<NavigationComponent>();
+            if (leaderNavigation != null)
+            {
+                leaderNavigation.SetDestination(command.TargetPosition, NavigationCommandPriority.High);
+                
+                if (_enableDebugLogging)
+                    Debug.Log($"SquadCoordinationSystem: Leader {leader.Id} moving directly to {command.TargetPosition}");
+            }
+
+            // Update leader position for all followers
+            foreach (var follower in followers)
+            {
+                var followerNavigation = follower.GetComponent<NavigationComponent>();
+                if (followerNavigation != null)
+                {
+                    // SMART MOVEMENT: Followers will use two-phase movement
+                    followerNavigation.UpdateLeaderPosition(command.TargetPosition);
+                    followerNavigation.SetDestination(command.TargetPosition, NavigationCommandPriority.Normal);
+                    
+                    if (_enableDebugLogging)
+                        Debug.Log($"SquadCoordinationSystem: Follower {follower.Id} following leader to {command.TargetPosition}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// FALLBACK: Traditional formation movement for backward compatibility
+        /// </summary>
+        private void ExecuteTraditionalMovement(MovementCommand command, List<IEntity> squadMembers)
+        {
+            // Get current formation type
             FormationType formationType = GetSquadFormationType(command.SquadId);
             
             // Calculate formation positions using simple templates
@@ -211,27 +342,50 @@ namespace VikingRaven.Units.Systems
                     formationComponent.SetFormationOffset(localOffset, command.SmoothTransition);
                 }
             }
+        }
+
+        /// <summary>
+        /// NEW: Execute smart movement command
+        /// </summary>
+        private void ExecuteSmartMovementCommand(SmartMovementCommand command)
+        {
+            // Move leader directly
+            var leaderNavigation = command.LeaderEntity.GetComponent<NavigationComponent>();
+            if (leaderNavigation != null)
+            {
+                leaderNavigation.SetDestination(command.TargetPosition, NavigationCommandPriority.High);
+            }
+            
+            // Update all squad members with leader position
+            var squadMembers = GetSquadMembers(command.SquadId);
+            foreach (var entity in squadMembers)
+            {
+                if (entity != command.LeaderEntity)
+                {
+                    var navigationComponent = entity.GetComponent<NavigationComponent>();
+                    if (navigationComponent != null)
+                    {
+                        navigationComponent.UpdateLeaderPosition(command.TargetPosition);
+                        navigationComponent.SetDestination(command.TargetPosition, NavigationCommandPriority.Normal);
+                    }
+                }
+            }
             
             // Update squad state
-            if (_squadStates.TryGetValue(command.SquadId, out SquadState squadState))
-            {
-                squadState.TargetPosition = command.TargetPosition;
-                squadState.TargetRotation = command.TargetRotation;
-                squadState.IsMoving = true;
-            }
+            UpdateSquadStateMovement(command.SquadId, command.TargetPosition, command.TargetRotation);
             
             if (_enableDebugLogging)
             {
-                Debug.Log($"SquadCoordinationSystem: Squad {command.SquadId} moving to {command.TargetPosition}");
+                Debug.Log($"SquadCoordinationSystem: Executed smart movement for squad {command.SquadId} to {command.TargetPosition}");
             }
         }
 
         #endregion
 
-        #region Squad State Management - SIMPLIFIED
+        #region Enhanced Squad State Management
 
         /// <summary>
-        /// SIMPLIFIED: Update squad states based on member status
+        /// Update squad states with enhanced smart movement tracking
         /// </summary>
         private void UpdateSquadStates()
         {
@@ -255,29 +409,33 @@ namespace VikingRaven.Units.Systems
             // Update state for each squad
             foreach (var kvp in squadGroups)
             {
-                UpdateSingleSquadState(kvp.Key, kvp.Value);
+                UpdateEnhancedSquadState(kvp.Key, kvp.Value);
             }
         }
 
         /// <summary>
-        /// SIMPLIFIED: Update state for a single squad
+        /// ENHANCED: Update state for a single squad with smart movement tracking
         /// </summary>
-        private void UpdateSingleSquadState(int squadId, List<IEntity> members)
+        private void UpdateEnhancedSquadState(int squadId, List<IEntity> members)
         {
-            if (!_squadStates.TryGetValue(squadId, out SquadState squadState))
+            if (!_squadStates.TryGetValue(squadId, out EnhancedSquadState squadState))
             {
-                squadState = new SquadState { SquadId = squadId };
+                squadState = new EnhancedSquadState { SquadId = squadId };
                 _squadStates[squadId] = squadState;
             }
             
-            // Calculate squad center
+            // Calculate squad center and basic state
             Vector3 centerSum = Vector3.zero;
             int movingCount = 0;
+            
+            // ENHANCED: Track smart movement phases
+            var smartMovementStats = new SmartMovementStatistics();
             
             foreach (var entity in members)
             {
                 var transformComponent = entity.GetComponent<TransformComponent>();
                 var navigationComponent = entity.GetComponent<NavigationComponent>();
+                var formationComponent = entity.GetComponent<FormationComponent>();
                 
                 if (transformComponent != null)
                 {
@@ -287,38 +445,136 @@ namespace VikingRaven.Units.Systems
                     {
                         movingCount++;
                     }
+
+                    // ENHANCED: Track smart movement phases
+                    if (navigationComponent != null && formationComponent != null)
+                    {
+                        bool isLeader = formationComponent.FormationSlotIndex == 0;
+                        var phase = navigationComponent.CurrentMovementPhase;
+                        
+                        if (isLeader)
+                        {
+                            smartMovementStats.LeaderPhase = phase;
+                        }
+                        else
+                        {
+                            switch (phase)
+                            {
+                                case MovementPhase.MoveToLeader:
+                                    smartMovementStats.FollowersMovingToLeader++;
+                                    break;
+                                case MovementPhase.MoveToFormation:
+                                    smartMovementStats.FollowersMovingToFormation++;
+                                    break;
+                                case MovementPhase.InFormation:
+                                    smartMovementStats.FollowersInFormation++;
+                                    break;
+                                case MovementPhase.DirectMovement:
+                                    smartMovementStats.FollowersDirectMovement++;
+                                    break;
+                            }
+                            smartMovementStats.TotalFollowers++;
+                        }
+                    }
                 }
             }
             
             if (members.Count > 0)
             {
                 squadState.CurrentPosition = centerSum / members.Count;
-                squadState.IsMoving = movingCount > members.Count * 0.3f; // 30% threshold
+                squadState.IsMoving = movingCount > members.Count * 0.2f || smartMovementStats.FollowersMovingToLeader > 0;
                 squadState.MemberCount = members.Count;
+                squadState.SmartMovementStatistics = smartMovementStats;
             }
         }
 
         /// <summary>
-        /// SIMPLIFIED: Update squad state with formation type
+        /// Update squad state with formation type
         /// </summary>
-        private void UpdateSquadState(int squadId, FormationType formationType)
+        private void UpdateSquadStateFormation(int squadId, FormationType formationType)
         {
-            if (!_squadStates.TryGetValue(squadId, out SquadState squadState))
+            if (!_squadStates.TryGetValue(squadId, out EnhancedSquadState squadState))
             {
-                squadState = new SquadState { SquadId = squadId };
+                squadState = new EnhancedSquadState { SquadId = squadId };
                 _squadStates[squadId] = squadState;
             }
             
             squadState.CurrentFormationType = formationType;
         }
 
-        #endregion
-
-        #region Formation Position Calculation - SIMPLIFIED
+        /// <summary>
+        /// Update squad state with movement data
+        /// </summary>
+        private void UpdateSquadStateMovement(int squadId, Vector3 targetPosition, Quaternion targetRotation)
+        {
+            if (!_squadStates.TryGetValue(squadId, out EnhancedSquadState squadState))
+            {
+                squadState = new EnhancedSquadState { SquadId = squadId };
+                _squadStates[squadId] = squadState;
+            }
+            
+            squadState.TargetPosition = targetPosition;
+            squadState.TargetRotation = targetRotation;
+            squadState.IsMoving = true;
+        }
 
         /// <summary>
-        /// SIMPLIFIED: Calculate formation positions using simple templates
-        /// Based on formation type and unit count
+        /// NEW: Auto-update leader positions for followers
+        /// </summary>
+        private void UpdateLeaderPositions()
+        {
+            if (Time.time - _lastLeaderPositionUpdate < _leaderPositionUpdateInterval)
+                return;
+                
+            foreach (var squadState in _squadStates.Values)
+            {
+                var squadMembers = GetSquadMembers(squadState.SquadId);
+                if (squadMembers.Count == 0) continue;
+                
+                // Find leader
+                IEntity leader = null;
+                foreach (var entity in squadMembers)
+                {
+                    var formationComponent = entity.GetComponent<FormationComponent>();
+                    if (formationComponent != null && formationComponent.FormationSlotIndex == 0)
+                    {
+                        leader = entity;
+                        break;
+                    }
+                }
+                
+                if (leader == null) continue;
+                
+                // Get leader position
+                var leaderTransform = leader.GetComponent<TransformComponent>();
+                if (leaderTransform == null) continue;
+                
+                Vector3 leaderPosition = leaderTransform.Position;
+                
+                // Update leader position for all followers
+                foreach (var entity in squadMembers)
+                {
+                    if (entity != leader)
+                    {
+                        var navigationComponent = entity.GetComponent<NavigationComponent>();
+                        if (navigationComponent != null)
+                        {
+                            navigationComponent.UpdateLeaderPosition(leaderPosition);
+                        }
+                    }
+                }
+            }
+            
+            _lastLeaderPositionUpdate = Time.time;
+        }
+
+        #endregion
+
+        #region Formation Position Calculation (Backward Compatible)
+
+        /// <summary>
+        /// Calculate formation positions using simple templates
+        /// BACKWARD COMPATIBLE: Same as original implementation
         /// </summary>
         private Vector3[] CalculateFormationPositions(FormationType formationType, int unitCount, 
             Vector3 squadCenter, Quaternion squadRotation)
@@ -397,11 +653,10 @@ namespace VikingRaven.Units.Systems
 
         #endregion
 
-        #region Public Command Interface - SIMPLIFIED
+        #region ENHANCED PUBLIC INTERFACE
 
         /// <summary>
-        /// SIMPLIFIED: Change squad formation type
-        /// Queues command for processing in next update
+        /// ORIGINAL: Change squad formation type
         /// </summary>
         public void SetSquadFormation(int squadId, FormationType formationType, bool smoothTransition = true)
         {
@@ -421,8 +676,7 @@ namespace VikingRaven.Units.Systems
         }
 
         /// <summary>
-        /// SIMPLIFIED: Move squad to target position
-        /// Queues command for processing in next update
+        /// ORIGINAL: Move squad to target position
         /// </summary>
         public void MoveSquadToPosition(int squadId, Vector3 targetPosition, Quaternion targetRotation = default, 
             bool smoothTransition = true)
@@ -447,25 +701,114 @@ namespace VikingRaven.Units.Systems
         }
 
         /// <summary>
-        /// Get current squad state
+        /// NEW: Set squad formation with smart movement optimization
         /// </summary>
-        public SquadState GetSquadState(int squadId)
+        public void SetSquadFormationSmart(int squadId, FormationType formationType, bool enableSmartMovement = true, bool smoothTransition = true)
         {
-            _squadStates.TryGetValue(squadId, out SquadState state);
+            // First, set the formation
+            SetSquadFormation(squadId, formationType, smoothTransition);
+            
+            // Then, configure smart movement for all squad members
+            if (enableSmartMovement && _enableSmartMovementCoordination)
+            {
+                var squadMembers = GetSquadMembers(squadId);
+                foreach (var entity in squadMembers)
+                {
+                    var navigationComponent = entity.GetComponent<NavigationComponent>();
+                    if (navigationComponent != null)
+                    {
+                        navigationComponent.SetSmartMovementEnabled(true);
+                    }
+                }
+                
+                if (_enableDebugLogging)
+                {
+                    Debug.Log($"SquadCoordinationSystem: Squad {squadId} formation set to {formationType} with smart movement enabled");
+                }
+            }
+        }
+
+        /// <summary>
+        /// NEW: Move squad with smart movement coordination
+        /// </summary>
+        public void MoveSquadSmartMovement(int squadId, Vector3 targetPosition, Quaternion targetRotation = default, bool smoothTransition = true)
+        {
+            if (targetRotation == default)
+                targetRotation = Quaternion.identity;
+            
+            var squadMembers = GetSquadMembers(squadId);
+            if (squadMembers.Count == 0) return;
+            
+            // Find leader
+            IEntity leader = null;
+            foreach (var entity in squadMembers)
+            {
+                var formationComponent = entity.GetComponent<FormationComponent>();
+                if (formationComponent != null && formationComponent.FormationSlotIndex == 0)
+                {
+                    leader = entity;
+                    break;
+                }
+            }
+            
+            if (leader != null)
+            {
+                // Use smart movement command
+                var command = new SmartMovementCommand
+                {
+                    SquadId = squadId,
+                    TargetPosition = targetPosition,
+                    TargetRotation = targetRotation,
+                    SmoothTransition = smoothTransition,
+                    LeaderEntity = leader
+                };
+                
+                _smartMovementCommands.Enqueue(command);
+                
+                if (_enableDebugLogging)
+                {
+                    Debug.Log($"SquadCoordinationSystem: Queued smart movement for squad {squadId} to {targetPosition}");
+                }
+            }
+            else
+            {
+                // Fallback to regular movement
+                MoveSquadToPosition(squadId, targetPosition, targetRotation, smoothTransition);
+            }
+        }
+
+        /// <summary>
+        /// ORIGINAL: Get current squad state
+        /// </summary>
+        public EnhancedSquadState GetSquadState(int squadId)
+        {
+            _squadStates.TryGetValue(squadId, out EnhancedSquadState state);
             return state;
         }
 
         /// <summary>
-        /// Get all active squad states
+        /// ENHANCED: Get all active squad states
         /// </summary>
-        public Dictionary<int, SquadState> GetAllSquadStates()
+        public Dictionary<int, EnhancedSquadState> GetAllSquadStates()
         {
-            return new Dictionary<int, SquadState>(_squadStates);
+            return new Dictionary<int, EnhancedSquadState>(_squadStates);
+        }
+
+        /// <summary>
+        /// NEW: Get squad smart movement statistics
+        /// </summary>
+        public SmartMovementStatistics GetSquadSmartMovementStats(int squadId)
+        {
+            if (_squadStates.TryGetValue(squadId, out EnhancedSquadState state))
+            {
+                return state.SmartMovementStatistics;
+            }
+            return new SmartMovementStatistics();
         }
 
         #endregion
 
-        #region Helper Methods - SIMPLIFIED
+        #region Helper Methods
 
         private List<IEntity> GetSquadMembers(int squadId)
         {
@@ -493,7 +836,7 @@ namespace VikingRaven.Units.Systems
 
         private FormationType GetSquadFormationType(int squadId)
         {
-            if (_squadStates.TryGetValue(squadId, out SquadState state))
+            if (_squadStates.TryGetValue(squadId, out EnhancedSquadState state))
                 return state.CurrentFormationType;
             
             // Fallback: check first squad member
@@ -521,7 +864,7 @@ namespace VikingRaven.Units.Systems
 
         #endregion
 
-        #region Debug Tools - ENHANCED ODIN
+        #region Debug Tools
 
         [TitleGroup("Debug Information")]
         [ShowInInspector, ReadOnly]
@@ -534,16 +877,26 @@ namespace VikingRaven.Units.Systems
         private int QueuedMovementCommands => _movementCommands.Count;
         
         [ShowInInspector, ReadOnly]
+        private int QueuedSmartMovementCommands => _smartMovementCommands.Count;
+        
+        [ShowInInspector, ReadOnly]
         private int TotalCommandsProcessed => _totalCommandsProcessed;
+        
+        [ShowInInspector, ReadOnly]
+        private int SmartMovementCommandsProcessed => _smartMovementCommandsProcessed;
 
         [Button("Show Squad States"), TitleGroup("Debug Tools")]
         public void ShowSquadStates()
         {
-            string info = "=== Squad Coordination Debug Info ===\n";
+            string info = "=== Enhanced Squad Coordination Debug Info ===\n";
             info += $"Active Squads: {_squadStates.Count}\n";
+            info += $"Smart Movement Coordination: {_enableSmartMovementCoordination}\n";
+            info += $"Auto Update Leader Positions: {_autoUpdateLeaderPositions}\n";
             info += $"Queued Formation Commands: {_formationCommands.Count}\n";
             info += $"Queued Movement Commands: {_movementCommands.Count}\n";
-            info += $"Total Commands Processed: {_totalCommandsProcessed}\n\n";
+            info += $"Queued Smart Movement Commands: {_smartMovementCommands.Count}\n";
+            info += $"Total Commands Processed: {_totalCommandsProcessed}\n";
+            info += $"Smart Movement Commands Processed: {_smartMovementCommandsProcessed}\n\n";
             
             foreach (var kvp in _squadStates)
             {
@@ -552,26 +905,27 @@ namespace VikingRaven.Units.Systems
                 info += $"  Formation: {state.CurrentFormationType}\n";
                 info += $"  Position: {state.CurrentPosition}\n";
                 info += $"  Members: {state.MemberCount}\n";
-                info += $"  Moving: {state.IsMoving}\n\n";
+                info += $"  Moving: {state.IsMoving}\n";
+                info += $"  Smart Movement: {state.SmartMovementStatistics}\n\n";
             }
             
             Debug.Log(info);
         }
 
-        [Button("Test Squad Commands"), TitleGroup("Debug Tools")]
-        public void TestSquadCommands()
+        [Button("Test Smart Movement Commands"), TitleGroup("Debug Tools")]
+        public void TestSmartMovementCommands()
         {
-            Debug.Log("=== Testing Squad Commands ===");
+            Debug.Log("=== Testing Smart Movement Commands ===");
             
-            // Test formation changes
-            SetSquadFormation(1, FormationType.Phalanx, true);
-            SetSquadFormation(2, FormationType.Testudo, false);
+            // Test smart formation changes
+            SetSquadFormationSmart(1, FormationType.Phalanx, true, true);
+            SetSquadFormationSmart(2, FormationType.Testudo, true, false);
             
-            // Test movement commands
-            MoveSquadToPosition(1, new Vector3(10, 0, 5), Quaternion.identity, true);
-            MoveSquadToPosition(2, new Vector3(-5, 0, 8), Quaternion.identity, true);
+            // Test smart movement commands
+            MoveSquadSmartMovement(1, new Vector3(10, 0, 5), Quaternion.identity, true);
+            MoveSquadSmartMovement(2, new Vector3(-5, 0, 8), Quaternion.identity, true);
             
-            Debug.Log($"Queued {_formationCommands.Count} formation commands and {_movementCommands.Count} movement commands");
+            Debug.Log($"Queued {_formationCommands.Count} formation commands, {_movementCommands.Count} movement commands, and {_smartMovementCommands.Count} smart movement commands");
         }
 
         [Button("Clear All Commands"), TitleGroup("Debug Tools")]
@@ -579,6 +933,7 @@ namespace VikingRaven.Units.Systems
         {
             _formationCommands.Clear();
             _movementCommands.Clear();
+            _smartMovementCommands.Clear();
             Debug.Log("SquadCoordinationSystem: Cleared all queued commands");
         }
 
@@ -593,6 +948,7 @@ namespace VikingRaven.Units.Systems
             _squadStates.Clear();
             _formationCommands.Clear();
             _movementCommands.Clear();
+            _smartMovementCommands.Clear();
             
             Debug.Log("SquadCoordinationSystem: Cleanup completed");
         }
@@ -600,14 +956,9 @@ namespace VikingRaven.Units.Systems
         #endregion
     }
 
-    #region Supporting Data Structures - SIMPLIFIED
-
-    /// <summary>
-    /// SIMPLIFIED: Squad state information
-    /// Contains essential data for squad coordination
-    /// </summary>
+    #region Enhanced Data Structures
     [System.Serializable]
-    public class SquadState
+    public class EnhancedSquadState
     {
         public int SquadId;
         public FormationType CurrentFormationType = FormationType.Normal;
@@ -617,9 +968,30 @@ namespace VikingRaven.Units.Systems
         public bool IsMoving;
         public int MemberCount;
         
+        public SmartMovementStatistics SmartMovementStatistics = new SmartMovementStatistics();
+        
         public override string ToString()
         {
-            return $"Squad {SquadId}: {CurrentFormationType}, {MemberCount} units, Moving: {IsMoving}";
+            return $"Squad {SquadId}: {CurrentFormationType}, {MemberCount} units, Moving: {IsMoving}, {SmartMovementStatistics}";
+        }
+    }
+
+    [System.Serializable]
+    public class SmartMovementStatistics
+    {
+        public MovementPhase LeaderPhase = MovementPhase.DirectMovement;
+        public int FollowersMovingToLeader = 0;
+        public int FollowersMovingToFormation = 0;
+        public int FollowersInFormation = 0;
+        public int FollowersDirectMovement = 0;
+        public int TotalFollowers = 0;
+        
+        public float FormationCompletionPercentage => 
+            TotalFollowers > 0 ? (float)FollowersInFormation / TotalFollowers * 100f : 0f;
+        
+        public override string ToString()
+        {
+            return $"Leader: {LeaderPhase}, Formation: {FollowersInFormation}/{TotalFollowers} ({FormationCompletionPercentage:F1}%)";
         }
     }
     public struct FormationCommand
@@ -635,6 +1007,15 @@ namespace VikingRaven.Units.Systems
         public Vector3 TargetPosition;
         public Quaternion TargetRotation;
         public bool SmoothTransition;
+    }
+
+    public struct SmartMovementCommand
+    {
+        public int SquadId;
+        public Vector3 TargetPosition;
+        public Quaternion TargetRotation;
+        public bool SmoothTransition;
+        public IEntity LeaderEntity;
     }
 
     #endregion

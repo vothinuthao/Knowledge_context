@@ -417,13 +417,10 @@ namespace VikingRaven.Units.Models
                     if (navigationComponent != null)
                     {
                         navigationComponent.SetFormationInfo(
-                            _currentPosition,  // Squad center
-                            offset,           // Formation offset
+                            _currentPosition,
+                            offset,
                             NavigationCommandPriority.High
                         );
-                        
-                        Debug.Log($"SquadModel: Applied formation offset {offset} to unit {entityId} " +
-                                 $"at squad position {_currentPosition}");
                     }
                 }
             }

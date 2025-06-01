@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Sirenix.OdinInspector;
+using UnityEngine.Serialization;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.Factory;
 using VikingRaven.Core.Data;
@@ -34,10 +35,11 @@ namespace VikingRaven.Game
 
         #region Core Systems (Optimized Dependencies)
         
+        [FormerlySerializedAs("_optimizedSystemRegistry")]
         [TitleGroup("Core Systems")]
         [Tooltip("Optimized system registry")]
         [SerializeField, Required]
-        private SystemRegistry _optimizedSystemRegistry;
+        private SystemRegistry _systemRegistry;
         
         [Tooltip("Data manager for game data")]
         [SerializeField, Required]
@@ -184,7 +186,7 @@ namespace VikingRaven.Game
         public GameStatistics Statistics => _gameStatistics;
         
         // Optimized system access
-        public SystemRegistry SystemRegistry => _optimizedSystemRegistry;
+        public SystemRegistry SystemRegistry => _systemRegistry;
         public DataManager DataManager => _dataManager;
         public UnitFactory UnitFactory => _unitFactory;
         public SquadFactory SquadFactory => _squadFactory;
@@ -196,7 +198,6 @@ namespace VikingRaven.Game
         
         private void Awake()
         {
-            ValidateReferences();
             InitializeEventSubscriptions();
         }
         
@@ -234,62 +235,15 @@ namespace VikingRaven.Game
             ChangeGameState(GameState.Initializing);
             _gameInitializationCoroutine = StartCoroutine(InitializeGameCoroutine());
         }
-        
-        /// <summary>
-        /// Validate tất cả dependencies và setup event subscriptions
-        /// </summary>
-        private void ValidateReferences()
-        {
-            bool hasErrors = false;
-            
-            if (_optimizedSystemRegistry == null)
-            {
-                Debug.LogError("OptimizedGameManager: OptimizedSystemRegistry is missing!");
-                hasErrors = true;
-            }
-            
-            if (_dataManager == null)
-            {
-                Debug.LogError("OptimizedGameManager: DataManager is missing!");
-                hasErrors = true;
-            }
-            
-            if (_unitFactory == null)
-            {
-                Debug.LogError("OptimizedGameManager: UnitFactory is missing!");
-                hasErrors = true;
-            }
-            
-            if (_squadFactory == null)
-            {
-                Debug.LogError("OptimizedGameManager: SquadFactory is missing!");
-                hasErrors = true;
-            }
-            
-            if (_entityRegistry == null)
-            {
-                Debug.LogError("OptimizedGameManager: EntityRegistry is missing!");
-                hasErrors = true;
-            }
-            
-            if (hasErrors)
-            {
-                Debug.LogError("OptimizedGameManager: Critical references missing!");
-                return;
-            }
-            
-            Debug.Log("OptimizedGameManager: All references validated successfully");
-        }
-        
         /// <summary>
         /// Khởi tạo event subscriptions cho reactive architecture
         /// </summary>
         private void InitializeEventSubscriptions()
         {
-            if (_optimizedSystemRegistry != null)
+            if (_systemRegistry != null)
             {
-                _optimizedSystemRegistry.OnAllSystemsInitialized += OnSystemsInitialized;
-                _optimizedSystemRegistry.OnSystemUpdateCompleted += OnSystemUpdateCompleted;
+                _systemRegistry.OnAllSystemsInitialized += OnSystemsInitialized;
+                _systemRegistry.OnSystemUpdateCompleted += OnSystemUpdateCompleted;
             }
             
             if (_squadFactory != null)
@@ -299,9 +253,6 @@ namespace VikingRaven.Game
             }
         }
         
-        /// <summary>
-        /// Auto progression qua các game states sử dụng coroutine
-        /// </summary>
         private IEnumerator AutoProgressGameStatesCoroutine()
         {
             yield return StartCoroutine(InitializeGameCoroutine());
@@ -331,25 +282,19 @@ namespace VikingRaven.Game
         {
             Debug.Log("GameManager: Initializing game systems...");
             ChangeGameState(GameState.Initializing);
-            
-            // Initialize DataManager
             if (_dataManager != null && !_dataManager.IsInitialized)
             {
                 _dataManager.Initialize();
                 yield return new WaitForSeconds(0.1f);
             }
-            
-            // modidy EntityRegistry initialization
             if (_entityRegistry != null)
             {
-                Debug.Log("OptimizedGameManager: EntityRegistry ready");
+                Debug.Log("GameManager: EntityRegistry ready");
             }
             
-            // Wait for OptimizedSystemRegistry to complete initialization
-            if (_optimizedSystemRegistry != null)
+            if (_systemRegistry != null)
             {
-                // OptimizedSystemRegistry will initialize itself and call OnSystemsInitialized when ready
-                while (!_optimizedSystemRegistry.HasSystem<MovementSystem>()) // Wait for at least one system
+                while (!_systemRegistry.HasSystem<MovementSystem>()) // Wait for at least one system
                 {
                     yield return new WaitForSeconds(0.1f);
                 }
@@ -361,9 +306,6 @@ namespace VikingRaven.Game
             Debug.Log("OptimizedGameManager: Game systems initialized successfully");
         }
         
-        /// <summary>
-        /// Initialize factories với dependencies
-        /// </summary>
         private void InitializeFactories()
         {
             Debug.Log("OptimizedGameManager: Factories initialized");
@@ -373,9 +315,6 @@ namespace VikingRaven.Game
 
         #region Data Loading
         
-        /// <summary>
-        /// Load game data sử dụng coroutine
-        /// </summary>
         private IEnumerator LoadGameDataCoroutine()
         {
             Debug.Log("OptimizedGameManager: Loading game data...");
@@ -821,9 +760,9 @@ namespace VikingRaven.Game
                 ChangeGameState(GameState.Paused);
                 
                 // Pause system registry
-                if (_optimizedSystemRegistry != null)
+                if (_systemRegistry != null)
                 {
-                    _optimizedSystemRegistry.PauseUpdates();
+                    _systemRegistry.PauseUpdates();
                 }
                 
                 Time.timeScale = 0f;
@@ -838,9 +777,9 @@ namespace VikingRaven.Game
                 ChangeGameState(GameState.Playing);
                 
                 // Resume system registry
-                if (_optimizedSystemRegistry != null)
+                if (_systemRegistry != null)
                 {
-                    _optimizedSystemRegistry.ResumeUpdates();
+                    _systemRegistry.ResumeUpdates();
                 }
                 
                 Time.timeScale = 1f;
@@ -913,10 +852,10 @@ namespace VikingRaven.Game
         /// </summary>
         private void CleanupEventSubscriptions()
         {
-            if (_optimizedSystemRegistry != null)
+            if (_systemRegistry != null)
             {
-                _optimizedSystemRegistry.OnAllSystemsInitialized -= OnSystemsInitialized;
-                _optimizedSystemRegistry.OnSystemUpdateCompleted -= OnSystemUpdateCompleted;
+                _systemRegistry.OnAllSystemsInitialized -= OnSystemsInitialized;
+                _systemRegistry.OnSystemUpdateCompleted -= OnSystemUpdateCompleted;
             }
             
             if (_squadFactory != null)
