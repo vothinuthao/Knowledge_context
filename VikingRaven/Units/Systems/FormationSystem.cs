@@ -263,10 +263,6 @@ namespace VikingRaven.Units.Systems
             return newTemplate;
         }
 
-        /// <summary>
-        /// SIMPLIFIED: Generate formation template for specific type and count
-        /// Only handles 3 formation types
-        /// </summary>
         private FormationTemplate GenerateFormationTemplate(FormationType formationType, int unitCount)
         {
             if (unitCount <= 0) return null;

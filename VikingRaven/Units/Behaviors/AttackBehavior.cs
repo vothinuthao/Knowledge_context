@@ -67,7 +67,7 @@ namespace VikingRaven.Units.Behaviors
             // If we're in attack range, attack
             if (combatComponent.IsInAttackRange(targetEntity) && combatComponent.CanAttack())
             {
-                combatComponent.Attack(targetEntity);
+                // combatComponent.Attack(targetEntity);
             }
             else
             {
@@ -82,7 +82,7 @@ namespace VikingRaven.Units.Behaviors
                 var directionToEnemy = (targetTransform.Position - transformComponent.Position).normalized;
                 
                 // Move towards enemy
-                transformComponent.Move(directionToEnemy * combatComponent.MoveSpeed * Time.deltaTime);
+                transformComponent.Move(directionToEnemy * (combatComponent.MoveSpeed * Time.deltaTime));
                 
                 // Look at enemy
                 transformComponent.LookAt(targetTransform.Position);

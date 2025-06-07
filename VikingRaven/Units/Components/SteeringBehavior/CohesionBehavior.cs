@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.Steering;
@@ -75,14 +76,12 @@ namespace VikingRaven.Units.Components
             return output;
         }
 
+        // ReSharper disable Unity.PerformanceAnalysis
+        [Obsolete("Obsolete")]
         private List<IEntity> GetNearbyEntitiesInSquad(IEntity entity, int squadId)
         {
-            // NOTE: This is a simplified implementation
-            // In a real game, you would use spatial partitioning or physics queries
-            
             List<IEntity> neighbors = new List<IEntity>();
             
-            // Get all entities with the same formation component
             var entityRegistry = GameObject.FindObjectOfType<EntityRegistry>();
             if (entityRegistry == null)
                 return neighbors;

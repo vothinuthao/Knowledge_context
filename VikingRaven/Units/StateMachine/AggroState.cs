@@ -51,7 +51,7 @@ namespace VikingRaven.Units.StateMachine
                 if (combatComponent != null && combatComponent.IsInAttackRange(targetEntity))
                 {
                     // Attack logic
-                    combatComponent.Attack(targetEntity);
+                    // combatComponent.Attack(targetEntity);
                 }
             }
         }

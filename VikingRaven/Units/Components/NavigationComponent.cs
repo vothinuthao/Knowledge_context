@@ -90,10 +90,6 @@ namespace VikingRaven.Units.Components
                 _originalSpeed = _navMeshAgent.speed;
                 ConfigureNavMeshAgent();
             }
-            else
-            {
-                Debug.LogError("NavigationComponent: NavMeshAgent not found on entity: " + Entity?.Id);
-            }
             
             DetermineLeadershipStatus();
         }
@@ -140,12 +136,6 @@ namespace VikingRaven.Units.Components
         {
             UpdatePathfinding();
         }
-
-        /// <summary>
-        /// CORE METHOD: Enhanced UpdatePathfinding with smart movement logic
-        /// BACKWARD COMPATIBLE: Maintains existing API
-        /// ENHANCED: Smart two-phase movement system for squad coordination
-        /// </summary>
         public void UpdatePathfinding()
         {
             if (!IsActive || _navMeshAgent == null || !_navMeshAgent.isOnNavMesh)
@@ -153,14 +143,9 @@ namespace VikingRaven.Units.Components
 
             if (_hasReachedExactPosition)
                 return;
-
-            // Update priority decay over time
             UpdatePriorityDecay();
-
-            // Execute movement logic based on unit type and smart movement setting
             if (_enableSmartMovement && !_isSquadLeader)
             {
-                // FOLLOWERS: Use smart two-phase movement
                 UpdateSmartFollowerMovement();
             }
             else
@@ -514,13 +499,10 @@ namespace VikingRaven.Units.Components
             float timeSinceLastCommand = Time.time - _lastCommandTime;
             bool priorityDecayed = timeSinceLastCommand > _priorityDecayTime;
 
-            // Only accept command if higher priority or previous priority has decayed
             if (priority >= _currentCommandPriority || priorityDecayed)
             {
-                // Reset position lock state
                 _hasReachedExactPosition = false;
 
-                // Reactivate NavMeshAgent
                 ReactivateNavMeshAgent();
 
                 _destination = destination;

@@ -10,10 +10,6 @@ using VikingRaven.Units.Components;
 
 namespace VikingRaven.Core.Factory
 {
-    /// <summary>
-    /// Simplified Unit Factory - Only creates units by ID
-    /// Follows Single Responsibility Principle
-    /// </summary>
     public class UnitFactory : MonoBehaviour
     {
         #region Configuration
@@ -50,21 +46,12 @@ namespace VikingRaven.Core.Factory
         
         [ShowInInspector, ReadOnly]
         private int PoolsCount => _unitPools?.Count ?? 0;
-
         #endregion
-
         #region Private Fields
-        
-        // Object pools by unit ID
         private Dictionary<uint, ObjectPool<BaseEntity>> _unitPools = new Dictionary<uint, ObjectPool<BaseEntity>>();
-        
-        // Active units tracking
         private Dictionary<int, IEntity> _activeUnits = new Dictionary<int, IEntity>();
         private Dictionary<int, UnitModel> _unitModels = new Dictionary<int, UnitModel>();
-        
-        // ID generation
         private int _nextEntityId = 1000;
-
         #endregion
 
         #region Unity Lifecycle
@@ -82,69 +69,39 @@ namespace VikingRaven.Core.Factory
         #endregion
 
         #region Core Factory Methods
-        
-        /// <summary>
-        /// Create unit by unit data ID
-        /// </summary>
-        /// <param name="unitDataId">Unit data identifier</param>
-        /// <param name="position">Spawn position</param>
-        /// <param name="rotation">Spawn rotation</param>
-        /// <returns>Created entity or null if failed</returns>
         public IEntity CreateUnit(uint unitDataId, Vector3 position, Quaternion rotation)
         {
-            // Get unit data
             UnitDataSO unitData = _dataManager.GetUnitData(unitDataId);
             if (unitData == null)
             {
-                Debug.LogError($"UnitFactory: Unit data not found for ID: {unitDataId}");
                 return null;
             }
             
-            // Get or create pool
             var pool = GetOrCreatePool(unitDataId, unitData);
             if (pool == null)
             {
-                Debug.LogError($"UnitFactory: Failed to create pool for: {unitDataId}");
                 return null;
             }
-            
-            // Get entity from pool
             BaseEntity entity = pool.Get();
-            if (entity == null)
-            {
-                Debug.LogError($"UnitFactory: Failed to get entity from pool: {unitDataId}");
+            if (!entity)
                 return null;
-            }
-            
-            // Setup entity
             SetupEntity(entity, unitData, position, rotation);
             
             return entity;
         }
-        
-        /// <summary>
-        /// Return unit to pool
-        /// </summary>
-        /// <param name="entity">Entity to return</param>
         public void ReturnUnit(IEntity entity)
         {
             if (entity == null) return;
-            
-            // Find unit model
             if (!_unitModels.TryGetValue(entity.Id, out UnitModel unitModel))
             {
                 Debug.LogWarning($"UnitFactory: Unit model not found for entity: {entity.Id}");
                 return;
             }
-            
-            // Find pool
             if (!_unitPools.TryGetValue(unitModel.UnitId, out var pool))
             {
                 Debug.LogWarning($"UnitFactory: Pool not found for unit: {unitModel.UnitId}");
                 return;
             }
-            
-            // Clean up tracking
             _activeUnits.Remove(entity.Id);
             _unitModels.Remove(entity.Id);
             
@@ -261,25 +218,25 @@ namespace VikingRaven.Core.Factory
         
         private void InitializeComponents(BaseEntity entity, UnitDataSO unitData)
         {
-            var healthComponent = entity.GetComponent<HealthComponent>();
-            if (healthComponent != null)
-            {
-                healthComponent.SetMaxHealth(unitData.HitPoints);
-                healthComponent.SetHealth(unitData.HitPoints);
-            }
-            var combatComponent = entity.GetComponent<CombatComponent>();
-            if (combatComponent)
-            {
-                combatComponent.SetAttackDamage(unitData.Damage);
-                combatComponent.SetAttackRange(unitData.Range);
-                combatComponent.SetAttackCooldown(unitData.HitSpeed);
-                combatComponent.SetMoveSpeed(unitData.MoveSpeed);
-            }
-            var unitTypeComponent = entity.GetComponent<UnitTypeComponent>();
-            if (unitTypeComponent != null)
-            {
-                unitTypeComponent.SetUnitType(unitData.UnitType);
-            }
+            // var healthComponent = entity.GetComponent<HealthComponent>();
+            // if (healthComponent != null)
+            // {
+            //     healthComponent.SetMaxHealth(unitData.HitPoints);
+            //     healthComponent.SetHealth(unitData.HitPoints);
+            // }
+            // var combatComponent = entity.GetComponent<CombatComponent>();
+            // if (combatComponent)
+            // {
+            //     combatComponent.SetAttackDamage(unitData.Damage);
+            //     combatComponent.SetAttackRange(unitData.Range);
+            //     combatComponent.SetAttackCooldown(unitData.HitSpeed);
+            //     combatComponent.SetMoveSpeed(unitData.MoveSpeed);
+            // }
+            // var unitTypeComponent = entity.GetComponent<UnitTypeComponent>();
+            // if (unitTypeComponent != null)
+            // {
+            //     unitTypeComponent.SetUnitType(unitData.UnitType);
+            // }
         }
         
         private void OnReturnToPool(BaseEntity entity)

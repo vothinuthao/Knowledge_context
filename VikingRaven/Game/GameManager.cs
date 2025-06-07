@@ -374,8 +374,6 @@ namespace VikingRaven.Game
                 _playerSquads.Add(newSquad);
                 RegisterSquadEvents(newSquad);
                 CollectUnitsFromSquad(newSquad);
-                
-                // Event sẽ được trigger tự động qua OnSquadCreatedHandler
                 Debug.Log($"OptimizedGameManager: Spawned player squad {newSquad.SquadId} with {newSquad.UnitCount} units");
             }
             
@@ -803,10 +801,6 @@ namespace VikingRaven.Game
             StopReactiveUpdates();
             OnGameFailed?.Invoke();
         }
-        
-        /// <summary>
-        /// Stop tất cả reactive update coroutines
-        /// </summary>
         private void StopReactiveUpdates()
         {
             if (_gameConditionCheckCoroutine != null)
@@ -846,10 +840,6 @@ namespace VikingRaven.Game
         #endregion
 
         #region Cleanup (Event-Driven)
-        
-        /// <summary>
-        /// Cleanup event subscriptions
-        /// </summary>
         private void CleanupEventSubscriptions()
         {
             if (_systemRegistry != null)
@@ -874,10 +864,6 @@ namespace VikingRaven.Game
             }
             _squadEventSubscriptions.Clear();
         }
-        
-        /// <summary>
-        /// Unregister events cho specific squad
-        /// </summary>
         private void UnregisterSquadEvents(SquadModel squad)
         {
             if (_squadEventSubscriptions.TryGetValue(squad, out var eventSubscriptions))
@@ -889,26 +875,17 @@ namespace VikingRaven.Game
                 _squadEventSubscriptions.Remove(squad);
             }
         }
-        
-        /// <summary>
-        /// Cleanup tất cả game resources
-        /// </summary>
         private void CleanupGame()
         {
             Debug.Log("OptimizedGameManager: Cleaning up game resources...");
             
-            // Stop reactive updates
             StopReactiveUpdates();
             
-            // Clear tracking collections
             _playerSquads.Clear();
             _enemySquads.Clear();
             _allUnits.Clear();
-            
-            // Reset time scale
             Time.timeScale = 1f;
             
-            // Reset statistics
             _gameStatistics = new GameStatistics();
             _gameProgressPercentage = 0f;
             

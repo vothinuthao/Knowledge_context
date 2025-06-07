@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
+using Sirenix.OdinInspector;
 using VikingRaven.Core.ECS;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Data;
@@ -9,11 +10,37 @@ using VikingRaven.Units.Models;
 namespace VikingRaven.Units.Models
 {
     /// <summary>
-    /// FIXED: SquadModel with proper formation positioning logic
-    /// Ensures units are properly positioned in formation instead of stacking on one spot
+    /// FIXED: SquadModel with proper formation index logic
+    /// Ensures formation indices are assigned in logical order instead of chaotic mapping
     /// </summary>
     public class SquadModel
     {
+        #region Formation Index Configuration - FIXED
+
+        /// <summary>
+        /// FIXED: Priority order for assigning units to formation slots in 3x3 grid
+        /// Formation layout: [0] [1] [2]
+        ///                   [3] [4] [5]  
+        ///                   [6] [7] [8]
+        /// 
+        /// Where slot 4 (center) is leader position
+        /// This array defines logical assignment priority
+        /// </summary>
+        private static readonly int[] FORMATION_PRIORITY_ORDER = new int[]
+        {
+            4, // Unit 0 (Leader) -> Center position (slot 4)
+            1, // Unit 1 -> Front center (slot 1) - support leader from front
+            7, // Unit 2 -> Back center (slot 7) - support leader from back
+            3, // Unit 3 -> Middle left (slot 3) - protect leader's left flank
+            5, // Unit 4 -> Middle right (slot 5) - protect leader's right flank
+            0, // Unit 5 -> Front left (slot 0) - front line corner
+            2, // Unit 6 -> Front right (slot 2) - front line corner
+            6, // Unit 7 -> Back left (slot 6) - rear guard corner
+            8  // Unit 8 -> Back right (slot 8) - rear guard corner
+        };
+
+        #endregion
+
         private int _squadId;
         private SquadDataSO _squadData;
         
@@ -27,7 +54,7 @@ namespace VikingRaven.Units.Models
         private float _formationSpacing;
         private FormationSpacingConfig _formationSpacingConfig;
         
-        // FIXED: Formation offsets cache with proper calculation
+        // FIXED: Formation offsets cache with proper index calculation
         private Dictionary<int, Vector3> _formationOffsets = new Dictionary<int, Vector3>();
         private bool _formationDirty = true; // Track when formation needs recalculation
         
@@ -97,6 +124,7 @@ namespace VikingRaven.Units.Models
             Debug.Log($"SquadModel: Created squad {squadId} with formation {_currentFormation}, " +
                      $"spacing: {GetEffectiveFormationSpacing(_currentFormation):F2}");
         }
+        
         private void InitializeFormationSpacing(SquadDataSO squadData)
         {
             if (squadData != null)
@@ -132,6 +160,7 @@ namespace VikingRaven.Units.Models
                 _ => 2.0f
             };
         }
+        
         public float GetPositionTolerance()
         {
             if (_squadData != null)
@@ -141,6 +170,7 @@ namespace VikingRaven.Units.Models
             
             return 0.3f; 
         }
+        
         public void AddUnit(UnitModel unitModel)
         {
             if (unitModel == null || unitModel.Entity == null) return;
@@ -158,6 +188,7 @@ namespace VikingRaven.Units.Models
             SubscribeToUnitEvents(unitModel);
             OnUnitAdded?.Invoke(unitModel);
         }
+        
         public void AddUnits(List<UnitModel> unitModels)
         {
             if (unitModels == null) return;
@@ -194,6 +225,7 @@ namespace VikingRaven.Units.Models
                 ForceRecalculateFormation();
             }
         }
+        
         private void SubscribeToUnitEvents(UnitModel unitModel)
         {
             if (unitModel == null) return;
@@ -201,6 +233,7 @@ namespace VikingRaven.Units.Models
             unitModel.OnDeath += () => HandleUnitDeath(unitModel);
             unitModel.OnAttackPerformed += HandleUnitAttackPerformed;
         }
+        
         private void UnsubscribeFromUnitEvents(UnitModel unitModel)
         {
             if (unitModel == null) return;
@@ -209,6 +242,7 @@ namespace VikingRaven.Units.Models
             unitModel.OnDeath -= () => HandleUnitDeath(unitModel);
             unitModel.OnAttackPerformed -= HandleUnitAttackPerformed;
         }
+        
         private void HandleUnitDeath(UnitModel unitModel)
         {
             if (unitModel == null) return;
@@ -233,6 +267,7 @@ namespace VikingRaven.Units.Models
                 OnCombatStateChanged?.Invoke(true);
             }
         }
+        
         private void HandleUnitAttackPerformed(IEntity target, float damage)
         {
             _totalDamageDealt += damage;
@@ -248,6 +283,7 @@ namespace VikingRaven.Units.Models
                 _combatStreak++;
             }
         }
+        
         public void SetFormation(FormationType formationType)
         {
             if (_currentFormation == formationType) return;
@@ -263,6 +299,7 @@ namespace VikingRaven.Units.Models
             Debug.Log($"SquadModel: Changed formation of squad {_squadId} from {oldFormation} to {formationType}, " +
                      $"new spacing: {GetEffectiveFormationSpacing(formationType):F2}");
         }
+        
         public void SetTargetPosition(Vector3 position)
         {
             if (Vector3.Distance(_currentPosition, position) < 0.1f) return;
@@ -287,6 +324,7 @@ namespace VikingRaven.Units.Models
             
             ForceRecalculateFormation();
         }
+        
         public void ForceRecalculateFormation()
         {
             if (_unitModels.Count == 0) return;
@@ -326,44 +364,133 @@ namespace VikingRaven.Units.Models
                     break;
             }
         }
+        
+        /// <summary>
+        /// FIXED: Calculate Normal formation offsets with logical index assignment
+        /// Uses FORMATION_PRIORITY_ORDER for consistent and intuitive unit placement
+        /// </summary>
         private void CalculateNormalFormationOffsets(float spacing)
         {
-            const int gridWidth = 3;
+            Debug.Log($"SquadModel: Calculating Normal formation for {_unitModels.Count} units with spacing {spacing:F2}");
             
-            for (int i = 0; i < _unitModels.Count; i++)
+            for (int unitIndex = 0; unitIndex < _unitModels.Count; unitIndex++)
             {
-                UnitModel unit = _unitModels[i];
+                UnitModel unit = _unitModels[unitIndex];
+                if (unit?.Entity == null) continue;
+                
                 int entityId = unit.Entity.Id;
                 
-                // FIXED: Assign leader to center position (slot 4 in 3x3 grid)
-                int slotIndex;
-                if (i == 0) // First unit is leader, goes to center
-                {
-                    slotIndex = 4; // Center of 3x3 grid
-                }
-                else if (i <= 8) // Other units fill remaining slots
-                {
-                    slotIndex = i < 4 ? i : i + 1; // Skip slot 4 (reserved for leader)
-                }
-                else // Extra units beyond 9 wrap around
-                {
-                    slotIndex = (i - 1) % 8; // Wrap around non-center positions
-                    if (slotIndex >= 4) slotIndex++; // Skip center slot
-                }
+                // FIXED: Use logical formation slot assignment
+                int formationSlot = GetFormationSlotForUnit(unitIndex);
                 
-                int row = slotIndex / gridWidth;
-                int col = slotIndex % gridWidth;
+                // Calculate offset from formation slot
+                Vector3 offset = CalculateOffsetFromSlot(formationSlot, spacing);
                 
-                // Center the grid around origin (squad center)
-                float x = (col - 1) * spacing; 
-                float z = (row - 1) * spacing;
-                
-                Vector3 offset = new Vector3(x, 0, z);
+                // Store offset
                 _formationOffsets[entityId] = offset;
                 
-                Debug.Log($"SquadModel: Unit {entityId} (slot {i}) assigned to grid position [{row},{col}] " +
-                         $"with offset {offset}");
+                // Update formation component with correct data
+                UpdateUnitFormationData(unit, formationSlot, offset);
+                
+                Debug.Log($"SquadModel: Unit {unitIndex} (ID:{entityId}) -> Formation Slot {formationSlot} -> Offset {offset}");
             }
+            
+            Debug.Log($"SquadModel: Completed Normal formation calculation with {_formationOffsets.Count} offsets");
+        }
+
+        /// <summary>
+        /// FIXED: Get formation slot for unit based on logical priority order
+        /// </summary>
+        private int GetFormationSlotForUnit(int unitIndex)
+        {
+            // Use priority order for first 9 units
+            if (unitIndex < FORMATION_PRIORITY_ORDER.Length)
+            {
+                return FORMATION_PRIORITY_ORDER[unitIndex];
+            }
+            
+            // For additional units beyond 9, use remaining slots
+            // Create set of used slots
+            var usedSlots = new HashSet<int>();
+            for (int i = 0; i < FORMATION_PRIORITY_ORDER.Length && i < _unitModels.Count; i++)
+            {
+                usedSlots.Add(FORMATION_PRIORITY_ORDER[i]);
+            }
+            
+            // Find first available slot for extra units
+            for (int slot = 0; slot < 9; slot++)
+            {
+                if (!usedSlots.Contains(slot))
+                {
+                    return slot;
+                }
+            }
+            
+            // Fallback: wrap around
+            return unitIndex % 9;
+        }
+
+        /// <summary>
+        /// FIXED: Calculate world offset from formation slot index (0-8)
+        /// Converts slot index to grid coordinates then to world offset
+        /// </summary>
+        private Vector3 CalculateOffsetFromSlot(int slotIndex, float spacing)
+        {
+            // Ensure slot index is valid
+            slotIndex = Mathf.Clamp(slotIndex, 0, 8);
+            
+            // Convert slot index to grid coordinates
+            // Grid layout: [0][1][2]
+            //              [3][4][5]
+            //              [6][7][8]
+            int row = slotIndex / 3;    // 0, 1, 2
+            int col = slotIndex % 3;    // 0, 1, 2
+            
+            // Convert grid coordinates to world offset (centered around origin)
+            float x = (col - 1) * spacing;  // -spacing, 0, +spacing
+            float z = (row - 1) * spacing;  // -spacing, 0, +spacing
+            
+            return new Vector3(x, 0, z);
+        }
+
+        /// <summary>
+        /// FIXED: Update unit formation data with correct slot and role assignment
+        /// </summary>
+        private void UpdateUnitFormationData(UnitModel unit, int formationSlot, Vector3 offset)
+        {
+            var formationComponent = unit.Entity.GetComponent<FormationComponent>();
+            if (formationComponent == null) return;
+            
+            // Set formation slot index - THIS IS THE KEY FIX!
+            formationComponent.SetFormationSlot(formationSlot);
+            
+            // Set formation offset
+            formationComponent.SetFormationOffset(offset, true); // Use smooth transition
+            
+            formationComponent.SetSquadId(_squadId);
+            formationComponent.SetFormationType(_currentFormation);
+            
+            FormationRole role = DetermineFormationRole(formationSlot);
+            formationComponent.SetFormationRole(role);
+            
+            Debug.Log($"SquadModel: Updated FormationComponent for Unit {unit.Entity.Id}: " +
+                     $"Slot={formationSlot}, Role={role}, Offset={offset}");
+        }
+
+        /// <summary>
+        /// FIXED: Determine formation role based on slot position in 3x3 grid
+        /// </summary>
+        private FormationRole DetermineFormationRole(int slotIndex)
+        {
+            return slotIndex switch
+            {
+                4 => FormationRole.Leader,
+                1 or 7 => FormationRole.FrontLine,
+                3 or 5 => FormationRole.Flanker,
+                0 or 2 => FormationRole.Support,
+                6 or 8 => FormationRole.Reserve, 
+                _ => FormationRole.Follower
+            };
         }
         
         private void CalculatePhalanxFormationOffsets(float spacing)
@@ -380,18 +507,30 @@ namespace VikingRaven.Units.Models
                 int row = i / width;
                 int col = i % width;
                 
-                // Center the grid around origin
                 float x = (col - (width - 1) * 0.5f) * spacing;
                 float z = (row - (height - 1) * 0.5f) * spacing;
                 
                 Vector3 offset = new Vector3(x, 0, z);
                 _formationOffsets[entityId] = offset;
+                
+                // Update formation component
+                var formationComponent = unit.Entity.GetComponent<FormationComponent>();
+                if (formationComponent != null)
+                {
+                    formationComponent.SetFormationSlot(i);
+                    formationComponent.SetFormationOffset(offset, false);
+                    formationComponent.SetSquadId(_squadId);
+                    formationComponent.SetFormationType(_currentFormation, false);
+                    
+                    FormationRole role = i == 0 ? FormationRole.Leader : 
+                                       (i < width) ? FormationRole.FrontLine : FormationRole.Support;
+                    formationComponent.SetFormationRole(role);
+                }
             }
         }
         
         private void CalculateTestudoFormationOffsets(float spacing)
         {
-            // Similar to phalanx but with the tighter spacing already applied
             CalculatePhalanxFormationOffsets(spacing);
         }
         
@@ -403,7 +542,6 @@ namespace VikingRaven.Units.Models
                 
                 if (_formationOffsets.TryGetValue(entityId, out Vector3 offset))
                 {
-                    // FIXED: Apply to FormationComponent first
                     var formationComponent = unitModel.Entity.GetComponent<FormationComponent>();
                     if (formationComponent != null)
                     {
@@ -412,7 +550,6 @@ namespace VikingRaven.Units.Models
                         formationComponent.SetFormationType(_currentFormation);
                     }
                     
-                    // FIXED: Apply to NavigationComponent to actually move the unit
                     var navigationComponent = unitModel.Entity.GetComponent<NavigationComponent>();
                     if (navigationComponent != null)
                     {
@@ -470,6 +607,7 @@ namespace VikingRaven.Units.Models
                 }
             }
         }
+        
         private void UpdateMovingState()
         {
             if (_unitModels.Count == 0)
@@ -477,8 +615,6 @@ namespace VikingRaven.Units.Models
                 _isMoving = false;
                 return;
             }
-            
-            // Check if any unit is still moving
             int movingCount = 0;
             foreach (var unitModel in _unitModels)
             {
@@ -489,7 +625,6 @@ namespace VikingRaven.Units.Models
                 }
             }
             
-            // If less than 20% of units are still moving, consider the squad stopped
             bool isMoving = movingCount > _unitModels.Count * 0.2f;
             
             // Update moving state
@@ -499,9 +634,6 @@ namespace VikingRaven.Units.Models
             }
         }
         
-        /// <summary>
-        /// Update the engaged state based on unit aggro
-        /// </summary>
         private void UpdateEngagedState()
         {
             if (_unitModels.Count == 0)
@@ -509,8 +641,6 @@ namespace VikingRaven.Units.Models
                 _isEngaged = false;
                 return;
             }
-            
-            // Check if any unit is engaged
             bool anyEngaged = false;
             foreach (var unitModel in _unitModels)
             {
@@ -523,7 +653,6 @@ namespace VikingRaven.Units.Models
                 }
             }
             
-            // If no units are engaged and it's been a while since combat, exit combat state
             bool shouldBeEngaged = anyEngaged || (Time.time - _lastCombatTime < 5.0f);
             
             // Update engaged state
@@ -540,33 +669,6 @@ namespace VikingRaven.Units.Models
             }
         }
         
-        /// <summary>
-        /// Get a unit model by entity ID
-        /// </summary>
-        public UnitModel GetUnitById(int entityId)
-        {
-            if (_unitModelsById.TryGetValue(entityId, out UnitModel unitModel))
-            {
-                return unitModel;
-            }
-            return null;
-        }
-        
-        /// <summary>
-        /// Get all unit models of a specific type
-        /// </summary>
-        public List<UnitModel> GetUnitsByType(UnitType unitType)
-        {
-            if (_unitModelsByType.TryGetValue(unitType, out var units))
-            {
-                return new List<UnitModel>(units);
-            }
-            return new List<UnitModel>();
-        }
-        
-        /// <summary>
-        /// Get all unit entities
-        /// </summary>
         public List<IEntity> GetAllUnitEntities()
         {
             List<IEntity> result = new List<IEntity>();
@@ -576,18 +678,6 @@ namespace VikingRaven.Units.Models
             }
             return result;
         }
-        
-        /// <summary>
-        /// Check if this squad has any units of a specific type
-        /// </summary>
-        public bool HasUnitType(UnitType unitType)
-        {
-            return _unitModelsByType.TryGetValue(unitType, out var units) && units.Count > 0;
-        }
-        
-        /// <summary>
-        /// Calculate the average health percentage of the squad
-        /// </summary>
         public float GetAverageHealthPercentage()
         {
             if (_unitModels.Count == 0) return 0f;
@@ -603,51 +693,16 @@ namespace VikingRaven.Units.Models
             
             return sum / _unitModels.Count;
         }
-        
-        /// <summary>
-        /// Check if this squad is still viable (has enough units)
-        /// </summary>
         public bool IsViable()
         {
             return _unitModels.Count > 0;
         }
-        
-        /// <summary>
-        /// Update the squad's data
-        /// ENHANCED: Reinitialize formation spacing when data changes
-        /// </summary>
-        public void UpdateData(SquadDataSO newData)
-        {
-            if (newData == null) return;
-            
-            _squadData = newData;
-            
-            // Reinitialize formation spacing with new data
-            InitializeFormationSpacing(newData);
-            
-            // Update formation settings
-            _currentFormation = newData.DefaultFormationType;
-            _formationDirty = true;
-            
-            // FIXED: Force immediate recalculation with new spacing
-            ForceRecalculateFormation();
-            
-            Debug.Log($"SquadModel: Updated data for squad {_squadId} to {newData.DisplayName}, " +
-                     $"new spacing: {GetEffectiveFormationSpacing(_currentFormation):F2}");
-        }
-        
-        /// <summary>
-        /// Clean up resources and unsubscribe from events
-        /// </summary>
         public void Cleanup()
         {
-            // Unsubscribe from all unit events
             foreach (var unitModel in _unitModels)
             {
                 UnsubscribeFromUnitEvents(unitModel);
             }
-            
-            // Clear collections
             _unitModels.Clear();
             _unitModelsById.Clear();
             foreach (var type in _unitModelsByType.Keys)
@@ -659,17 +714,6 @@ namespace VikingRaven.Units.Models
             _isInitialized = false;
             
             Debug.Log($"SquadModel: Cleaned up squad {_squadId}");
-        }
-        
-        /// <summary>
-        /// Create a string representation of the squad
-        /// ENHANCED: Shows formation spacing info
-        /// </summary>
-        public override string ToString()
-        {
-            return $"SquadModel(ID: {_squadId}, Units: {_unitModels.Count}, Formation: {_currentFormation}, " +
-                   $"Spacing: {GetEffectiveFormationSpacing(_currentFormation):F2}, Position: {_currentPosition}, " +
-                   $"Moving: {_isMoving}, Engaged: {_isEngaged})";
         }
     }
 }
