@@ -6,8 +6,7 @@ using VikingRaven.Units.Data;
 
 namespace VikingRaven.Core.Factory
 {
-    /// Squad identifier component for squad prefabs
-    /// </summary>
+    
     public class SquadIdentifier : MonoBehaviour
     {
         [Header("Squad Information")]

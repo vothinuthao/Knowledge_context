@@ -592,12 +592,10 @@ namespace VikingRaven.Units.Components
             var baseCombat = Entity.GetComponent<CombatComponent>();
             if (baseCombat == null) return;
             
-            // Get base stats from combat component
             float baseDamage = baseCombat.AttackDamage;
             float baseRange = baseCombat.AttackRange;
             float baseSpeed = 1f / baseCombat.AttackCooldown;
             
-            // Get weapon-specific modifiers
             var weaponMods = GetWeaponTypeModifiers(_primaryWeapon);
             var masteryMods = GetMasteryModifiers(_primaryWeapon);
             var conditionMod = GetWeaponConditionModifier(_primaryWeapon);
@@ -609,11 +607,11 @@ namespace VikingRaven.Units.Components
             _criticalChance = weaponMods.CriticalChance + masteryMods.CriticalChance;
             _armorPenetration = weaponMods.ArmorPenetration + masteryMods.ArmorPenetration;
             
-            // Dual wielding bonuses
+            // Dual wielding bonuse
             if (IsDualWielding)
             {
-                _effectiveSpeed *= 1.3f; // 30% speed bonus
-                _effectiveDamage *= 0.8f; // 20% damage penalty per hit
+                _effectiveSpeed *= 1.3f;
+                _effectiveDamage *= 0.8f;
             }
         }
 

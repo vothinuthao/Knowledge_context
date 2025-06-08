@@ -32,7 +32,6 @@ namespace VikingRaven.Units.Components
     
             Debug.Log($"AggroDetectionComponent.Initialize() for entity ID: {(Entity != null ? Entity.Id.ToString() : "null")}");
     
-            // Khởi tạo lại nếu cần
             if (_enemiesInRange == null)
             {
                 _enemiesInRange = new List<IEntity>();

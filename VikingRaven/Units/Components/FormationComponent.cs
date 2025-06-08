@@ -11,7 +11,7 @@ namespace VikingRaven.Units.Components
     /// </summary>
     public class FormationComponent : BaseComponent
     {
-        #region Core Formation Identity - ENHANCED
+        #region Core Formation Identity
 
         [TitleGroup("Formation Identity")]
         [Tooltip("Squad ID that this unit belongs to")]
@@ -35,7 +35,7 @@ namespace VikingRaven.Units.Components
 
         #endregion
 
-        #region Formation Position Data - ENHANCED
+        #region Formation Position Data
 
         [TitleGroup("Position Data")]
         [Tooltip("Local offset from squad center")]

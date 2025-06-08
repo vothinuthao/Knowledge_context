@@ -291,11 +291,6 @@ namespace VikingRaven.Core.Factory
         #endregion
 
         #region Formation Position Generation - CORE LOGIC
-
-        /// <summary>
-        /// SIMPLIFIED: Generate formation positions for 3 formation types
-        /// Returns world positions for each unit slot
-        /// </summary>
         private Vector3[] GenerateFormationPositions(FormationType formationType, int unitCount, 
             float spacing, Vector3 squadCenter, Quaternion squadRotation)
         {
@@ -333,7 +328,7 @@ namespace VikingRaven.Core.Factory
         }
 
         /// <summary>
-        /// Generate Normal formation (3x3 grid) - SIMPLIFIED
+        /// Generate Normal formation (3x3 grid)
         /// </summary>
         private void GenerateNormalFormationPositions(Vector3[] positions, float spacing)
         {
@@ -353,7 +348,7 @@ namespace VikingRaven.Core.Factory
         }
 
         /// <summary>
-        /// Generate Phalanx formation - SIMPLIFIED
+        /// Generate Phalanx formation
         /// </summary>
         private void GeneratePhalanxFormationPositions(Vector3[] positions, float spacing)
         {
@@ -373,45 +368,33 @@ namespace VikingRaven.Core.Factory
         }
 
         /// <summary>
-        /// Generate Testudo formation - SIMPLIFIED
+        /// Generate Testudo formation
         /// </summary>
         private void GenerateTestudoFormationPositions(Vector3[] positions, float spacing)
         {
-            // Use same logic as Phalanx but with tighter spacing
             GeneratePhalanxFormationPositions(positions, spacing);
         }
 
         #endregion
 
-        #region Formation Component Setup - DIRECT ASSIGNMENT
-
-        /// <summary>
-        /// SIMPLIFIED: Setup formation component with direct assignment
-        /// No complex calculations, just direct index and offset assignment
-        /// </summary>
+        #region Formation Component Setup
         private void SetupFormationComponentDirect(IEntity unitEntity, int squadId, int formationIndex, 
             FormationType formationType, Vector3 localOffset)
         {
             var formationComponent = unitEntity.GetComponent<FormationComponent>();
             if (formationComponent == null) return;
             
-            // Direct assignment - no complex logic
             formationComponent.SetSquadId(squadId);
             formationComponent.SetFormationSlot(formationIndex);
-            formationComponent.SetFormationType(formationType, false); // No smooth transition on spawn
-            formationComponent.SetFormationOffset(localOffset, false); // Direct assignment
+            formationComponent.SetFormationType(formationType, false);
+            formationComponent.SetFormationOffset(localOffset );
             
-            // Set formation role based on index
             FormationRole role = DetermineFormationRole(formationIndex, formationType);
             formationComponent.SetFormationRole(role);
             
             Debug.Log($"SquadFactory: Unit {unitEntity.Id} assigned formation index {formationIndex}, " +
                      $"offset {localOffset}, role {role}");
         }
-
-        /// <summary>
-        /// SIMPLIFIED: Determine formation role based on index
-        /// </summary>
         private FormationRole DetermineFormationRole(int index, FormationType formationType)
         {
             if (index == 0) return FormationRole.Leader;
@@ -434,7 +417,7 @@ namespace VikingRaven.Core.Factory
 
         #endregion
 
-        #region Helper Methods - SIMPLIFIED
+        #region Helper Methods
 
         private int CalculateTotalUnits(SquadDataSO squadData)
         {
