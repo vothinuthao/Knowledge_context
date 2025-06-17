@@ -15,7 +15,6 @@ namespace VikingRaven.Units.Models
         private string _displayName;
         private string _description;
         
-        // Combat stats
         private float _hitPoints = 100f;           // Máu cơ bản
         private float _shieldHitPoints = 0f;       // Máu khiên (Shield Hitpoints)
         private float _mass = 10f;                 // Khối lượng (ảnh hưởng đến knockback)
@@ -31,13 +30,11 @@ namespace VikingRaven.Units.Models
         private int _count = 1;                    // Số lượng
         private float _detectionRange = 10f;       // Tầm phát hiện kẻ địch
         
-        // Ability properties
         private string _ability = "";
         private float _abilityCost = 0f;
         private float _abilityCooldown = 0f;
         private string _abilityParameters = "";
         
-        // Visual properties
         private Color _unitColor = Color.white;
 
         private float _currentHealth;

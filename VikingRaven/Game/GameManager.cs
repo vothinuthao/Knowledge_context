@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Sirenix.OdinInspector;
+using Unity.VisualScripting;
 using UnityEngine.Serialization;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.Factory;
@@ -11,6 +12,7 @@ using VikingRaven.Game.DefineData;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Models;
 using VikingRaven.Units.Systems;
+using VikingRaven.Units.Team;
 
 namespace VikingRaven.Game
 {
@@ -338,17 +340,14 @@ namespace VikingRaven.Game
         /// </summary>
         private IEnumerator SpawnInitialSquadsCoroutine()
         {
-            Debug.Log("OptimizedGameManager: Spawning initial squads...");
             ChangeGameState(GameState.SpawningSquads);
             
-            // Spawn player squads
             for (int i = 0; i < _initialPlayerSquadCount; i++)
             {
                 yield return StartCoroutine(SpawnPlayerSquadCoroutine(i));
                 yield return new WaitForSeconds(0.2f);
             }
             
-            // Spawn enemy squads
             for (int i = 0; i < _initialEnemySquadCount; i++)
             {
                 yield return StartCoroutine(SpawnEnemySquadCoroutine(i));
@@ -359,9 +358,6 @@ namespace VikingRaven.Game
             Debug.Log($"OptimizedGameManager: Spawned {_playerSquads.Count} player squads and {_enemySquads.Count} enemy squads");
         }
         
-        /// <summary>
-        /// Spawn player squad với async approach
-        /// </summary>
         private IEnumerator SpawnPlayerSquadCoroutine(int squadIndex)
         {
             Vector3 spawnPosition = GetPlayerSpawnPosition(squadIndex);
@@ -371,18 +367,15 @@ namespace VikingRaven.Game
             
             if (newSquad != null)
             {
+                SetSquadTeam(newSquad, TeamType.Player);
                 _playerSquads.Add(newSquad);
                 RegisterSquadEvents(newSquad);
                 CollectUnitsFromSquad(newSquad);
-                Debug.Log($"OptimizedGameManager: Spawned player squad {newSquad.SquadId} with {newSquad.UnitCount} units");
             }
             
             yield return null;
         }
         
-        /// <summary>
-        /// Spawn enemy squad với async approach
-        /// </summary>
         private IEnumerator SpawnEnemySquadCoroutine(int squadIndex)
         {
             Vector3 spawnPosition = GetEnemySpawnPosition(squadIndex);
@@ -392,19 +385,28 @@ namespace VikingRaven.Game
             
             if (newSquad != null)
             {
+                SetSquadTeam(newSquad, TeamType.Enemy);
                 _enemySquads.Add(newSquad);
                 RegisterSquadEvents(newSquad);
                 CollectUnitsFromSquad(newSquad);
                 
-                Debug.Log($"OptimizedGameManager: Spawned enemy squad {newSquad.SquadId} with {newSquad.UnitCount} units");
             }
             
             yield return null;
         }
-        
-        /// <summary>
-        /// Register events cho squad để reactive handling
-        /// </summary>
+        private void SetSquadTeam(SquadModel squad, TeamType teamType)
+        {
+            if (squad == null) return;
+            
+            foreach (var unit in squad.GetAllUnits())
+            {
+                var teamComponent = unit.GetComponent<TeamComponent>();
+                if (teamComponent)
+                {
+                    teamComponent.SetTeam(teamType);
+                }
+            }
+        }
         private void RegisterSquadEvents(SquadModel squad)
         {
             if (squad == null) return;
@@ -430,28 +432,19 @@ namespace VikingRaven.Game
 
         #endregion
 
-        #region Reactive Game Flow (Thay thế Update)
+        #region Reactive Game Flow
         public void StartGameReactive()
         {
-            Debug.Log("OptimizedGameManager: Starting reactive game...");
             ChangeGameState(GameState.Playing);
-            
-            // Start reactive update coroutines
             StartReactiveUpdateCoroutines();
         }
         
-        /// <summary>
-        /// Start các coroutines cho reactive updates
-        /// </summary>
         private void StartReactiveUpdateCoroutines()
         {
-            // Game condition checking (thay thế Update logic)
             _gameConditionCheckCoroutine = StartCoroutine(GameConditionCheckCoroutine());
             
-            // Statistics updates
             _statisticsUpdateCoroutine = StartCoroutine(StatisticsUpdateCoroutine());
             
-            // Performance monitoring
             if (_enablePerformanceMonitoring)
             {
                 _performanceMonitoringCoroutine = StartCoroutine(PerformanceMonitoringCoroutine());
@@ -495,11 +488,11 @@ namespace VikingRaven.Game
 
         #endregion
 
-        #region Event Handlers (Reactive Logic)
+        #region Event Handlers
         
         private void OnSystemsInitialized()
         {
-            Debug.Log("OptimizedGameManager: All systems initialized via event");
+            Debug.Log("GameManager: All systems initialized via event");
         }
         
         private void OnSystemUpdateCompleted()
@@ -512,24 +505,17 @@ namespace VikingRaven.Game
             OnSquadSpawned?.Invoke(squad);
         }
         
-        /// <summary>
-        /// Handler khi squad bị disbanded
-        /// </summary>
         private void OnSquadDisbandedHandler(SquadModel squad)
         {
             OnSquadDestroyed?.Invoke(squad);
             UnregisterSquadEvents(squad);
         }
         
-        /// <summary>
-        /// Handler khi unit chết
-        /// </summary>
         private void OnUnitDiedHandler(SquadModel squad, UnitModel unit)
         {
             _allUnits.Remove(unit);
             _gameStatistics.TotalDeaths++;
             
-            // Check nếu squad không còn viable
             if (!squad.IsViable())
             {
                 if (_playerSquads.Contains(squad))
@@ -541,23 +527,16 @@ namespace VikingRaven.Game
                     _enemySquads.Remove(squad);
                 }
                 
-                // Reactive check cho game end conditions
                 CheckGameConditionsReactive();
             }
         }
         
-        /// <summary>
-        /// Handler khi squad thay đổi formation
-        /// </summary>
         private void OnSquadFormationChanged(SquadModel squad, FormationType formation)
         {
             _gameStatistics.FormationChanges++;
             Debug.Log($"OptimizedGameManager: Squad {squad.SquadId} changed formation to {formation}");
         }
         
-        /// <summary>
-        /// Handler khi squad combat state thay đổi
-        /// </summary>
         private void OnSquadCombatStateChanged(SquadModel squad, bool inCombat)
         {
             if (inCombat)
@@ -568,14 +547,10 @@ namespace VikingRaven.Game
 
         #endregion
 
-        #region Game Logic (Optimized Reactive)
+        #region Game Logic
         
-        /// <summary>
-        /// Check game conditions reactively thay vì mỗi frame
-        /// </summary>
         private void CheckGameConditionsReactive()
         {
-            // Check victory condition
             int viableEnemySquads = 0;
             foreach (var squad in _enemySquads)
             {
@@ -591,7 +566,6 @@ namespace VikingRaven.Game
                 return;
             }
             
-            // Check defeat condition
             int viablePlayerSquads = 0;
             foreach (var squad in _playerSquads)
             {
@@ -604,13 +578,9 @@ namespace VikingRaven.Game
             if (viablePlayerSquads == 0)
             {
                 FailGame();
-                return;
             }
         }
         
-        /// <summary>
-        /// Update game progress reactively
-        /// </summary>
         private void UpdateGameProgressReactive()
         {
             if (_enemySquads.Count == 0) return;
@@ -635,9 +605,6 @@ namespace VikingRaven.Game
             }
         }
         
-        /// <summary>
-        /// Update game statistics
-        /// </summary>
         private void UpdateGameStatistics()
         {
             _gameStatistics.PlayTime = Time.time;
@@ -645,7 +612,6 @@ namespace VikingRaven.Game
             _gameStatistics.ActivePlayerSquads = _playerSquads.Count;
             _gameStatistics.ActiveEnemySquads = _enemySquads.Count;
             
-            // Calculate average squad health
             float totalHealth = 0f;
             int squadCount = 0;
             
@@ -661,12 +627,8 @@ namespace VikingRaven.Game
             _gameStatistics.AverageSquadHealth = squadCount > 0 ? totalHealth / squadCount : 0f;
         }
         
-        /// <summary>
-        /// Update performance metrics
-        /// </summary>
         private void UpdatePerformanceMetrics()
         {
-            // Frame time tracking
             _frameTimeHistory.Enqueue(Time.unscaledDeltaTime * 1000f);
             if (_frameTimeHistory.Count > MAX_FRAME_HISTORY)
             {
@@ -683,10 +645,8 @@ namespace VikingRaven.Game
                 _averageFrameTime = sum / _frameTimeHistory.Count;
             }
             
-            // Entity count
             _totalManagedEntities = _allUnits.Count;
             
-            // Memory usage (approximation)
             _memoryUsageMB = System.GC.GetTotalMemory(false) / (1024f * 1024f);
         }
 
