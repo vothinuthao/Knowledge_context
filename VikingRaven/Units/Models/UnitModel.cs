@@ -15,20 +15,20 @@ namespace VikingRaven.Units.Models
         private string _displayName;
         private string _description;
         
-        private float _hitPoints = 100f;           // Máu cơ bản
-        private float _shieldHitPoints = 0f;       // Máu khiên (Shield Hitpoints)
-        private float _mass = 10f;                 // Khối lượng (ảnh hưởng đến knockback)
-        private float _damage = 10f;               // Sát thương cận chiến
-        private float _damageRanged = 0f;          // Sát thương tầm xa
-        private float _damagePerSecond = 0f;       // DPS (tính toán)
-        private float _moveSpeed = 3f;             // Tốc độ di chuyển
-        private float _hitSpeed = 1.5f;            // Tốc độ đánh (giây)
-        private float _loadTime = 0f;              // Thời gian nạp (đạn, kỹ năng)
-        private float _range = 2f;                 // Tầm đánh
-        private float _projectileRange = 0f;        // Tầm bắn của đạn
-        private float _deployTime = 1f;            // Thời gian triển khai
-        private int _count = 1;                    // Số lượng
-        private float _detectionRange = 10f;       // Tầm phát hiện kẻ địch
+        private float _hitPoints = 100f;
+        private float _shieldHitPoints = 0f;
+        private float _mass = 10f; 
+        private float _damage = 10f;
+        private float _damageRanged = 0f;
+        private float _damagePerSecond = 0f;
+        private float _moveSpeed = 3f;
+        private float _hitSpeed = 1.5f; 
+        private float _loadTime = 0f;
+        private float _range = 2f;
+        private float _projectileRange = 0f;
+        private float _deployTime = 1f;
+        private int _count = 1;
+        private float _detectionRange = 10f;
         
         private string _ability = "";
         private float _abilityCost = 0f;

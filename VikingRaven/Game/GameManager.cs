@@ -397,10 +397,13 @@ namespace VikingRaven.Game
         private void SetSquadTeam(SquadModel squad, TeamType teamType)
         {
             if (squad == null) return;
-            
-            foreach (var unit in squad.GetAllUnits())
+            var units = squad.GetAllUnits();
+            if (units == null || units.Count == 0) return;
+            foreach (var unitModel in units)
             {
-                var teamComponent = unit.GetComponent<TeamComponent>();
+                if (unitModel?.Entity == null)
+                    continue;
+                var teamComponent = unitModel.Entity.GetComponent<TeamComponent>();
                 if (teamComponent)
                 {
                     teamComponent.SetTeam(teamType);

@@ -5,12 +5,7 @@ using VikingRaven.Units.Components;
 
 namespace VikingRaven.Units.StateMachine
 {
-    #region Enhanced Core States
-
-    /// <summary>
-    /// Enhanced Idle State with intelligent behavior monitoring
-    /// Phase 1 Enhancement: Smart idle behavior with condition monitoring
-    /// </summary>
+    #region Core States
     public class EnhancedIdleState : IState
     {
         private readonly IEntity _entity;
@@ -36,42 +31,27 @@ namespace VikingRaven.Units.StateMachine
             _idleTime = 0f;
             _isResting = false;
             
-            // Start passive recovery if injured
             if (_healthComponent != null && _healthComponent.CurrentInjuryState != InjuryState.Healthy)
             {
                 _isResting = true;
             }
-            
-            Debug.Log($"EnhancedIdleState: Entity {_entity.Id} entered idle state");
         }
 
         public void Execute()
         {
             _idleTime += Time.deltaTime;
             
-            // Check for immediate threats
             if (CheckForThreats())
             {
-                return; // State transition will be handled by StateComponent
+                return;
             }
-            
-            // Passive recovery behavior
             UpdatePassiveRecovery();
-            
-            // Weapon maintenance in idle
             UpdateWeaponMaintenance();
-            
-            // Long idle behavior
-            if (_idleTime > 30f) // After 30 seconds of idle
-            {
-                ConsiderPatrolBehavior();
-            }
         }
 
         public void Exit()
         {
             _isResting = false;
-            Debug.Log($"EnhancedIdleState: Entity {_entity.Id} exited idle state after {_idleTime:F1}s");
         }
 
         private void CacheComponents()
@@ -86,7 +66,7 @@ namespace VikingRaven.Units.StateMachine
         {
             if (_aggroComponent != null && _aggroComponent.HasEnemyInRange())
             {
-                return true; // Threat detected, StateComponent will handle transition
+                return true;
             }
             return false;
         }
@@ -98,7 +78,7 @@ namespace VikingRaven.Units.StateMachine
             // Enhanced stamina recovery in idle
             if (Time.time - _lastHealthRegenTime > 2f)
             {
-                _healthComponent.RestoreStamina(5f);
+                // _healthComponent.RestoreStamina(5f);
                 _lastHealthRegenTime = Time.time;
             }
         }
@@ -107,17 +87,10 @@ namespace VikingRaven.Units.StateMachine
         {
             if (_weaponComponent == null) return;
             
-            // Passive weapon condition improvement when idle
             if (_idleTime > 10f && _weaponComponent.PrimaryWeaponCondition < 100f)
             {
                 _weaponComponent.RepairWeapon(_weaponComponent.PrimaryWeapon, 1f * Time.deltaTime);
             }
-        }
-
-        private void ConsiderPatrolBehavior()
-        {
-            // Could transition to patrol state if implemented
-            // This is where formation patrol behavior could be triggered
         }
     }
 
@@ -368,11 +341,9 @@ namespace VikingRaven.Units.StateMachine
         {
             if (_currentTarget == null || _combatComponent == null) return;
             
-            // Check if we can attack
             if (_combatComponent.CanAttack() && _combatComponent.IsInAttackRange(_currentTarget))
             {
-                // Consume stamina for attack
-                if (_healthComponent != null && !_healthComponent.ConsumeAttackStamina())
+                if (_healthComponent)
                 {
                     return; // Not enough stamina
                 }
@@ -548,9 +519,8 @@ namespace VikingRaven.Units.StateMachine
             if (myTransform == null) return;
             
             Vector3 currentPos = myTransform.Position;
-            Vector3 retreatDirection = Vector3.back; // Default retreat direction
+            Vector3 retreatDirection = Vector3.back;
             
-            // Calculate retreat direction away from threats
             if (_aggroComponent != null && _aggroComponent.HasEnemyInRange())
             {
                 var enemy = _aggroComponent.GetClosestEnemy();
@@ -564,20 +534,18 @@ namespace VikingRaven.Units.StateMachine
                 }
             }
             
-            // Calculate retreat distance based on situation
             float retreatDistance = CalculateRetreatDistance();
             _retreatTarget = currentPos + retreatDirection * retreatDistance;
         }
 
         private float CalculateRetreatDistance()
         {
-            float baseDistance = 15f; // Base retreat distance
+            float baseDistance = 15f;
             
-            // Increase distance based on health status
             if (_healthComponent != null)
             {
                 float healthFactor = (100f - _healthComponent.HealthPercentage) / 100f;
-                baseDistance += healthFactor * 10f; // Up to 10 extra units for low health
+                baseDistance += healthFactor * 10f;
             }
             
             return baseDistance;
@@ -587,14 +555,7 @@ namespace VikingRaven.Units.StateMachine
         {
             if (_navigationComponent == null) return;
             
-            // Set retreat destination with high priority
             _navigationComponent.SetDestination(_retreatTarget, NavigationCommandPriority.Critical);
-            
-            // Consume stamina for retreating (less than normal movement)
-            if (_healthComponent != null)
-            {
-                _healthComponent.ConsumeMovementStamina(0.5f); // Half stamina cost for retreating
-            }
         }
 
         private void CheckSafetyStatus()
@@ -602,7 +563,7 @@ namespace VikingRaven.Units.StateMachine
             var myTransform = _entity.GetComponent<TransformComponent>();
             if (myTransform == null) return;
             
-            // Check if we've reached the retreat destination
+            // Check if we've reached the retreat destinatio
             if (Vector3.Distance(myTransform.Position, _retreatTarget) < 2f)
             {
                 _hasReachedSafety = true;
@@ -617,27 +578,15 @@ namespace VikingRaven.Units.StateMachine
 
         private bool CanStopRetreating()
         {
-            // Must have reached safety
             if (!_hasReachedSafety) return false;
-            
-            // Must not be in immediate danger
             if (_aggroComponent != null && _aggroComponent.HasEnemyInRange()) return false;
-            
-            // Check health recovery
             if (_healthComponent != null && _healthComponent.HealthPercentage > 50f)
             {
-                return true; // Health improved enough to stop retreating
+                return true;
             }
-            
-            // Or if we've been retreating for a long time
             return _retreatTime > 20f;
         }
     }
-
-    /// <summary>
-    /// Exhausted State - Fatigue recovery behavior
-    /// Phase 1 Enhancement: Stamina management and recovery tactics
-    /// </summary>
     public class ExhaustedState : IState
     {
         private readonly IEntity _entity;
@@ -672,13 +621,7 @@ namespace VikingRaven.Units.StateMachine
             if (_healthComponent != null && _isRecovering)
             {
                 float bonusRecovery = 10f * Time.deltaTime; // Bonus stamina recovery while resting
-                _healthComponent.RestoreStamina(bonusRecovery);
-            }
-            
-            // Check if recovered enough to continue
-            if (HasRecovered())
-            {
-                return; // StateComponent will handle transition
+                // _healthComponent.RestoreStamina(bonusRecovery);
             }
         }
 

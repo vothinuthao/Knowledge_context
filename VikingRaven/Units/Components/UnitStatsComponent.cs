@@ -1,6 +1,8 @@
-﻿using UnityEngine;
+﻿using System;
+using UnityEngine;
 using Sirenix.OdinInspector;
 using VikingRaven.Core.ECS;
+using VikingRaven.Core.Factory;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Data;
 using VikingRaven.Units.Models;
@@ -54,21 +56,21 @@ namespace VikingRaven.Units.Components
         [ShowInInspector] 
         private float MaxShield => _unitModel?.MaxShield ?? 0f;
         
-        [HorizontalGroup("Live Stats Overview/Row2")]
-        [BoxGroup("Live Stats Overview/Row2/Combat Stats")]
-        [LabelText("Attack Damage"), ReadOnly]
-        [ShowInInspector] 
-        private float AttackDamage => _unitModel?.AttackDamage ?? 0f;
-        
-        [BoxGroup("Live Stats Overview/Row2/Combat Stats")]
-        [LabelText("Attack Range"), ReadOnly]
-        [ShowInInspector] 
-        private float AttackRange => _unitModel?.AttackRange ?? 0f;
-        
-        [BoxGroup("Live Stats Overview/Row2/Combat Stats")]
-        [LabelText("Attack Speed"), ReadOnly]
-        [ShowInInspector] 
-        private float AttackSpeed => _unitModel?.AttackSpeed ?? 0f;
+        // [HorizontalGroup("Live Stats Overview/Row2")]
+        // [BoxGroup("Live Stats Overview/Row2/Combat Stats")]
+        // [LabelText("Attack Damage"), ReadOnly]
+        // [ShowInInspector] 
+        // private float AttackDamage => _unitModel.AttackDamage ?? 0f;
+        //
+        // [BoxGroup("Live Stats Overview/Row2/Combat Stats")]
+        // [LabelText("Attack Range"), ReadOnly]
+        // [ShowInInspector] 
+        // private float AttackRange => _unitModel?.AttackRange ?? 0f;
+        //
+        // [BoxGroup("Live Stats Overview/Row2/Combat Stats")]
+        // [LabelText("Attack Speed"), ReadOnly]
+        // [ShowInInspector] 
+        // private float AttackSpeed => _unitModel?.AttackSpeed ?? 0f;
         
         [HorizontalGroup("Live Stats Overview/Row2")]
         [BoxGroup("Live Stats Overview/Row2/Movement")]
@@ -108,7 +110,7 @@ namespace VikingRaven.Units.Components
         [BoxGroup("Combat Effectiveness Analysis/EffectivenessRow/Status")]
         [LabelText("Can Attack"), ReadOnly, ToggleLeft]
         [ShowInInspector] 
-        private bool CanAttack => IsAlive && _combatComponent?.CanAttack == true;
+        private bool CanAttack => IsAlive && _combatComponent.CanAttack();
         
         [BoxGroup("Combat Effectiveness Analysis/EffectivenessRow/Status")]
         [LabelText("In Combat"), ReadOnly, ToggleLeft]
@@ -152,32 +154,24 @@ namespace VikingRaven.Units.Components
         #endregion
         
         #region Unity Lifecycle
-        
+
+        [Obsolete("Obsolete")]
         public override void Initialize()
         {
             base.Initialize();
-            
-            // Get references to required components
-            _unitModel = Entity.GetComponent<UnitModel>();
+
+            var unitFactory = FindObjectOfType<UnitFactory>();
+            if (unitFactory != null)
+            {
+                _unitModel = unitFactory.GetUnitModel(Entity);
+                if (_unitModel == null)
+                {
+                    Debug.LogWarning($"UnitStatsComponent: UnitModel not found for entity {Entity.Id}");
+                }
+            }
             _healthComponent = Entity.GetComponent<HealthComponent>();
-            _combatComponent = Entity.GetComponent<CombatComponent>();
-            
-            if (_unitModel == null)
-            {
-                Debug.LogWarning($"UnitStatsComponent: UnitModel not found on entity {Entity.Id}");
-            }
-            
-            if (_healthComponent == null)
-            {
-                Debug.LogWarning($"UnitStatsComponent: HealthComponent not found on entity {Entity.Id}");
-            }
-            
-            if (_combatComponent == null)
-            {
-                Debug.LogWarning($"UnitStatsComponent: CombatComponent not found on entity {Entity.Id}");
-            }
         }
-        
+
         #endregion
         
         #region Color Methods for Odin Inspector

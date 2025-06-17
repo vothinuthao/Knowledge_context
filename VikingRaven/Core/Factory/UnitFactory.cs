@@ -241,7 +241,6 @@ namespace VikingRaven.Core.Factory
         
         private void OnReturnToPool(BaseEntity entity)
         {
-            // Reset components
             var healthComponent = entity.GetComponent<HealthComponent>();
             if (healthComponent != null)
             {

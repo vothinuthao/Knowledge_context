@@ -7,7 +7,6 @@ namespace VikingRaven.Units.Systems
     {
         public override void Execute()
         {
-            // Get all entities with a state component
             var entities = EntityRegistry.GetEntitiesWithComponent<StateComponent>();
             
             foreach (var entity in entities)
@@ -15,13 +14,9 @@ namespace VikingRaven.Units.Systems
                 var stateComponent = entity.GetComponent<StateComponent>();
                 
                 var healthComponent = entity.GetComponent<HealthComponent>();
-                if (healthComponent && healthComponent.IsDead)
+                if (healthComponent && !healthComponent.IsAlive)
                 {
-                    // Handle death state if needed
                 }
-                
-                // Or check if stunned or knocked back based on other conditions
-                // ...
             }
         }
     }
