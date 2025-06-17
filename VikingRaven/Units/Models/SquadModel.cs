@@ -245,7 +245,7 @@ namespace VikingRaven.Units.Models
             
             // Check if target died
             var targetHealth = target.GetComponent<HealthComponent>();
-            if (targetHealth != null && targetHealth.IsDead)
+            if (targetHealth != null && !targetHealth.IsAlive)
             {
                 _totalKills++;
                 _combatStreak++;
