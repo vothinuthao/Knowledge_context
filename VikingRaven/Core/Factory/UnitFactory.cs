@@ -182,8 +182,6 @@ namespace VikingRaven.Core.Factory
             
             GameObject poolParent = new GameObject($"Pool_{unitDataId}");
             poolParent.transform.SetParent(transform);
-            
-            // Create pool
             var newPool = new ObjectPool<BaseEntity>(
                 prefabEntity,
                 _defaultPoolSize,

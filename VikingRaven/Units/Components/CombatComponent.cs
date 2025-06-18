@@ -164,6 +164,7 @@ namespace VikingRaven.Units.Components
 
         #region Unity Lifecycle
 
+        [Obsolete("Obsolete")]
         public override void Initialize()
         {
             base.Initialize();
@@ -184,15 +185,11 @@ namespace VikingRaven.Units.Components
 
         #region Initialization
 
-        /// <summary>
-        /// Load basic combat stats from UnitDataSO via UnitModel
-        /// </summary>
+        [Obsolete("Obsolete")]
         private void LoadStatsFromUnitData()
         {
             if (Entity == null) return;
-
-            // Get UnitModel from UnitFactory to access UnitDataSO
-            var unitFactory = FindObjectOfType<VikingRaven.Core.Factory.UnitFactory>();
+            var unitFactory = FindObjectOfType<Core.Factory.UnitFactory>();
             if (unitFactory != null)
             {
                 var unitModel = unitFactory.GetUnitModel(Entity);
@@ -202,11 +199,7 @@ namespace VikingRaven.Units.Components
                     _attackRange = unitModel.Range;
                     _attackCooldown = unitModel.HitSpeed;
                     _moveSpeed = unitModel.MoveSpeed;
-
-                    // Initialize enhanced stats based on unit type
                     InitializeStatsFromUnitType(unitModel.UnitType);
-
-                    Debug.Log($"CombatComponent: Loaded stats from UnitModel for {unitModel.DisplayName}");
                 }
             }
         }
@@ -314,9 +307,6 @@ namespace VikingRaven.Units.Components
             return false;
         }
 
-        /// <summary>
-        /// Receive enhanced damage with armor calculation
-        /// </summary>
         public bool ReceiveEnhancedDamage(DamageInfo damageInfo, IEntity attacker)
         {
             if (!IsActive) return false;
@@ -659,7 +649,7 @@ namespace VikingRaven.Units.Components
             var targetTransform = target.GetComponent<TransformComponent>();
             var myTransform = Entity.GetComponent<TransformComponent>();
 
-            if (targetTransform == null || myTransform == null) return false;
+            if (!targetTransform || !myTransform) return false;
 
             float distance = Vector3.Distance(myTransform.Position, targetTransform.Position);
             return distance <= CalculateEffectiveAttackRange();
@@ -696,9 +686,6 @@ namespace VikingRaven.Units.Components
 
         #endregion
     }
-    /// <summary>
-    /// Type of attack
-    /// </summary>
     public enum AttackType
     {
         None,

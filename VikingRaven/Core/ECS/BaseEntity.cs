@@ -16,6 +16,7 @@ namespace VikingRaven.Core.ECS
         public int Id => _id;
         public bool IsActive { get => _isActive; set => _isActive = value; }
 
+        [Obsolete("Obsolete")]
         public void Awake()
         {
             if (_id > 0 && !_isRegistered)
