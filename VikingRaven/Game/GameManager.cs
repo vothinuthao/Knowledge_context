@@ -9,6 +9,7 @@ using VikingRaven.Core.ECS;
 using VikingRaven.Core.Factory;
 using VikingRaven.Core.Data;
 using VikingRaven.Game.DefineData;
+using VikingRaven.Units;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Models;
 using VikingRaven.Units.Systems;

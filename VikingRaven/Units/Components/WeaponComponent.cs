@@ -6,14 +6,10 @@ using VikingRaven.Core.ECS;
 
 namespace VikingRaven.Units.Components
 {
-    /// <summary>
-    /// Weapon Component with specialization system, mastery progression, and unique weapon mechanics
-    /// Phase 1 Enhancement: Comprehensive weapon management for medieval combat simulation
-    /// </summary>
     public class WeaponComponent : BaseComponent
     {
+        [SerializeField] private CombatComponent _combatComponent;
         #region Weapon Configuration
-        
         [TitleGroup("Weapon Configuration")]
         [InfoBox("Weapon system provides unique mechanics and progression for each weapon type.", InfoMessageType.Info)]
         
@@ -589,7 +585,7 @@ namespace VikingRaven.Units.Components
         /// </summary>
         private void UpdateWeaponStatistics()
         {
-            var baseCombat = Entity.GetComponent<CombatComponent>();
+            var baseCombat = _combatComponent;
             if (baseCombat == null) return;
             
             float baseDamage = baseCombat.AttackDamage;
@@ -606,8 +602,6 @@ namespace VikingRaven.Units.Components
             _effectiveSpeed = baseSpeed * weaponMods.SpeedMultiplier * masteryMods.SpeedMultiplier;
             _criticalChance = weaponMods.CriticalChance + masteryMods.CriticalChance;
             _armorPenetration = weaponMods.ArmorPenetration + masteryMods.ArmorPenetration;
-            
-            // Dual wielding bonuse
             if (IsDualWielding)
             {
                 _effectiveSpeed *= 1.3f;

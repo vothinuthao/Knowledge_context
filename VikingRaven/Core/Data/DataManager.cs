@@ -5,6 +5,7 @@ using UnityEngine;
 using Sirenix.OdinInspector;
 using Core.Utils;
 using VikingRaven.Core.Factory;
+using VikingRaven.Units;
 using VikingRaven.Units.Data;
 using VikingRaven.Units.Components;
 

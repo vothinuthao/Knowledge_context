@@ -12,7 +12,9 @@ namespace VikingRaven.Units.Components
     public class FormationComponent : BaseComponent
     {
         #region Core Formation Identity
-
+        [Tooltip("Get information Unit")]
+        [SerializeField]
+        private UnitInfoComponent unitInfo;
         [TitleGroup("Formation Identity")]
         [Tooltip("Squad ID that this unit belongs to")]
         [SerializeField, ReadOnly]
@@ -329,17 +331,8 @@ namespace VikingRaven.Units.Components
         public override void Initialize()
         {
             base.Initialize();
-            
-            if (Entity != null)
-            {
-                var unitTypeComponent = Entity.GetComponent<UnitTypeComponent>();
-                if (unitTypeComponent != null)
-                {
-                    InitializeDefaultsForUnitType(unitTypeComponent.UnitType);
-                }
-            }
-            
-            if (_formationOffset == Vector3.zero && _formationSlotIndex >= 0)
+            InitializeDefaultsForUnitType(unitInfo.GetUnitType());
+            if (_formationOffset == Vector3.zero)
             {
                 _formationOffset = new Vector3(
                     Random.Range(-0.1f, 0.1f), 
