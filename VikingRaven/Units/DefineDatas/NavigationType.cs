@@ -7,4 +7,12 @@
         High = 2,
         Critical = 3
     }
+    
+    public enum MovementPhase
+    {
+        DirectMovement,
+        MoveToLeader,
+        MoveToFormation,
+        InFormation
+    }
 }

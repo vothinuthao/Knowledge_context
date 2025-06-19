@@ -1,8 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Sirenix.OdinInspector;
 using VikingRaven.Core.ECS;
-using VikingRaven.Core.Factory;
 using VikingRaven.Units.Components;
 using VikingRaven.Units.Data;
 using VikingRaven.Units.Models;
@@ -14,8 +15,32 @@ namespace VikingRaven.Units.Components
         #region Primary Data Source (Single Source of Truth)
         
         [TitleGroup("Data Source")]
-        [InfoBox("Primary data source - All information comes from UnitModel", InfoMessageType.Info)]
+        [InfoBox("Primary data source - All information comes from UnitModel via BaseEntity", InfoMessageType.Info)]
         [SerializeField, ReadOnly] private UnitModel _unitModel;
+        [TitleGroup("Data Source")]
+        [InfoBox("Primary data source - All information comes from UnitModel via BaseEntity")]
+        [SerializeField, ReadOnly] private BaseEntity _baseEntity;
+        
+        #endregion
+        
+        #region Component Management
+        
+        [TitleGroup("Component Management")]
+        [InfoBox("All IComponent references auto-detected from object and children", InfoMessageType.None)]
+        [SerializeField, ReadOnly] private List<IComponent> _allComponents = new List<IComponent>();
+        
+        [TitleGroup("Component Management")]
+        [BoxGroup("Component Management/Status")]
+        [LabelText("Components Found"), ReadOnly]
+        [ShowInInspector]
+        private int ComponentsFoundCount => _allComponents.Count;
+        
+        [BoxGroup("Component Management/Status")]
+        [LabelText("Components Registered"), ReadOnly]
+        [ShowInInspector]
+        private bool ComponentsRegistered => _componentsRegistered;
+        
+        private bool _componentsRegistered = false;
         
         #endregion
         
@@ -51,8 +76,17 @@ namespace VikingRaven.Units.Components
             int foundCount = 0;
             int warningCount = 0;
             
-            // Find HealthComponent
-            var healthComponents = GetComponentsInChildren<HealthComponent>();
+            _allComponents.Clear();
+            
+            var allFoundComponents = GetComponentsInChildren<MonoBehaviour>()
+                .OfType<IComponent>()
+                .Where(c => c != this)
+                .ToList();
+            
+            _allComponents.AddRange(allFoundComponents);
+            
+            // Find specific component types
+            var healthComponents = _allComponents.OfType<HealthComponent>().ToArray();
             if (healthComponents.Length > 1)
             {
                 Debug.LogWarning($"⚠️ DUPLICATE WARNING: Found {healthComponents.Length} HealthComponents in hierarchy! Using first one.");
@@ -64,8 +98,7 @@ namespace VikingRaven.Units.Components
                 foundCount++;
             }
             
-            // Find CombatComponent
-            var combatComponents = GetComponentsInChildren<CombatComponent>();
+            var combatComponents = _allComponents.OfType<CombatComponent>().ToArray();
             if (combatComponents.Length > 1)
             {
                 Debug.LogWarning($"⚠️ DUPLICATE WARNING: Found {combatComponents.Length} CombatComponents in hierarchy! Using first one.");
@@ -77,8 +110,7 @@ namespace VikingRaven.Units.Components
                 foundCount++;
             }
             
-            // Find WeaponComponent
-            var weaponComponents = GetComponentsInChildren<WeaponComponent>();
+            var weaponComponents = _allComponents.OfType<WeaponComponent>().ToArray();
             if (weaponComponents.Length > 1)
             {
                 Debug.LogWarning($"⚠️ DUPLICATE WARNING: Found {weaponComponents.Length} WeaponComponents in hierarchy! Using first one.");
@@ -90,11 +122,9 @@ namespace VikingRaven.Units.Components
                 foundCount++;
             }
             
-            // Find FormationComponent
-            var formationComponents = GetComponentsInChildren<FormationComponent>();
+            var formationComponents = _allComponents.OfType<FormationComponent>().ToArray();
             if (formationComponents.Length > 1)
             {
-                Debug.LogWarning($"⚠️ DUPLICATE WARNING: Found {formationComponents.Length} FormationComponents in hierarchy! Using first one.");
                 warningCount++;
             }
             if (formationComponents.Length > 0)
@@ -103,8 +133,7 @@ namespace VikingRaven.Units.Components
                 foundCount++;
             }
             
-            Debug.Log($"✅ Auto-Find completed: {foundCount}/4 components found" + 
-                     (warningCount > 0 ? $" | {warningCount} warnings issued" : ""));
+            RegisterComponentsWithBaseEntity();
         }
         
         [HorizontalGroup("Auto-Fill Utilities/Buttons")]
@@ -116,7 +145,43 @@ namespace VikingRaven.Units.Components
             _combatComponent = null;
             _weaponComponent = null;
             _formationComponent = null;
-            Debug.Log("🧹 All component references cleared");
+            _allComponents.Clear();
+            _componentsRegistered = false;
+        }
+        
+        private void RegisterComponentsWithBaseEntity()
+        {
+            if (_baseEntity && _allComponents.Count > 0)
+            {
+                _baseEntity.RegisterComponentsFromUnitInfo(_allComponents);
+                _componentsRegistered = true;
+            }
+        }
+        
+        #endregion
+        
+        #region Component Information Display
+        
+        [TitleGroup("All Components Info")]
+        [InfoBox("Complete list of all IComponent found in object hierarchy", InfoMessageType.None)]
+        
+        [ShowInInspector, ReadOnly]
+        [ListDrawerSettings(ShowIndexLabels = true, ShowPaging = false, ShowItemCount = true)]
+        private List<ComponentInfo> AllComponentsInfo => _allComponents.Select(c => new ComponentInfo
+        {
+            Name = c.GetType().Name,
+            Type = c.GetType().ToString(),
+            GameObject = (c as MonoBehaviour)?.gameObject.name ?? "Unknown",
+            IsActive = (c as MonoBehaviour)?.enabled ?? false
+        }).ToList();
+        
+        [System.Serializable]
+        private class ComponentInfo
+        {
+            [ReadOnly] public string Name;
+            [ReadOnly] public string Type;
+            [ReadOnly] public string GameObject;
+            [ReadOnly] public bool IsActive;
         }
         
         #endregion
@@ -153,6 +218,11 @@ namespace VikingRaven.Units.Components
         [ShowInInspector] 
         private bool IsInitialized => _unitModel != null;
         
+        [BoxGroup("Unit Information/Row1/Runtime")]
+        [LabelText("Total Components"), ReadOnly]
+        [ShowInInspector] 
+        private int TotalComponentCount => _allComponents.Count;
+        
         #endregion
         
         #region Live Statistics Display
@@ -164,7 +234,7 @@ namespace VikingRaven.Units.Components
         [BoxGroup("Live Statistics/HealthRow/Health")]
         [LabelText("Current Health"), ProgressBar(0, "MaxHealth", ColorGetter = "GetHealthColor")]
         [ShowInInspector, ReadOnly] 
-        private float CurrentHealth => _healthComponent?.CurrentHealth ?? 0f;
+        private float CurrentHealth => _unitModel?.CurrentHealth ?? 0f;
         
         [BoxGroup("Live Statistics/HealthRow/Health")]
         [LabelText("Max Health"), ReadOnly]
@@ -180,7 +250,7 @@ namespace VikingRaven.Units.Components
         [BoxGroup("Live Statistics/HealthRow/Shield")]
         [LabelText("Current Shield"), ProgressBar(0, "MaxShield", ColorGetter = "GetShieldColor")]
         [ShowInInspector, ReadOnly] 
-        private float CurrentShield => _healthComponent?.CurrentShield ?? 0f;
+        private float CurrentShield => _unitModel?.CurrentShield ?? 0f;
         
         [BoxGroup("Live Statistics/HealthRow/Shield")]
         [LabelText("Max Shield"), ReadOnly]
@@ -221,7 +291,6 @@ namespace VikingRaven.Units.Components
         [LabelText("Formation Component"), ShowInInspector, ReadOnly, GUIColor("GetComponentStatusColor")]
         private bool FormationComponentReady => _formationComponent != null;
         
-        
         [LabelText("All Components Ready"), ShowInInspector, ReadOnly, GUIColor("GetOverallStatusColor")]
         private bool AllComponentsReady => HealthComponentReady && CombatComponentReady && WeaponComponentReady && FormationComponentReady;
         
@@ -256,41 +325,54 @@ namespace VikingRaven.Units.Components
         
         #endregion
         
-        #region Unity Lifecycle
+        #region UnitModel Integration
         
-        [Obsolete("Use newer initialization system")]
-        public override void Initialize()
+        [TitleGroup("UnitModel Integration")]
+        [InfoBox("UnitModel data integration and synchronization", InfoMessageType.None)]
+        
+        [Button(ButtonSizes.Medium, Name = "🔄 Sync with UnitModel")]
+        [GUIColor(0.4f, 1f, 0.4f)]
+        private void SyncWithUnitModel()
         {
-            base.Initialize();
-            InitializeUnitModel();
-            AutoFindComponents();
-            ValidateSetup();
+        }
+        
+        public void SetUnitModel(UnitModel unitModel, BaseEntity baseEntity)
+        {
+            if (unitModel == null)
+            {
+                Debug.LogWarning("⚠️ Attempted to set null UnitModel");
+                return;
+            }
+            
+            _unitModel = unitModel;
+            _baseEntity = baseEntity;
+            SyncWithUnitModel();
         }
         
         #endregion
         
-        #region Initialization Methods
+        #region Unity Lifecycle
         
-        private void InitializeUnitModel()
+        public override void Initialize()
         {
-            var unitFactory = FindObjectOfType<UnitFactory>();
-            if (unitFactory != null)
+            base.Initialize();
+            
+            // Only find components if UnitModel is available
+            if (_unitModel != null)
             {
-                _unitModel = unitFactory.GetUnitModel(Entity);
-                if (_unitModel == null)
-                {
-                    Debug.LogWarning($"⚠️ INITIALIZATION WARNING: UnitModel not found for entity {Entity.Id}");
-                }
-                else
-                {
-                    Debug.Log($"✅ UnitModel initialized for {_unitModel.DisplayName} (ID: {_unitModel.UnitId})");
-                }
+                AutoFindComponents();
+                ValidateSetup();
+                Debug.Log($"🎯 UnitInfoComponent initialized for {_unitModel.DisplayName}");
             }
             else
             {
-                Debug.LogError($"❌ CRITICAL ERROR: UnitFactory not found in scene!");
+                Debug.LogWarning("⚠️ UnitInfoComponent initialized without UnitModel. Manual setup required.");
             }
         }
+        
+        #endregion
+        
+        #region Validation Methods
         
         private void ValidateSetup()
         {
@@ -300,15 +382,12 @@ namespace VikingRaven.Units.Components
                 return;
             }
             
-            // Check for multiple data sources (violates single source of truth)
-            CheckForMultipleDataSources();
+            CheckComponentDataSources();
         }
         
-        private void CheckForMultipleDataSources()
+        private void CheckComponentDataSources()
         {
-            // This method warns if any component tries to initialize data independently
-            // All data should come from UnitModel only
-            
+            // Validate that components use UnitModel as single source of truth
             if (_healthComponent != null && _healthComponent.GetType().GetField("_independentMaxHealth", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance) != null)
             {
@@ -331,7 +410,7 @@ namespace VikingRaven.Units.Components
             float healthPercent = HealthPercentage;
             if (healthPercent > 75f) return Color.green;
             if (healthPercent > 50f) return Color.yellow;
-            if (healthPercent > 25f) return new Color(1f, 0.5f, 0f); // Orange
+            if (healthPercent > 25f) return new Color(1f, 0.5f, 0f);
             return Color.red;
         }
         
@@ -340,7 +419,7 @@ namespace VikingRaven.Units.Components
             float shieldPercent = MaxShield > 0 ? (CurrentShield / MaxShield) * 100f : 0f;
             if (shieldPercent > 75f) return Color.cyan;
             if (shieldPercent > 50f) return Color.blue;
-            if (shieldPercent > 25f) return new Color(0.5f, 0f, 1f); // Purple
+            if (shieldPercent > 25f) return new Color(0.5f, 0f, 1f);
             return Color.gray;
         }
         
@@ -349,13 +428,13 @@ namespace VikingRaven.Units.Components
             float readiness = CombatReadiness;
             if (readiness > 80f) return Color.green;
             if (readiness > 60f) return Color.yellow;
-            if (readiness > 40f) return new Color(1f, 0.5f, 0f); // Orange
+            if (readiness > 40f) return new Color(1f, 0.5f, 0f);
             return Color.red;
         }
         
-        private Color GetComponentStatusColor(Component component)
+        private Color GetComponentStatusColor()
         {
-            return component != null ? Color.green : Color.red;
+            return true ? Color.green : Color.red;
         }
         
         private Color GetOverallStatusColor()
@@ -371,16 +450,14 @@ namespace VikingRaven.Units.Components
         {
             if (!IsAlive) return 0f;
             
-            float readiness = HealthPercentage; // Base on health percentage
+            float readiness = HealthPercentage;
             
-            // Adjust based on shield status
             if (MaxShield > 0)
             {
-                float shieldFactor = (CurrentShield / MaxShield) * 20f; // Shield contributes up to 20 points
+                float shieldFactor = (CurrentShield / MaxShield) * 20f;
                 readiness = Mathf.Min(100f, readiness + shieldFactor);
             }
             
-            // Reduce if can't attack
             if (!CanAttack)
             {
                 readiness *= 0.5f;
@@ -393,23 +470,14 @@ namespace VikingRaven.Units.Components
         
         #region Public API (Read-Only Access)
         
-        /// <summary>
-        /// Get the unit model reference (single source of truth)
-        /// </summary>
         public UnitModel UnitModel => _unitModel;
-        
-        /// <summary>
-        /// Quick access properties for other systems
-        /// </summary>
         public bool IsUnitAlive => IsAlive;
         public bool CanUnitAttack => CanAttack;
         public float GetHealthPercentage() => HealthPercentage;
         public float GetCombatReadiness() => CombatReadiness;
         public UnitType GetUnitType() => UnitType;
+        public List<IComponent> GetAllComponents() => new List<IComponent>(_allComponents);
         
-        /// <summary>
-        /// Component access (read-only)
-        /// </summary>
         public HealthComponent HealthComponent => _healthComponent;
         public CombatComponent CombatComponent => _combatComponent;
         public WeaponComponent WeaponComponent => _weaponComponent;

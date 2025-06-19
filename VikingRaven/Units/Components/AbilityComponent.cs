@@ -238,7 +238,7 @@ namespace VikingRaven.Units.Components
                 return false;
                 
             // Set destination with high priority
-            navigationComponent.SetDestination(targetPosition, NavigationCommandPriority.Critical);
+            navigationComponent.SetDestination(targetPosition);
             
             // Apply speed boost
             float speedMultiplier = GetAbilityParamFloat("speedMultiplier", 2.0f);

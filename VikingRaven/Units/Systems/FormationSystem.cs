@@ -116,26 +116,16 @@ namespace VikingRaven.Units.Systems
             }
         }
 
-        /// <summary>
-        /// SIMPLIFIED: Update formation for a single squad
-        /// Uses existing formation indices - no recalculation
-        /// </summary>
         private void UpdateSingleSquadFormation(SquadFormationData squadData)
         {
             if (squadData.Members.Count == 0) return;
-            
-            // Calculate current squad center and rotation
             CalculateSquadTransform(squadData);
-            
-            // Get formation template for this squad
             FormationTemplate template = GetFormationTemplate(
                 squadData.FormationType, 
                 squadData.Members.Count
             );
             
             if (template == null) return;
-            
-            // Update each member's target position based on their assigned index
             foreach (var entity in squadData.Members)
             {
                 UpdateUnitFormationPosition(entity, squadData, template);
@@ -147,10 +137,6 @@ namespace VikingRaven.Units.Systems
                          $"({squadData.FormationType}) with {squadData.Members.Count} units");
             }
         }
-
-        /// <summary>
-        /// SIMPLIFIED: Calculate squad center and rotation from member positions
-        /// </summary>
         private void CalculateSquadTransform(SquadFormationData squadData)
         {
             Vector3 centerSum = Vector3.zero;
@@ -224,14 +210,12 @@ namespace VikingRaven.Units.Systems
             
             formationComponent.UpdateFormationState(isInPosition, distance, false);
             
-            // Update navigation component if present
             var navigationComponent = entity.GetComponent<NavigationComponent>();
             if (navigationComponent != null)
             {
                 navigationComponent.SetFormationInfo(
                     squadData.Center,
-                    localOffset,
-                    NavigationCommandPriority.Normal
+                    localOffset
                 );
             }
         }

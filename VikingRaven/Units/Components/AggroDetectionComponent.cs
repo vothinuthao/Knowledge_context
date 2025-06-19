@@ -29,9 +29,6 @@ namespace VikingRaven.Units.Components
         public override void Initialize()
         {
             base.Initialize();
-    
-            Debug.Log($"AggroDetectionComponent.Initialize() for entity ID: {(Entity != null ? Entity.Id.ToString() : "null")}");
-    
             if (_enemiesInRange == null)
             {
                 _enemiesInRange = new List<IEntity>();
@@ -46,7 +43,6 @@ namespace VikingRaven.Units.Components
         
             if (Entity == null)
             {
-                Debug.LogWarning("AggroDetectionComponent: Entity is null in Update");
                 return;
             }
             try
@@ -72,28 +68,21 @@ namespace VikingRaven.Units.Components
                 return;
                 
             Collider[] colliders = Physics.OverlapSphere(myTransform.Position, _aggroRange, _enemyLayers);
-            
-            // Create a list of entities from colliders
             List<IEntity> newEnemiesInRange = new List<IEntity>();
             
             foreach (var collider in colliders)
             {
-                // Try to get an entity from the collider's GameObject
                 var entityComponent = collider.GetComponent<BaseEntity>();
                 if (entityComponent != null)
                 {
                     IEntity enemy = entityComponent;
                     newEnemiesInRange.Add(enemy);
-                    
-                    // Check if this is a new enemy
                     if (!_enemiesInRange.Contains(enemy))
                     {
                         OnEnemyDetected?.Invoke(enemy);
                     }
                 }
             }
-            
-            // Check for enemies that went out of range
             foreach (var oldEnemy in _enemiesInRange)
             {
                 if (!newEnemiesInRange.Contains(oldEnemy))
@@ -101,8 +90,6 @@ namespace VikingRaven.Units.Components
                     OnEnemyLost?.Invoke(oldEnemy);
                 }
             }
-            
-            // Update the list
             _enemiesInRange = newEnemiesInRange;
         }
 

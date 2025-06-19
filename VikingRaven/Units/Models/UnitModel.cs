@@ -9,12 +9,10 @@ namespace VikingRaven.Units.Models
     public class UnitModel
     {
         private IEntity _entity;
-        
         private UnitType _unitType;
         private uint _unitId;
         private string _displayName;
         private string _description;
-        
         private float _hitPoints = 100f;
         private float _shieldHitPoints = 0f;
         private float _mass = 10f; 
@@ -90,8 +88,6 @@ namespace VikingRaven.Units.Models
                 }
             }
         }
-        
-        // Combat stats properties
         public float MaxHealth => _hitPoints;
         public float MaxShield => _shieldHitPoints;
         public float Mass => _mass;
@@ -113,29 +109,19 @@ namespace VikingRaven.Units.Models
         public float AbilityCooldown => _abilityCooldown;
         public string AbilityParameters => _abilityParameters;
         
-        // Squad properties
         public int SquadId => _squadId;
-        
-        // Position properties (lưu ý: không truy xuất transform nữa)
         public Vector3 Position => _position;
         public Quaternion Rotation => _rotation;
-        
-        /// <summary>
-        /// Khởi tạo từ entity và unitData
-        /// </summary>
         public UnitModel(IEntity entity, UnitDataSO unitData)
         {
             _entity = entity;
             
             if (unitData != null)
             {
-                // Khởi tạo thông tin cơ bản
                 _unitType = unitData.UnitType;
                 _unitId = unitData.UnitId;
                 _displayName = unitData.DisplayName;
                 _description = unitData.Description;
-                
-                // Khởi tạo các chỉ số chiến đấu
                 _hitPoints = unitData.HitPoints;
                 _shieldHitPoints = unitData.Shield;
                 _mass = unitData.Mass;
@@ -149,7 +135,6 @@ namespace VikingRaven.Units.Models
                 _projectileRange = unitData.ProjectileRange;
                 _deployTime = unitData.DeployTime;
                 _detectionRange = unitData.DetectionRange;
-                
                 _unitColor = unitData.UnitColor;
                 _currentHealth = _hitPoints;
                 _currentShield = _shieldHitPoints;
@@ -218,10 +203,6 @@ namespace VikingRaven.Units.Models
             
             OnHealthChanged?.Invoke(_currentHealth);
             OnShieldChanged?.Invoke(_currentShield);
-        }
-        public override string ToString()
-        {
-            return $"UnitModel({_unitType}, '{_displayName}', HP: {_currentHealth}/{_hitPoints}, Shield: {_currentShield}/{_shieldHitPoints}, Squad: {_squadId})";
         }
         
     }

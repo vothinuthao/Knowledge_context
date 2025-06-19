@@ -1,63 +1,205 @@
 ﻿using UnityEngine;
 using UnityEngine.AI;
 using VikingRaven.Core.ECS;
+using Sirenix.OdinInspector;
 
 namespace VikingRaven.Units.Components
 {
-    /// <summary>
-    /// NavigationComponent with enhanced UpdatePathfinding and smart movement logic
-    /// BACKWARD COMPATIBLE: Maintains all existing methods
-    /// ENHANCED: Smart two-phase movement system for better squad coordination
-    /// - Leaders move directly to destination
-    /// - Followers move to leader first, then to formation position
-    /// </summary>
     public class NavigationComponent : BaseComponent
     {
         #region Basic Configuration
 
+        [Title("Basic Navigation Settings")]
+        [PropertyOrder(1)]
         [SerializeField] private NavMeshAgent _navMeshAgent;
+        
+        [PropertyOrder(2)]
+        [Range(0.1f, 2f)]
+        [Tooltip("Minimum distance to consider destination reached")]
         [SerializeField] private float _stoppingDistance = 0.1f;
+        
+        [PropertyOrder(3)]
+        [Tooltip("Enable/disable pathfinding system")]
         [SerializeField] private bool _isPathfindingActive = true;
 
         #endregion
 
         #region Smart Movement Configuration
 
-        [Header("Smart Movement System")]
+        [Title("Smart Movement System")]
+        [PropertyOrder(10)]
+        [InfoBox("Smart Movement allows units to use two-phase movement: first to leader area, then to exact formation position")]
         [SerializeField] private bool _enableSmartMovement = true;
-        [SerializeField, Range(5f, 15f)] private float _squadProximityThreshold = 8f;
-        [SerializeField, Range(3f, 10f)] private float _formationActivationRadius = 6f;
-        [SerializeField, Range(1f, 1.5f)] private float _leaderMovementSpeedMultiplier = 1.2f;
-        [SerializeField, Range(0.7f, 1.2f)] private float _formationMovementSpeedMultiplier = 0.9f;
+        
+        [PropertyOrder(11)]
+        [ShowIf("_enableSmartMovement")]
+        [Range(5f, 15f)]
+        [Tooltip("Distance threshold to activate smart movement behavior")]
+        [SerializeField] private float _squadProximityThreshold = 8f;
+        
+        [PropertyOrder(12)]
+        [ShowIf("_enableSmartMovement")]
+        [Range(3f, 10f)]
+        [Tooltip("Radius around leader to switch to formation positioning")]
+        [SerializeField] private float _formationActivationRadius = 6f;
+        
+        [PropertyOrder(13)]
+        [ShowIf("_enableSmartMovement")]
+        [Range(1f, 1.5f)]
+        [Tooltip("Speed multiplier when following leader")]
+        [SerializeField] private float _leaderMovementSpeedMultiplier = 1.2f;
+        
+        [PropertyOrder(14)]
+        [ShowIf("_enableSmartMovement")]
+        [Range(0.7f, 1.2f)]
+        [Tooltip("Speed multiplier when moving to formation position")]
+        [SerializeField] private float _formationMovementSpeedMultiplier = 0.9f;
 
         #endregion
 
         #region Priority Control
 
+        [Title("Command Priority System")]
+        [PropertyOrder(20)]
+        [EnumToggleButtons]
+        [ReadOnly]
         [SerializeField] private NavigationCommandPriority _currentCommandPriority = NavigationCommandPriority.Normal;
+        
+        [PropertyOrder(21)]
+        [Range(0.5f, 5f)]
+        [Tooltip("Time before command priority decays to lower level")]
         [SerializeField] private float _priorityDecayTime = 1.0f;
+        
+        [PropertyOrder(22)]
+        [ReadOnly]
+        [ShowInInspector]
         private float _lastCommandTime = 0f;
 
         #endregion
 
         #region Formation Information
 
+        [Title("Formation Data")]
+        [PropertyOrder(30)]
+        [ReadOnly]
+        [ShowInInspector]
         private Vector3 _squadCenter;
+        
+        [PropertyOrder(31)]
+        [ReadOnly]
+        [ShowInInspector]
         private Vector3 _formationOffset;
+        
+        [PropertyOrder(32)]
+        [ReadOnly]
+        [ShowInInspector]
         private bool _hasFormationInfo = false;
+        
+        [PropertyOrder(33)]
+        [ReadOnly]
+        [ShowInInspector]
         private bool _useFormationPosition = false;
 
         #endregion
 
         #region Movement State Tracking
 
+        [Title("Movement State Debug")]
+        [PropertyOrder(40)]
+        [EnumToggleButtons]
+        [ReadOnly]
+        [ShowInInspector]
         private MovementPhase _currentMovementPhase = MovementPhase.DirectMovement;
+        
+        [PropertyOrder(41)]
+        [ReadOnly]
+        [ShowInInspector]
         private Vector3 _destination;
+        
+        [PropertyOrder(42)]
+        [ReadOnly]
+        [ShowInInspector]
         private bool _hasReachedExactPosition = false;
+        
+        [PropertyOrder(43)]
+        [ReadOnly]
+        [ShowInInspector]
         private bool _isSquadLeader = false;
+        
+        [PropertyOrder(44)]
+        [ReadOnly]
+        [ShowInInspector]
         private Vector3 _leaderPosition;
+        
+        [PropertyOrder(45)]
+        [ReadOnly]
+        [ShowInInspector]
         private Vector3 _exactPosition;
+        
+        [PropertyOrder(46)]
+        [ReadOnly]
+        [ShowInInspector]
         private float _originalSpeed = 3.5f;
+
+        #endregion
+
+        #region NavMesh Agent Debug Info
+
+        [Title("NavMesh Agent Debug")]
+        [PropertyOrder(50)]
+        [ShowIf("_navMeshAgent")]
+        [ReadOnly]
+        [ShowInInspector]
+        private float CurrentSpeed => _navMeshAgent != null ? _navMeshAgent.speed : 0f;
+        
+        [PropertyOrder(51)]
+        [ShowIf("_navMeshAgent")]
+        [ReadOnly]
+        [ShowInInspector]
+        private float RemainingDistance => _navMeshAgent != null ? _navMeshAgent.remainingDistance : 0f;
+        
+        [PropertyOrder(52)]
+        [ShowIf("_navMeshAgent")]
+        [ReadOnly]
+        [ShowInInspector]
+        private bool IsPathPending => _navMeshAgent != null ? _navMeshAgent.pathPending : false;
+        
+        [PropertyOrder(53)]
+        [ShowIf("_navMeshAgent")]
+        [ReadOnly]
+        [ShowInInspector]
+        private bool IsOnNavMesh => _navMeshAgent != null ? _navMeshAgent.isOnNavMesh : false;
+        
+        [PropertyOrder(54)]
+        [ShowIf("_navMeshAgent")]
+        [ReadOnly]
+        [ShowInInspector]
+        private Vector3 NavMeshVelocity => _navMeshAgent != null ? _navMeshAgent.velocity : Vector3.zero;
+
+        #endregion
+
+        #region Distance Debug Info
+
+        [Title("Distance Debug")]
+        [PropertyOrder(60)]
+        [ReadOnly]
+        [ShowInInspector]
+        private float DistanceToDestination => _destination != Vector3.zero ? Vector3.Distance(transform.position, _destination) : 0f;
+        
+        [PropertyOrder(61)]
+        [ReadOnly]
+        [ShowInInspector]
+        private float DistanceToSquadCenter => _hasFormationInfo ? Vector3.Distance(transform.position, _squadCenter) : 0f;
+        
+        [PropertyOrder(62)]
+        [ReadOnly]
+        [ShowInInspector]
+        private float DistanceToLeader => _leaderPosition != Vector3.zero ? Vector3.Distance(transform.position, _leaderPosition) : 0f;
+        
+        [PropertyOrder(63)]
+        [ReadOnly]
+        [ShowInInspector]
+        private float DistanceToFormationPosition => _hasFormationInfo ? Vector3.Distance(transform.position, _squadCenter + _formationOffset) : 0f;
 
         #endregion
 
@@ -728,16 +870,5 @@ namespace VikingRaven.Units.Components
         }
 
         #endregion
-    }
-
-    /// <summary>
-    /// Movement phases for smart unit movement
-    /// </summary>
-    public enum MovementPhase
-    {
-        DirectMovement,   // Direct movement to destination (leaders, basic mode)
-        MoveToLeader,     // Unit is moving towards leader position (pathfinding)
-        MoveToFormation,  // Unit is moving to exact formation position
-        InFormation       // Unit is in correct formation position
     }
 }

@@ -343,23 +343,12 @@ namespace VikingRaven.Units.Models
                 if (unit?.Entity == null) continue;
                 
                 int entityId = unit.Entity.Id;
-                
-                // FIXED: Use logical formation slot assignment
                 int formationSlot = GetFormationSlotForUnit(unitIndex);
-                
-                // Calculate offset from formation slot
                 Vector3 offset = CalculateOffsetFromSlot(formationSlot, spacing);
-                
-                // Store offset
                 _formationOffsets[entityId] = offset;
-                
-                // Update formation component with correct data
                 UpdateUnitFormationData(unit, formationSlot, offset);
                 
-                Debug.Log($"SquadModel: Unit {unitIndex} (ID:{entityId}) -> Formation Slot {formationSlot} -> Offset {offset}");
             }
-            
-            Debug.Log($"SquadModel: Completed Normal formation calculation with {_formationOffsets.Count} offsets");
         }
 
         private int GetFormationSlotForUnit(int unitIndex)

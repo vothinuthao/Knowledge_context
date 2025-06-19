@@ -6,12 +6,6 @@ using VikingRaven.Units.Components;
 
 namespace VikingRaven.Units.Systems
 {
-    /// <summary>
-    /// Enhanced Squad Coordination System with smart movement integration
-    /// ENHANCED: Integrates with NavigationComponent's smart movement phases
-    /// NEW FEATURES: Leader-follower coordination, smart movement statistics
-    /// BACKWARD COMPATIBLE: All existing methods still work
-    /// </summary>
     [SystemPriority(SystemPriority.High)]
     public class SquadCoordinationSystem : BaseSystem
     {

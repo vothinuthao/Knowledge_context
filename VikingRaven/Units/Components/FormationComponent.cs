@@ -4,17 +4,13 @@ using VikingRaven.Core.ECS;
 
 namespace VikingRaven.Units.Components
 {
-    /// <summary>
-    /// ENHANCED: Formation Component with proper leader marking and debug visualization
-    /// FIXED: Clear index assignment and leader identification
-    /// NEW: Visual debugging for formation slots and leader status
-    /// </summary>
     public class FormationComponent : BaseComponent
     {
         #region Core Formation Identity
         [Tooltip("Get information Unit")]
         [SerializeField]
         private UnitInfoComponent unitInfo;
+        
         [TitleGroup("Formation Identity")]
         [Tooltip("Squad ID that this unit belongs to")]
         [SerializeField, ReadOnly]
@@ -123,14 +119,46 @@ namespace VikingRaven.Units.Components
 
         #endregion
 
+        #region Color Getters for Odin Inspector
+
+        /// <summary>
+        /// Color getter for formation slot index progress bar
+        /// </summary>
+        private Color GetSlotIndexColor()
+        {
+            if (_formationSlotIndex == 0) return Color.yellow; // Leader
+            if (_formationSlotIndex <= 3) return Color.green;  // Front line
+            return Color.blue; // Support/Flanker
+        }
+
+        /// <summary>
+        /// Color getter for formation discipline progress bar
+        /// </summary>
+        private Color GetDisciplineColor()
+        {
+            if (_formationDiscipline >= 0.8f) return Color.green;
+            if (_formationDiscipline >= 0.6f) return Color.yellow;
+            return Color.red;
+        }
+
+        /// <summary>
+        /// Color getter for distance from formation position progress bar
+        /// </summary>
+        private Color GetDistanceColor()
+        {
+            if (_distanceFromFormationPosition <= 1f) return Color.green;
+            if (_distanceFromFormationPosition <= 3f) return Color.yellow;
+            return Color.red;
+        }
+
+        #endregion
+
         #region BACKWARD COMPATIBILITY Properties
 
         public int FormationSlotIndex => _formationSlotIndex;
         public Vector3 FormationOffset => _formationOffset;
         public int SquadId => _squadId;
         public FormationType CurrentFormationType => _currentFormationType;
-        
-        // NEW: Leader identification
         public bool IsSquadLeader => _isSquadLeader;
 
         #endregion
@@ -150,101 +178,55 @@ namespace VikingRaven.Units.Components
         #endregion
 
         #region ENHANCED API - Leader Marking
-
-        /// <summary>
-        /// ENHANCED: Set formation slot with automatic leader detection
-        /// </summary>
         public void SetFormationSlot(int slotIndex)
         {
             _formationSlotIndex = slotIndex;
-            
-            // FIXED: Automatic leader detection based on slot index
             _isSquadLeader = (slotIndex == 0);
-            
-            // Auto-assign formation role based on slot and leader status
             if (_isSquadLeader)
             {
                 _formationRole = FormationRole.Leader;
-                _formationDiscipline = Mathf.Max(_formationDiscipline, 0.9f); // Leaders have high discipline
+                _formationDiscipline = Mathf.Max(_formationDiscipline, 0.9f);
             }
             else
             {
                 _formationRole = DetermineFormationRole(slotIndex, _currentFormationType);
             }
-            
-            Debug.Log($"FormationComponent: Unit {Entity?.Id} assigned to slot {slotIndex} " +
-                     $"(Leader: {_isSquadLeader}, Role: {_formationRole})");
         }
-
-        /// <summary>
-        /// NEW: Explicitly set leader status
-        /// </summary>
-        public void SetAsSquadLeader(bool isLeader)
-        {
-            _isSquadLeader = isLeader;
-            
-            if (isLeader)
-            {
-                _formationSlotIndex = 0; // Leaders always get slot 0
-                _formationRole = FormationRole.Leader;
-                _formationDiscipline = Mathf.Max(_formationDiscipline, 0.9f);
-                _canBreakFormation = false; // Leaders maintain formation
-            }
-            
-            Debug.Log($"FormationComponent: Unit {Entity?.Id} leader status set to {isLeader}");
-        }
-
-        /// <summary>
-        /// ENHANCED: Set formation type with role reassignment
-        /// </summary>
+        
         public void SetFormationType(FormationType formationType, bool smoothTransition = true)
         {
             if (_currentFormationType != formationType)
             {
                 FormationType oldType = _currentFormationType;
                 _currentFormationType = formationType;
-                
-                // Reassign role based on new formation type
                 if (!_isSquadLeader)
                 {
                     _formationRole = DetermineFormationRole(_formationSlotIndex, formationType);
                 }
-                
                 UpdateFormationDisciplineForType(formationType);
                 HandleFormationTypeChange(oldType, formationType);
-                
-                Debug.Log($"FormationComponent: Unit {Entity?.Id} formation changed to {formationType} " +
-                         $"(Role: {_formationRole})");
             }
         }
 
         #endregion
 
-        #region Formation Role Logic - ENHANCED
-
-        /// <summary>
-        /// ENHANCED: Determine formation role based on slot index and formation type
-        /// </summary>
+        #region Formation Role Logic
         private FormationRole DetermineFormationRole(int slotIndex, FormationType formationType)
         {
-            // Slot 0 is always leader
             if (slotIndex == 0) return FormationRole.Leader;
             
             switch (formationType)
             {
                 case FormationType.Normal:
-                    // 3x3 grid: slots 1-3 are front line, 4-6 are support, 7-8 are flankers
                     if (slotIndex <= 3) return FormationRole.FrontLine;
                     if (slotIndex <= 6) return FormationRole.Support;
                     return FormationRole.Flanker;
                     
                 case FormationType.Phalanx:
-                    // Dense formation: front rows are frontline, back rows are support
                     if (slotIndex <= 4) return FormationRole.FrontLine;
                     return FormationRole.Support;
                     
                 case FormationType.Testudo:
-                    // Defensive formation: all non-leaders are support
                     return FormationRole.Support;
                     
                 default:
@@ -266,7 +248,7 @@ namespace VikingRaven.Units.Components
             }
             
             var navigationComponent = Entity?.GetComponent<NavigationComponent>();
-            if (navigationComponent != null)
+            if (navigationComponent)
             {
                 navigationComponent.UpdateFormationOffset(_formationOffset);
             }
@@ -279,7 +261,7 @@ namespace VikingRaven.Units.Components
 
         #endregion
 
-        #region Enhanced Methods
+        #region Methods
 
         public void SetFormationPositionData(Vector3 offset, Vector3 targetPosition, 
             Vector3 squadCenter, Quaternion squadRotation)
@@ -316,12 +298,6 @@ namespace VikingRaven.Units.Components
                 return 0.5f * _formationDiscipline;
                 
             return _formationDiscipline;
-        }
-
-        public bool ShouldMaintainFormation()
-        {
-            if (!_canBreakFormation) return true;
-            return _formationDiscipline > 0.7f;
         }
 
         #endregion
@@ -417,68 +393,6 @@ namespace VikingRaven.Units.Components
 
         #endregion
 
-        #region Debug and Visualization - NEW
-
-        [TitleGroup("Debug Information")]
-        [Button("Show Formation Info"), ShowInInspector]
-        public void ShowFormationInfo()
-        {
-            if (Entity == null)
-            {
-                Debug.Log("FormationComponent: No entity assigned");
-                return;
-            }
-            
-            string info = BuildFormationInfoString();
-            Debug.Log(info);
-        }
-
-        private string BuildFormationInfoString()
-        {
-            string info = $"=== Formation Info for Entity {Entity.Id} ===\n";
-            info += $"Squad ID: {_squadId}\n";
-            info += $"Formation Slot: {_formationSlotIndex}\n";
-            info += $"Is Squad Leader: {_isSquadLeader}\n";
-            info += $"Formation Type: {_currentFormationType}\n";
-            info += $"Formation Role: {_formationRole}\n";
-            info += $"Formation Offset: {_formationOffset}\n";
-            info += $"Target Position: {_targetFormationPosition}\n";
-            info += $"Squad Center: {_squadCenterPosition}\n";
-            info += $"In Position: {_isInFormationPosition}\n";
-            info += $"Distance from Target: {_distanceFromFormationPosition:F2}\n";
-            info += $"Formation Discipline: {_formationDiscipline:F2}\n";
-            info += $"Can Break Formation: {_canBreakFormation}\n";
-            
-            return info;
-        }
-
-        #endregion
-
-        #region Color Getters for Odin Inspector
-
-        private Color GetSlotIndexColor()
-        {
-            if (_formationSlotIndex == 0) return Color.yellow; // Leader
-            if (_formationSlotIndex <= 3) return Color.green;  // Front line
-            return Color.blue; // Support/Flanker
-        }
-
-        private Color GetDisciplineColor()
-        {
-            if (_formationDiscipline >= 0.8f) return Color.green;
-            if (_formationDiscipline >= 0.6f) return Color.yellow;
-            return Color.red;
-        }
-
-        private Color GetDistanceColor()
-        {
-            if (_distanceFromFormationPosition <= 1f) return Color.green;
-            if (_distanceFromFormationPosition <= 3f) return Color.yellow;
-            return Color.red;
-        }
-
-        #endregion
-
         #region Editor-Only Debug Gizmos - ENHANCED
 
         #if UNITY_EDITOR
@@ -494,7 +408,7 @@ namespace VikingRaven.Units.Components
                 UnityEditor.Handles.Label(textPos, slotText);
             }
             
-            // Draw leader indicator
+            // Draw leader crown indicator
             if (_showLeaderIndicator && _isSquadLeader)
             {
                 Vector3 crownPos = transform.position + Vector3.up * 3f;
@@ -508,24 +422,20 @@ namespace VikingRaven.Units.Components
             {
                 Gizmos.color = _isInFormationPosition ? Color.green : Color.red;
                 Gizmos.DrawWireSphere(_targetFormationPosition, 0.3f);
-                
-                // Draw line to target
                 Gizmos.color = _formationLineColor;
                 Gizmos.DrawLine(transform.position, _targetFormationPosition);
             }
             
-            // Draw squad center connection
+            // Draw squad center position
             if (_squadCenterPosition != Vector3.zero)
             {
                 Gizmos.color = Color.blue;
                 Gizmos.DrawWireCube(_squadCenterPosition, Vector3.one * 0.5f);
-                
-                // Draw line to squad center
                 Gizmos.color = Color.cyan;
                 Gizmos.DrawLine(transform.position, _squadCenterPosition);
             }
             
-            // Draw formation role indicator
+            // Draw formation role icon
             Vector3 rolePos = transform.position + Vector3.up * 1.5f;
             string roleText = _formationRole switch
             {
@@ -541,17 +451,4 @@ namespace VikingRaven.Units.Components
 
         #endregion
     }
-
-    #region Supporting Enums
-    public enum FormationRole
-    {
-        Leader = 0,
-        Follower = 1,   // Standard formation member
-        FrontLine = 2,  // Front-line combat unit
-        Support = 3,    // Support/ranged unit
-        Flanker = 4,    // Side protection
-        Reserve = 5     // Back-line reserve
-    }
-
-    #endregion
 }

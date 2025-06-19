@@ -555,7 +555,7 @@ namespace VikingRaven.Units.StateMachine
         {
             if (_navigationComponent == null) return;
             
-            _navigationComponent.SetDestination(_retreatTarget, NavigationCommandPriority.Critical);
+            _navigationComponent.SetDestination(_retreatTarget);
         }
 
         private void CheckSafetyStatus()

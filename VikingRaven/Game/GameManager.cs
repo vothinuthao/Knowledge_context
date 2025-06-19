@@ -223,24 +223,18 @@ namespace VikingRaven.Game
 
         #region Initialization (Event-Driven)
         
-        /// <summary>
-        /// Start game initialization
-        /// </summary>
         [Button("Initialize Game"), TitleGroup("Initialization")]
         public void InitializeGame()
         {
             if (_currentGameState != GameState.NotInitialized)
             {
-                Debug.LogWarning("OptimizedGameManager: Game is already initialized or in progress!");
+                Debug.LogWarning("GameManager: Game is already initialized or in progress!");
                 return;
             }
             
             ChangeGameState(GameState.Initializing);
             _gameInitializationCoroutine = StartCoroutine(InitializeGameCoroutine());
         }
-        /// <summary>
-        /// Khởi tạo event subscriptions cho reactive architecture
-        /// </summary>
         private void InitializeEventSubscriptions()
         {
             if (_systemRegistry != null)
@@ -311,7 +305,7 @@ namespace VikingRaven.Game
         
         private void InitializeFactories()
         {
-            Debug.Log("OptimizedGameManager: Factories initialized");
+            Debug.Log("GameManager: Factories initialized");
         }
 
         #endregion
@@ -320,7 +314,7 @@ namespace VikingRaven.Game
         
         private IEnumerator LoadGameDataCoroutine()
         {
-            Debug.Log("OptimizedGameManager: Loading game data...");
+            Debug.Log("GameManager: Loading game data...");
             ChangeGameState(GameState.LoadingData);
             
             if (_dataManager != null)
@@ -329,16 +323,12 @@ namespace VikingRaven.Game
             }
             
             ChangeGameState(GameState.DataLoaded);
-            Debug.Log("OptimizedGameManager: Game data loaded successfully");
+            Debug.Log("GameManager: Game data loaded successfully");
         }
 
         #endregion
 
         #region Squad Spawning (Optimized)
-        
-        /// <summary>
-        /// Spawn initial squads với coroutine và event handling
-        /// </summary>
         private IEnumerator SpawnInitialSquadsCoroutine()
         {
             ChangeGameState(GameState.SpawningSquads);

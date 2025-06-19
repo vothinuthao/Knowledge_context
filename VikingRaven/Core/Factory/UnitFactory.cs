@@ -116,20 +116,12 @@ namespace VikingRaven.Core.Factory
         #endregion
 
         #region Public Queries
-        
-        /// <summary>
-        /// Get unit model for entity
-        /// </summary>
         public UnitModel GetUnitModel(IEntity entity)
         {
             if (entity == null) return null;
             _unitModels.TryGetValue(entity.Id, out UnitModel model);
             return model;
         }
-        
-        /// <summary>
-        /// Check if entity is managed by this factory
-        /// </summary>
         public bool IsManaged(IEntity entity)
         {
             return entity != null && _activeUnits.ContainsKey(entity.Id);
@@ -159,8 +151,6 @@ namespace VikingRaven.Core.Factory
                 }
             }
         }
-        
-        // ReSharper disable Unity.PerformanceAnalysis
         private ObjectPool<BaseEntity> GetOrCreatePool(uint unitDataId, UnitDataSO unitData)
         {
             if (_unitPools.TryGetValue(unitDataId, out var existingPool))
@@ -201,40 +191,20 @@ namespace VikingRaven.Core.Factory
             entity.transform.position = position;
             entity.transform.rotation = rotation;
             
-            if (_entityRegistry != null)
+            if (_entityRegistry)
             {
                 _entityRegistry.RegisterEntity(entity);
             }
             
             var unitModel = new UnitModel(entity, unitData);
-            
-            // Track
             _activeUnits[entity.Id] = entity;
             _unitModels[entity.Id] = unitModel;
-            InitializeComponents(entity, unitData);
+            InitializeBaseEntity(entity,unitModel);
         }
         
-        private void InitializeComponents(BaseEntity entity, UnitDataSO unitData)
+        private void InitializeBaseEntity(BaseEntity entity,UnitModel unitModel)
         {
-            // var healthComponent = entity.GetComponent<HealthComponent>();
-            // if (healthComponent != null)
-            // {
-            //     healthComponent.SetMaxHealth(unitData.HitPoints);
-            //     healthComponent.SetHealth(unitData.HitPoints);
-            // }
-            // var combatComponent = entity.GetComponent<CombatComponent>();
-            // if (combatComponent)
-            // {
-            //     combatComponent.SetAttackDamage(unitData.Damage);
-            //     combatComponent.SetAttackRange(unitData.Range);
-            //     combatComponent.SetAttackCooldown(unitData.HitSpeed);
-            //     combatComponent.SetMoveSpeed(unitData.MoveSpeed);
-            // }
-            // var unitTypeComponent = entity.GetComponent<UnitTypeComponent>();
-            // if (unitTypeComponent != null)
-            // {
-            //     unitTypeComponent.SetUnitType(unitData.UnitType);
-            // }
+            entity.SetUnitModel(unitModel);
         }
         
         private void OnReturnToPool(BaseEntity entity)
@@ -254,12 +224,10 @@ namespace VikingRaven.Core.Factory
         
         private void OnTakeFromPool(BaseEntity entity)
         {
-            // Entity will be set up by SetupEntity method
         }
         
         private void Cleanup()
         {
-            // Return all active units
             var activeIds = new List<int>(_activeUnits.Keys);
             foreach (int id in activeIds)
             {
@@ -269,7 +237,6 @@ namespace VikingRaven.Core.Factory
                 }
             }
             
-            // Clear pools
             foreach (var pool in _unitPools.Values)
             {
                 pool.Clear();
