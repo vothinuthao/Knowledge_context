@@ -152,11 +152,11 @@ namespace VikingRaven.Units.Components
         [ShowInInspector]
         private float CurrentSpeed => _navMeshAgent != null ? _navMeshAgent.speed : 0f;
         
-        [PropertyOrder(51)]
-        [ShowIf("_navMeshAgent")]
-        [ReadOnly]
-        [ShowInInspector]
-        private float RemainingDistance => _navMeshAgent != null ? _navMeshAgent.remainingDistance : 0f;
+        // [PropertyOrder(51)]
+        // [ShowIf("_navMeshAgent")]
+        // [ReadOnly]
+        // [ShowInInspector]
+        // private float RemainingDistance => _navMeshAgent != null ? _navMeshAgent.remainingDistance : 0f;
         
         [PropertyOrder(52)]
         [ShowIf("_navMeshAgent")]

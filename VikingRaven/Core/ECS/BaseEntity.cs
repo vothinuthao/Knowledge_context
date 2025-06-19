@@ -307,12 +307,7 @@ namespace VikingRaven.Core.ECS
         private bool RegisterSingleComponent(IComponent component)
         {
             if (component == null) return false;
-            var componentType = component.GetType();
-            if (!_components.TryAdd(componentType, component))
-            {
-                return false;
-            }
-            component.Entity = this;
+            AddComponent(component);
             return true;
         }
         

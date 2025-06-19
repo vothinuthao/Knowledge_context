@@ -19,7 +19,7 @@ namespace VikingRaven.Units.Components
         [SerializeField, ReadOnly] private UnitModel _unitModel;
         [TitleGroup("Data Source")]
         [InfoBox("Primary data source - All information comes from UnitModel via BaseEntity")]
-        [SerializeField, ReadOnly] private BaseEntity _baseEntity;
+        [SerializeField] private BaseEntity _baseEntity;
         
         #endregion
         
@@ -327,13 +327,78 @@ namespace VikingRaven.Units.Components
         
         #region UnitModel Integration
         
+        [TitleGroup("UnitModel Integration")]
+        [InfoBox("UnitModel data integration and synchronization", InfoMessageType.None)]
+        
+        [Button(ButtonSizes.Medium, Name = "🔄 Sync with UnitModel")]
+        [GUIColor(0.4f, 1f, 0.4f)]
+        private void SyncWithUnitModel()
+        {
+        }
         
         public void SetUnitModel(UnitModel unitModel, BaseEntity baseEntity)
         {
             if (unitModel == null)
+            {
+                Debug.LogWarning("⚠️ Attempted to set null UnitModel");
                 return;
+            }
+            
             _unitModel = unitModel;
             _baseEntity = baseEntity;
+            SyncWithUnitModel();
+        }
+        
+        #endregion
+        
+        #region Unity Lifecycle
+        
+        public override void Initialize()
+        {
+            base.Initialize();
+            
+            // Only find components if UnitModel is available
+            if (_unitModel != null)
+            {
+                AutoFindComponents();
+                ValidateSetup();
+                Debug.Log($"🎯 UnitInfoComponent initialized for {_unitModel.DisplayName}");
+            }
+            else
+            {
+                Debug.LogWarning("⚠️ UnitInfoComponent initialized without UnitModel. Manual setup required.");
+            }
+        }
+        
+        #endregion
+        
+        #region Validation Methods
+        
+        private void ValidateSetup()
+        {
+            if (_unitModel == null)
+            {
+                Debug.LogError($"❌ SETUP ERROR: UnitModel is null for {gameObject.name}. Component will not function properly.");
+                return;
+            }
+            
+            CheckComponentDataSources();
+        }
+        
+        private void CheckComponentDataSources()
+        {
+            // Validate that components use UnitModel as single source of truth
+            if (_healthComponent != null && _healthComponent.GetType().GetField("_independentMaxHealth", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance) != null)
+            {
+                Debug.LogWarning($"⚠️ DATA SOURCE WARNING: HealthComponent has independent health values. Should use UnitModel data only.");
+            }
+            
+            if (_combatComponent != null && _combatComponent.GetType().GetField("_independentDamage", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance) != null)
+            {
+                Debug.LogWarning($"⚠️ DATA SOURCE WARNING: CombatComponent has independent damage values. Should use UnitModel data only.");
+            }
         }
         
         #endregion
