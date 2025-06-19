@@ -402,80 +402,30 @@ namespace VikingRaven.Core.ECS
         {
             if (component == null)
             {
-                Debug.LogWarning($"⚠️ Attempted to add null component to Entity {Id}");
                 return;
             }
-            
             var type = component.GetType();
             
             if (!_components.TryAdd(type, component))
             {
-                Debug.LogWarning($"⚠️ Component {type.Name} already exists in Entity {Id}");
                 return;
             }
-
             component.Entity = this;
             component.Initialize();
-            Debug.Log($"➕ Manually added component {type.Name} to Entity {Id}");
         }
-        
-        public void AddComponentRange(IEnumerable<IComponent> components)
-        {
-            if (components == null)
-            {
-                Debug.LogWarning($"⚠️ Attempted to add null component collection to Entity {Id}");
-                return;
-            }
-            
-            int addedCount = 0;
-            
-            foreach (var component in components)
-            {
-                if (component == null) continue;
-                
-                var type = component.GetType();
-                
-                if (!_components.ContainsKey(type))
-                {
-                    _components[type] = component;
-                    component.Entity = this;
-                    addedCount++;
-                }
-            }
-            
-            Debug.Log($"📦 Bulk added {addedCount} components to Entity {Id}");
-        }
-
         public void RemoveComponent<T>() where T : class, IComponent
         {
             var type = typeof(T);
             
             if (!_components.TryGetValue(type, out var component))
             {
-                Debug.LogWarning($"⚠️ Attempted to remove non-existent component {type.Name} from Entity {Id}");
                 return;
             }
-
             component.Cleanup();
             component.Entity = null;
             _components.Remove(type);
-            Debug.Log($"➖ Removed component {type.Name} from Entity {Id}");
         }
         
-        public IEnumerable<IComponent> GetAllComponents()
-        {
-            return _components.Values;
-        }
-        
-        public int GetComponentCount()
-        {
-            return _components.Count;
-        }
-        
-        public bool IsComponentsInitialized()
-        {
-            return _isComponentsInitialized;
-        }
         
         public UnitInfoComponent GetUnitInfoComponent()
         {

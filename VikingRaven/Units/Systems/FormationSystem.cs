@@ -223,11 +223,6 @@ namespace VikingRaven.Units.Systems
         #endregion
 
         #region Formation Template Management - SIMPLIFIED
-
-        /// <summary>
-        /// SIMPLIFIED: Get formation template with caching
-        /// Templates are cached for performance
-        /// </summary>
         private FormationTemplate GetFormationTemplate(FormationType formationType, int unitCount)
         {
             string cacheKey = $"{formationType}_{unitCount}";

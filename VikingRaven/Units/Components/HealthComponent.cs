@@ -4,6 +4,7 @@ using UnityEngine;
 using Sirenix.OdinInspector;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.Factory;
+using VikingRaven.Units.Models;
 
 namespace VikingRaven.Units.Components
 {
@@ -12,7 +13,7 @@ namespace VikingRaven.Units.Components
         [TitleGroup("Unit Model Integration")]
         [InfoBox("Health and Shield data comes directly from UnitModel - HealthComponent provides enhanced features only", InfoMessageType.Info)]
         [ShowInInspector, ReadOnly]
-        private Models.UnitModel _unitModel;
+        private UnitModel _unitModel;
         [TitleGroup("Enhanced Health Features")]
         [InfoBox("Additional health mechanics built on top of UnitModel base data", InfoMessageType.Warning)]
         
@@ -227,8 +228,7 @@ namespace VikingRaven.Units.Components
         private void LoadUnitModelReference()
         {
             if (Entity == null) return;
-            
-            // Get component references
+            // _unitModel  = Entity.GetComponent<BaseEntity>().GetUnitModel();
             _combatComponent = Entity.GetComponent<CombatComponent>();
             _stateComponent = Entity.GetComponent<StateComponent>();
             
