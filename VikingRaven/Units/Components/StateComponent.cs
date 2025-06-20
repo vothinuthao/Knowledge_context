@@ -8,10 +8,6 @@ using System.Collections.Generic;
 
 namespace VikingRaven.Units.Components
 {
-    /// <summary>
-    /// Enhanced State Component with combat-specific states and intelligent state transitions
-    /// Phase 1 Enhancement: Comprehensive state management for realistic combat behavior
-    /// </summary>
     public class StateComponent : BaseComponent
     {
         #region State Configuration

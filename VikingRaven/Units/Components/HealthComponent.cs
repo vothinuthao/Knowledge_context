@@ -125,8 +125,9 @@ namespace VikingRaven.Units.Components
         private List<StatusEffect> _activeStatusEffects = new List<StatusEffect>();
         private List<DamageType> _damageImmunities = new List<DamageType>();
         
-        // Component references
+        [SerializeField]
         private CombatComponent _combatComponent;
+        [SerializeField]
         private StateComponent _stateComponent;
         
         // Regeneration rates (calculated from UnitModel)
@@ -214,25 +215,16 @@ namespace VikingRaven.Units.Components
             if (!IsActive || !IsAlive) return;
 
             UpdateRegenerationSystems();
-            UpdateEnhancedFeatures();
+            UpdateFeatures();
             UpdateTimers();
         }
 
         #endregion
 
         #region Initialization
-
-        /// <summary>
-        /// Load UnitModel reference - the authoritative source for health/shield data
-        /// </summary>
         private void LoadUnitModelReference()
         {
             if (Entity == null) return;
-            // _unitModel  = Entity.GetComponent<BaseEntity>().GetUnitModel();
-            _combatComponent = Entity.GetComponent<CombatComponent>();
-            _stateComponent = Entity.GetComponent<StateComponent>();
-            
-            // Get UnitModel from UnitFactory
             var unitFactory = FindObjectOfType<UnitFactory>();
             if (unitFactory != null)
             {
@@ -316,8 +308,6 @@ namespace VikingRaven.Units.Components
         private void OnUnitModelDamageTaken(float damage, IEntity source)
         {
             _timeSinceLastDamage = 0f;
-            
-            // If shield was damaged, track that too
             if (HasShield && CurrentShield < MaxShield)
             {
                 _timeSinceLastShieldDamage = 0f;
@@ -337,18 +327,11 @@ namespace VikingRaven.Units.Components
         #endregion
 
         #region Public API (Delegate to UnitModel)
-
-        /// <summary>
-        /// Take damage - delegates to UnitModel
-        /// </summary>
         public void TakeDamage(float amount, IEntity source = null, bool ignoreArmor = false)
         {
             if (_unitModel == null || !IsAlive || amount <= 0) return;
             
-            // Check damage immunities (HealthComponent feature)
             if (IsImmuneToDamage(source)) return;
-            
-            // Delegate actual damage to UnitModel
             _unitModel.TakeDamage(amount, source);
         }
 
@@ -362,16 +345,11 @@ namespace VikingRaven.Units.Components
             _unitModel.Heal(amount);
             OnHealthRegenerated?.Invoke(amount);
         }
-
-        /// <summary>
-        /// Restore shield - delegates to UnitModel
-        /// </summary>
         public void RestoreShield(float amount)
         {
             if (_unitModel == null || amount <= 0) return;
             
             float oldShield = CurrentShield;
-            // Note: UnitModel doesn't have RestoreShield method, so we modify directly
             _unitModel.CurrentShield = Mathf.Min(MaxShield, CurrentShield + amount);
             float actualRestore = CurrentShield - oldShield;
             
@@ -405,7 +383,7 @@ namespace VikingRaven.Units.Components
             UpdateStaminaRegeneration();
         }
 
-        private void UpdateEnhancedFeatures()
+        private void UpdateFeatures()
         {
             UpdateInjuryState();
             UpdateRecoveryPhase();
@@ -596,7 +574,6 @@ namespace VikingRaven.Units.Components
         #endregion
 
         #region Enhanced Feature Stubs (Implementation Needed)
-
         private void UpdateInjuryState() { }
         private void UpdateInjuryStateFromHealth() { }
         private void UpdateRecoveryPhase() { }
@@ -606,35 +583,6 @@ namespace VikingRaven.Units.Components
         {
             _fatigueLevel = Mathf.Clamp01(_fatigueLevel + amount);
         }
-
         #endregion
     }
-
-    #region Supporting Enums and Classes
-
-    public enum InjuryState
-    {
-        Healthy,
-        Light,
-        Moderate,
-        Severe
-    }
-
-    public enum RecoveryPhase
-    {
-        None,
-        Initial,
-        Stabilizing,
-        Recovering
-    }
-
-    [System.Serializable]
-    public class StatusEffect
-    {
-        public string Name;
-        public float Duration;
-        public float RemainingTime;
-    }
-
-    #endregion
 }

@@ -2,25 +2,18 @@
 using UnityEngine;
 using Sirenix.OdinInspector;
 using VikingRaven.Core.ECS;
-using VikingRaven.Core.StateMachine;
-using VikingRaven.Units.Data;
+using VikingRaven.Core.Factory;
 
 namespace VikingRaven.Units.Components
 {
-    /// <summary>
-    /// Enhanced Combat Component with damage types, armor system, and weapon specialization
-    /// Phase 1 Enhancement: Comprehensive combat mechanics foundation
-    /// </summary>
     public class CombatComponent : BaseComponent
     {
         #region Combat Stats Configuration
 
         [TitleGroup("Basic Combat Stats")]
-        [InfoBox("Basic combat statistics loaded from UnitDataSO. These are base values before modifiers.",
-            InfoMessageType.Info)]
+        [InfoBox("Basic combat statistics loaded from UnitDataSO. These are base values before modifiers.")]
         [SerializeField, ReadOnly]
         private float _attackDamage = 10f;
-
         [SerializeField, ReadOnly] private float _attackRange = 2f;
         [SerializeField, ReadOnly] private float _attackCooldown = 1.5f;
         [SerializeField, ReadOnly] private float _moveSpeed = 3.0f;
@@ -189,8 +182,8 @@ namespace VikingRaven.Units.Components
         private void LoadStatsFromUnitData()
         {
             if (Entity == null) return;
-            var unitFactory = FindObjectOfType<Core.Factory.UnitFactory>();
-            if (unitFactory != null)
+            var unitFactory = FindObjectOfType<UnitFactory>();
+            if (unitFactory)
             {
                 var unitModel = unitFactory.GetUnitModel(Entity);
                 if (unitModel != null)
@@ -203,10 +196,6 @@ namespace VikingRaven.Units.Components
                 }
             }
         }
-
-        /// <summary>
-        /// Initialize enhanced combat stats based on unit type
-        /// </summary>
         private void InitializeStatsFromUnitType(UnitType unitType)
         {
             switch (unitType)
@@ -243,10 +232,6 @@ namespace VikingRaven.Units.Components
                     break;
             }
         }
-
-        /// <summary>
-        /// Initialize enhanced combat statistics
-        /// </summary>
         private void InitializeEnhancedCombatStats()
         {
             _armorCondition = 100f;
@@ -254,30 +239,21 @@ namespace VikingRaven.Units.Components
             _isInCombat = false;
             _isStaggered = false;
 
-            Debug.Log($"CombatComponent: Enhanced combat stats initialized for {Entity.Id}");
         }
 
         #endregion
 
         #region Enhanced Combat Methods
-
-        /// <summary>
-        /// Perform enhanced attack with damage types and armor consideration
-        /// </summary>
         public bool PerformEnhancedAttack(IEntity target)
         {
             if (!CanAttack() || target == null || IsStaggered) return false;
 
             _lastAttackTime = Time.time;
-
-            // Calculate damage with all modifiers
             DamageInfo damageInfo = CalculateDamageInfo(target);
-
-            // Apply damage to target
             var targetCombat = target.GetComponent<CombatComponent>();
             if (targetCombat != null)
             {
-                bool hitSuccessful = targetCombat.ReceiveEnhancedDamage(damageInfo, Entity);
+                bool hitSuccessful = targetCombat.ReceiveDamage(damageInfo, Entity);
 
                 if (hitSuccessful)
                 {
@@ -307,37 +283,27 @@ namespace VikingRaven.Units.Components
             return false;
         }
 
-        public bool ReceiveEnhancedDamage(DamageInfo damageInfo, IEntity attacker)
+        public bool ReceiveDamage(DamageInfo damageInfo, IEntity attacker)
         {
             if (!IsActive) return false;
 
             _lastDamageTakenTime = Time.time;
 
-            // Calculate damage reduction based on armor and damage type
             float damageReduction = CalculateDamageReduction(damageInfo.DamageType, damageInfo.ArmorPenetration);
             float finalDamage = damageInfo.BaseDamage * (1f - damageReduction);
-
-            // Update damage info with final values
             damageInfo.DamageReduction = damageReduction;
             damageInfo.FinalDamage = finalDamage;
 
-            // Apply damage to health component
             var healthComponent = Entity.GetComponent<HealthComponent>();
             if (healthComponent != null)
             {
                 healthComponent.TakeDamage(finalDamage, attacker);
             }
-
-            // Update armor condition
             DamageArmor(damageInfo.BaseDamage * 0.1f);
-
-            // Check for stagger effect
             CheckForStagger(damageInfo);
 
             _totalDamageReceived += finalDamage;
             OnDamageReceived?.Invoke(damageInfo);
-
-            // Enter combat state
             SetCombatState(true);
 
             return true;
@@ -546,56 +512,34 @@ namespace VikingRaven.Units.Components
         private float CalculateEffectiveAttackDamage()
         {
             float baseDamage = _attackDamage;
-
-            // Apply weapon modifiers
             float weaponModifier = GetWeaponDamageModifier();
-
-            // Apply combat efficiency
             float efficiencyModifier = _combatEfficiency;
-
-            // Apply stagger penalty
             float staggerPenalty = IsStaggered ? 0.5f : 1f;
-
             return baseDamage * weaponModifier * efficiencyModifier * staggerPenalty;
         }
 
-        /// <summary>
-        /// Calculate effective attack range
-        /// </summary>
         private float CalculateEffectiveAttackRange()
         {
             return _attackRange * _weaponReachModifier;
         }
 
-        /// <summary>
-        /// Calculate effective attack speed (attacks per second)
-        /// </summary>
         private float CalculateEffectiveAttackSpeed()
         {
             float baseCooldown = _attackCooldown;
             float modifiedCooldown = baseCooldown / _weaponSpeedModifier;
-
-            // Apply combat efficiency
             modifiedCooldown /= _combatEfficiency;
 
-            return 1f / modifiedCooldown; // Convert to attacks per second
+            return 1f / modifiedCooldown;
         }
 
-        /// <summary>
-        /// Calculate overall combat effectiveness (0-100)
-        /// </summary>
         private float CalculateCombatEffectiveness()
         {
             float armorEffectiveness = _armorCondition;
-            float weaponEffectiveness = 100f; // Could be modified by weapon condition
+            float weaponEffectiveness = 100f;
             float efficiencyScore = _combatEfficiency * 100f;
 
             return (armorEffectiveness + weaponEffectiveness + efficiencyScore) / 3f;
         }
-
-        /// <summary>
-        /// Get weapon damage modifier based on weapon type
-        /// </summary>
         private float GetWeaponDamageModifier()
         {
             return _equippedWeaponType switch
@@ -608,21 +552,15 @@ namespace VikingRaven.Units.Components
                 _ => 1f
             };
         }
-
-        /// <summary>
-        /// Update combat efficiency based on performance
-        /// </summary>
         private void UpdateCombatEfficiency()
         {
             if (!_isInCombat) return;
 
-            // Increase efficiency with consecutive hits
             if (_consecutiveHits > 0)
             {
                 _combatEfficiency = Mathf.Min(1.5f, 1f + (_consecutiveHits * 0.1f));
             }
 
-            // Decrease efficiency with consecutive misses
             if (_consecutiveMisses > 0)
             {
                 _combatEfficiency = Mathf.Max(0.5f, 1f - (_consecutiveMisses * 0.05f));
@@ -685,57 +623,337 @@ namespace VikingRaven.Units.Components
         }
 
         #endregion
-    }
-    public enum AttackType
-    {
-        None,
-        Melee,
-        Ranged,
-        Magic,
-        Special
-    }
-    #region Supporting Data Structures
+        #region Enhanced Debug Methods
 
-    public class DamageInfo
-    {
-        public IEntity Attacker;
-        public IEntity Target;
-        public DamageType DamageType;
-        public WeaponType WeaponType;
-        public float BaseDamage;
-        public float FinalDamage;
-        public float ArmorPenetration;
-        public float DamageReduction;
-        public bool IsSecondaryDamage;
-        public bool IsCritical;
-        public Vector3 HitPosition;
-        public Vector3 HitDirection;
-    }
+        [TitleGroup("Enhanced Debug Tools")]
+        [InfoBox("Comprehensive debugging tools for combat system analysis and testing.", InfoMessageType.Info)]
+        
+        [Button("Full Combat Analysis"), ButtonGroup("Analysis")]
+        private void PerformFullCombatAnalysis()
+        {
+            Debug.Log("=== FULL COMBAT ANALYSIS ===");
+            
+            AnalyzeBasicCombatStats();
+            AnalyzeRangedAttackCapabilities();
+            AnalyzeDefensiveCapabilities();
+            AnalyzeCombatEfficiencyMetrics();
+            AnalyzeWeaponPerformance();
+            
+            Debug.Log("=== ANALYSIS COMPLETE ===");
+        }
 
-    public enum DamageType
-    {
-        None,
-        Physical,    // Basic melee damage
-        Piercing,    // Arrows, spear thrusts
-        Slashing,    // Sword cuts
-        Blunt,       // Mace, hammer impacts
-        Magical,     // Magical damage
-        Fire,        // Fire damage
-        Ice,         // Cold damage
-        True         // Ignores all armor
-    }
+        [Button("Range Attack Debug"), ButtonGroup("Specific")]
+        private void DebugRangeAttackSystem()
+        {
+            Debug.Log("=== RANGED ATTACK SYSTEM DEBUG ===");
+            Debug.Log($"Equipped Weapon: {_equippedWeaponType}");
+            Debug.Log($"Primary Damage Type: {_primaryDamageType}");
+            
+            // Range calculations
+            float baseRange = _attackRange;
+            float effectiveRange = CalculateEffectiveAttackRange();
+            float weaponReachModifier = _weaponReachModifier;
+            
+            Debug.Log($"Base Attack Range: {baseRange:F2} units");
+            Debug.Log($"Weapon Reach Modifier: {weaponReachModifier:F2}x");
+            Debug.Log($"Effective Attack Range: {effectiveRange:F2} units");
+            Debug.Log($"Range Increase: {(effectiveRange - baseRange):F2} units ({((effectiveRange/baseRange - 1) * 100):F1}%)");
+            
+            // Ranged attack performance
+            if (_equippedWeaponType == WeaponType.Bow)
+            {
+                Debug.Log("--- ARCHER SPECIFIC ANALYSIS ---");
+                Debug.Log($"Armor Penetration: {_armorPenetration:F1}");
+                Debug.Log($"Weapon Speed Modifier: {_weaponSpeedModifier:F2}x");
+                Debug.Log($"Effective Attack Speed: {CalculateEffectiveAttackSpeed():F2} attacks/sec");
+                Debug.Log($"Damage per Second: {(CalculateEffectiveAttackDamage() * CalculateEffectiveAttackSpeed()):F2}");
+                
+                // Calculate optimal engagement range
+                float optimalRange = effectiveRange * 0.8f; // 80% of max range for safety
+                Debug.Log($"Recommended Engagement Range: {optimalRange:F2} units");
+            }
+            
+            // Line of sight and targeting analysis
+            AnalyzeTargetingCapabilities();
+            
+            Debug.Log("=== RANGED ATTACK DEBUG COMPLETE ===");
+        }
 
-    public enum WeaponType
-    {
-        None,
-        Sword,       // Balanced weapon
-        Spear,       // Long reach, piercing
-        Bow,         // Ranged, piercing
-        Mace,        // High damage, stagger
-        Hammer,      // Highest damage, slow
-        Dagger,      // Fast, low damage
-        Staff        // Magical focus
-    }
+        [Button("Combat State Debug"), ButtonGroup("Specific")]
+        private void DebugCombatState()
+        {
+            Debug.Log("=== COMBAT STATE DEBUG ===");
+            
+            Debug.Log($"Is In Combat: {_isInCombat}");
+            Debug.Log($"Is Staggered: {IsStaggered}");
+            Debug.Log($"Can Attack: {CanAttack()}");
+            
+            Debug.Log($"Time Since Last Attack: {TimeSinceLastAttack:F2}s");
+            Debug.Log($"Time Since Last Damage: {TimeSinceLastDamage:F2}s");
+            Debug.Log($"Attack Cooldown: {_attackCooldown:F2}s");
+            
+            Debug.Log($"Consecutive Hits: {_consecutiveHits}");
+            Debug.Log($"Consecutive Misses: {_consecutiveMisses}");
+            Debug.Log($"Combat Efficiency: {_combatEfficiency:F2}x");
+            
+            if (_isStaggered)
+            {
+                float staggerTimeRemaining = _staggerEndTime - Time.time;
+                Debug.Log($"Stagger Time Remaining: {staggerTimeRemaining:F2}s");
+            }
+            
+            Debug.Log("=== COMBAT STATE DEBUG COMPLETE ===");
+        }
 
-    #endregion
+        [Button("Test Range vs Target"), ButtonGroup("Testing")]
+        private void TestRangeVsNearestTarget()
+        {
+            Debug.Log("=== RANGE TESTING vs NEAREST TARGET ===");
+            
+            // Find nearest potential target (simplified)
+            var allUnits = FindObjectsOfType<CombatComponent>();
+            CombatComponent nearestEnemy = null;
+            float nearestDistance = float.MaxValue;
+            
+            var myTransform = Entity?.GetComponent<TransformComponent>();
+            if (myTransform == null)
+            {
+                Debug.LogWarning("No TransformComponent found on this entity!");
+                return;
+            }
+            
+            foreach (var unit in allUnits)
+            {
+                if (unit == this) continue;
+                
+                var targetTransform = unit.Entity?.GetComponent<TransformComponent>();
+                if (targetTransform != null)
+                {
+                    float distance = Vector3.Distance(myTransform.Position, targetTransform.Position);
+                    if (distance < nearestDistance)
+                    {
+                        nearestDistance = distance;
+                        nearestEnemy = unit;
+                    }
+                }
+            }
+            
+            if (nearestEnemy != null)
+            {
+                Debug.Log($"Nearest Target Distance: {nearestDistance:F2} units");
+                Debug.Log($"Effective Attack Range: {CalculateEffectiveAttackRange():F2} units");
+                Debug.Log($"Can Attack Target: {IsInAttackRange(nearestEnemy.Entity)}");
+                
+                if (nearestDistance > CalculateEffectiveAttackRange())
+                {
+                    float moveDistance = nearestDistance - CalculateEffectiveAttackRange();
+                    Debug.Log($"Need to move closer by: {moveDistance:F2} units");
+                }
+                else
+                {
+                    Debug.Log("Target is within attack range!");
+                }
+            }
+            else
+            {
+                Debug.Log("No potential targets found in scene.");
+            }
+            
+            Debug.Log("=== RANGE TESTING COMPLETE ===");
+        }
+
+        [Button("Simulate Combat Scenario"), ButtonGroup("Simulation")]
+        private void SimulateCombatScenario()
+        {
+            Debug.Log("=== COMBAT SCENARIO SIMULATION ===");
+            
+            // Simulate different armor targets
+            float[] armorValues = { 0f, 10f, 25f, 50f };
+            DamageType[] damageTypes = { DamageType.Physical, DamageType.Piercing, DamageType.Magical };
+            
+            foreach (var armor in armorValues)
+            {
+                Debug.Log($"--- vs {armor} Armor ---");
+                
+                foreach (var damageType in damageTypes)
+                {
+                    float reduction = SimulateDamageReduction(damageType, armor);
+                    float effectiveDamage = CalculateEffectiveAttackDamage() * (1f - reduction);
+                    
+                    Debug.Log($"{damageType} Damage: {effectiveDamage:F1} (Reduction: {reduction*100:F1}%)");
+                }
+            }
+            
+            Debug.Log("=== SIMULATION COMPLETE ===");
+        }
+
+        #endregion
+
+        #region Private Analysis Methods
+
+        private void AnalyzeBasicCombatStats()
+        {
+            Debug.Log("--- BASIC COMBAT STATS ---");
+            Debug.Log($"Attack Damage: {_attackDamage:F1}");
+            Debug.Log($"Attack Range: {_attackRange:F1}");
+            Debug.Log($"Attack Cooldown: {_attackCooldown:F2}s");
+            Debug.Log($"Move Speed: {_moveSpeed:F1}");
+            Debug.Log($"Primary Damage Type: {_primaryDamageType}");
+        }
+
+        private void AnalyzeRangedAttackCapabilities()
+        {
+            Debug.Log("--- RANGED ATTACK CAPABILITIES ---");
+            
+            float effectiveRange = CalculateEffectiveAttackRange();
+            float attackSpeed = CalculateEffectiveAttackSpeed();
+            float dps = CalculateEffectiveAttackDamage() * attackSpeed;
+            
+            Debug.Log($"Effective Range: {effectiveRange:F2} units");
+            Debug.Log($"Attack Speed: {attackSpeed:F2} attacks/sec");
+            Debug.Log($"Damage Per Second: {dps:F2}");
+            Debug.Log($"Armor Penetration: {_armorPenetration:F1}");
+            
+            // Range classification
+            string rangeClass = effectiveRange switch
+            {
+                < 2f => "Melee",
+                < 4f => "Short Range",
+                < 8f => "Medium Range",
+                _ => "Long Range"
+            };
+            Debug.Log($"Range Classification: {rangeClass}");
+        }
+
+        private void AnalyzeDefensiveCapabilities()
+        {
+            Debug.Log("--- DEFENSIVE CAPABILITIES ---");
+            Debug.Log($"Physical Armor: {_physicalArmor:F1}");
+            Debug.Log($"Magical Resistance: {_magicalResistance:F1}");
+            Debug.Log($"Armor Condition: {_armorCondition:F1}%");
+            
+            // Calculate effective armor values
+            float effectivePhysicalArmor = _physicalArmor * (_armorCondition / 100f);
+            float physicalReduction = effectivePhysicalArmor / (effectivePhysicalArmor + 100f);
+            
+            Debug.Log($"Effective Physical Armor: {effectivePhysicalArmor:F1}");
+            Debug.Log($"Physical Damage Reduction: {physicalReduction*100:F1}%");
+        }
+
+        private void AnalyzeCombatEfficiencyMetrics()
+        {
+            Debug.Log("--- COMBAT EFFICIENCY METRICS ---");
+            Debug.Log($"Combat Effectiveness: {CalculateCombatEffectiveness():F1}%");
+            Debug.Log($"Combat Efficiency: {_combatEfficiency:F2}x");
+            Debug.Log($"Total Damage Dealt: {_totalDamageDealt:F1}");
+            Debug.Log($"Total Damage Received: {_totalDamageReceived:F1}");
+            Debug.Log($"Kill Count: {_killCount}");
+            
+            if (_totalDamageReceived > 0)
+            {
+                float damageRatio = _totalDamageDealt / _totalDamageReceived;
+                Debug.Log($"Damage Ratio (Dealt/Received): {damageRatio:F2}");
+            }
+        }
+
+        private void AnalyzeWeaponPerformance()
+        {
+            Debug.Log("--- WEAPON PERFORMANCE ---");
+            Debug.Log($"Equipped Weapon: {_equippedWeaponType}");
+            Debug.Log($"Weapon Reach Modifier: {_weaponReachModifier:F2}x");
+            Debug.Log($"Weapon Speed Modifier: {_weaponSpeedModifier:F2}x");
+            Debug.Log($"Weapon Damage Modifier: {GetWeaponDamageModifier():F2}x");
+            
+            // Weapon effectiveness analysis
+            float weaponScore = (_weaponReachModifier + _weaponSpeedModifier + GetWeaponDamageModifier()) / 3f;
+            Debug.Log($"Overall Weapon Effectiveness: {weaponScore:F2}");
+        }
+
+        private void AnalyzeTargetingCapabilities()
+        {
+            Debug.Log("--- TARGETING CAPABILITIES ---");
+            
+            var myTransform = Entity?.GetComponent<TransformComponent>();
+            if (myTransform != null)
+            {
+                Debug.Log($"Current Position: {myTransform.Position}");
+                Debug.Log($"Current Rotation: {myTransform.Rotation.eulerAngles}");
+            }
+            
+            // Check for line of sight capabilities
+            if (_equippedWeaponType == WeaponType.Bow)
+            {
+                Debug.Log("Ranged weapon equipped - line of sight targeting available");
+                Debug.Log($"Optimal firing arc: ±30° from forward direction");
+            }
+            else
+            {
+                Debug.Log("Melee weapon equipped - direct contact required");
+            }
+        }
+
+        private float SimulateDamageReduction(DamageType damageType, float targetArmor)
+        {
+            float effectiveArmor = targetArmor;
+            
+            switch (damageType)
+            {
+                case DamageType.Physical:
+                case DamageType.Piercing:
+                case DamageType.Slashing:
+                    // Use physical armor
+                    break;
+                case DamageType.Magical:
+                case DamageType.Fire:
+                case DamageType.Ice:
+                    effectiveArmor = 0f; // Assume no magical resistance for simulation
+                    break;
+                case DamageType.True:
+                    return 0f;
+            }
+            
+            // Apply armor penetration
+            effectiveArmor = Mathf.Max(0f, effectiveArmor - _armorPenetration);
+            
+            // Calculate reduction
+            return effectiveArmor / (effectiveArmor + 100f);
+        }
+
+        #endregion
+
+        #region Debug Visualization
+
+        [Button("Draw Attack Range"), ButtonGroup("Visualization")]
+        private void DrawAttackRangeGizmo()
+        {
+            var myTransform = Entity?.GetComponent<TransformComponent>();
+            if (myTransform != null)
+            {
+                float range = CalculateEffectiveAttackRange();
+                
+                // This would be better implemented in OnDrawGizmosSelected
+                Debug.Log($"Attack range visualization: {range:F2} units from position {myTransform.Position}");
+                Debug.Log("Note: Implement OnDrawGizmosSelected for visual range display in Scene view");
+            }
+        }
+
+        // Optional: Add this method to visualize range in Scene view
+        private void OnDrawGizmosSelected()
+        {
+            var myTransform = Entity?.GetComponent<TransformComponent>();
+            if (myTransform != null)
+            {
+                float range = CalculateEffectiveAttackRange();
+                
+                Gizmos.color = Color.red;
+                Gizmos.DrawWireSphere(myTransform.Position, range);
+                
+                // Draw weapon type indicator
+                Gizmos.color = _equippedWeaponType == WeaponType.Bow ? Color.green : Color.yellow;
+                Gizmos.DrawWireSphere(myTransform.Position, range * 0.8f);
+            }
+        }
+
+        #endregion
+    }
 }
