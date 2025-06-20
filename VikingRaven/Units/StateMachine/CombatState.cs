@@ -75,7 +75,6 @@ namespace VikingRaven.Units.StateMachine
         {
             if (!_isResting || _healthComponent == null) return;
             
-            // Enhanced stamina recovery in idle
             if (Time.time - _lastHealthRegenTime > 2f)
             {
                 // _healthComponent.RestoreStamina(5f);

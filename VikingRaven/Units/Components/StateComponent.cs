@@ -8,14 +8,16 @@ using System.Collections.Generic;
 
 namespace VikingRaven.Units.Components
 {
+    /// <summary>
+    /// Simple StateComponent that works with existing NavigationComponent
+    /// Only adds essential movement detection without breaking existing functionality
+    /// </summary>
     public class StateComponent : BaseComponent
     {
         #region State Configuration
         
         [TitleGroup("State Configuration")]
         [InfoBox("Enhanced state management with combat-specific states and intelligent transitions.", InfoMessageType.Info)]
-        
-        [SerializeField] private StateMachineInGame stateMachineInGame;
         
         [Tooltip("Enable intelligent state transitions based on combat conditions")]
         [SerializeField, ToggleLeft] private bool _enableIntelligentTransitions = true;
@@ -28,22 +30,121 @@ namespace VikingRaven.Units.Components
 
         #endregion
 
+        #region Component References
+        
+        [TitleGroup("Component References")]
+        [InfoBox("Assign component references for better performance. NavigationComponent must have IsMoving and CurrentSpeed properties.", InfoMessageType.Info)]
+        
+        [Tooltip("Combat component for battle mechanics")]
+        [SerializeField, Required] private CombatComponent _combatComponent;
+        
+        [Tooltip("Health component for health and stamina tracking")]
+        [SerializeField, Required] private HealthComponent _healthComponent;
+        
+        [Tooltip("Weapon component for weapon state tracking")]
+        [SerializeField, Required] private WeaponComponent _weaponComponent;
+        
+        [Tooltip("Aggro detection component for enemy detection")]
+        [SerializeField, Required] private AggroDetectionComponent _aggroComponent;
+        
+        [Tooltip("Navigation component for movement tracking - Must have IsMoving and CurrentSpeed")]
+        [SerializeField, Required] private NavigationComponent _navigationComponent;
+
+        #endregion
+
+        #region Movement Detection Fallback
+        
+        [TitleGroup("Movement Detection Fallback")]
+        [InfoBox("Fallback movement detection if NavigationComponent doesn't have IsMoving/CurrentSpeed", InfoMessageType.Warning)]
+        
+        [Tooltip("Use fallback movement detection if NavigationComponent properties are missing")]
+        [SerializeField, ToggleLeft] private bool _useFallbackMovementDetection = false;
+        
+        [ShowIf("_useFallbackMovementDetection")]
+        [Tooltip("Minimum speed threshold to consider unit as moving")]
+        [SerializeField, Range(0.1f, 2f)] private float _movementThreshold = 0.5f;
+        
+        [ShowIf("_useFallbackMovementDetection")]
+        [Tooltip("Optional Rigidbody for movement detection")]
+        [SerializeField] private Rigidbody _rigidbody;
+        
+        // Fallback movement tracking
+        private Vector3 _lastPosition;
+        private float _lastPositionTime;
+        private bool _fallbackIsMoving = false;
+        private float _fallbackCurrentSpeed = 0f;
+
+        #endregion
+
         #region Combat State Tracking
         
         [TitleGroup("Combat State Tracking")]
         [InfoBox("Real-time tracking of combat states and conditions for intelligent behavior.", InfoMessageType.Warning)]
         
-        [ShowInInspector, ReadOnly] private CombatStateType _currentCombatState = CombatStateType.Idle;
-        [ShowInInspector, ReadOnly] private CombatStateType _previousCombatState = CombatStateType.Idle;
-        [ShowInInspector, ReadOnly] private float _timeInCurrentState = 0f;
-        [ShowInInspector, ReadOnly] private float _lastStateChangeTime = 0f;
+        [ShowInInspector, ReadOnly]
+        [LabelText("Current Combat State"), LabelWidth(150)]
+        private CombatStateType _currentCombatState = CombatStateType.Idle;
         
-        // Combat conditions tracking
-        [ShowInInspector, ReadOnly] private bool _hasEnemiesInRange = false;
-        [ShowInInspector, ReadOnly] private bool _isUnderAttack = false;
-        [ShowInInspector, ReadOnly] private bool _isLowHealth = false;
-        [ShowInInspector, ReadOnly] private bool _isExhausted = false;
-        [ShowInInspector, ReadOnly] private bool _weaponBroken = false;
+        [ShowInInspector, ReadOnly]
+        [LabelText("Previous Combat State"), LabelWidth(150)]
+        private CombatStateType _previousCombatState = CombatStateType.Idle;
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Time in Current State"), LabelWidth(150)]
+        private float _timeInCurrentState = 0f;
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Last State Change Time"), LabelWidth(150)]
+        private float _lastStateChangeTime = 0f;
+
+        #endregion
+
+        #region Combat Conditions
+        
+        [TitleGroup("Combat Conditions")]
+        [InfoBox("Current combat conditions affecting state transitions", InfoMessageType.None)]
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Has Enemies in Range"), LabelWidth(150)]
+        private bool _hasEnemiesInRange = false;
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Is Under Attack"), LabelWidth(150)]
+        private bool _isUnderAttack = false;
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Is Low Health"), LabelWidth(150)]
+        private bool _isLowHealth = false;
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Is Exhausted"), LabelWidth(150)]
+        private bool _isExhausted = false;
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Weapon Broken"), LabelWidth(150)]
+        private bool _weaponBroken = false;
+
+        #endregion
+
+        #region Movement Information
+        
+        [TitleGroup("Movement Information")]
+        [InfoBox("Movement state from NavigationComponent or fallback detection", InfoMessageType.Info)]
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Is Moving"), LabelWidth(150)]
+        public bool IsMoving => GetIsMoving();
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Current Speed"), LabelWidth(150)]
+        public float CurrentSpeed => GetCurrentSpeed();
+        
+        [ShowInInspector, ReadOnly]
+        [LabelText("Movement Source"), LabelWidth(150)]
+        private string MovementSource => GetMovementSource();
+        
+        // Internal movement tracking
+        private bool _wasMovingLastFrame = false;
 
         #endregion
 
@@ -56,7 +157,8 @@ namespace VikingRaven.Units.Components
         [SerializeField, DictionaryDrawerSettings(KeyLabel = "State Type", ValueLabel = "Priority")]
         private Dictionary<CombatStateType, int> _statePriorities = new Dictionary<CombatStateType, int>();
         
-        [ShowInInspector, ReadOnly] private Queue<StateTransition> _pendingTransitions = new Queue<StateTransition>();
+        [ShowInInspector, ReadOnly] 
+        private Queue<StateTransition> _pendingTransitions = new Queue<StateTransition>();
         
         [Tooltip("Override current state only if new state has higher priority")]
         [SerializeField, ToggleLeft] private bool _respectStatePriority = true;
@@ -82,13 +184,20 @@ namespace VikingRaven.Units.Components
 
         #endregion
 
-        #region Component References
+        #region State Machine (Non-Serialized)
         
-        private CombatComponent _combatComponent;
-        private HealthComponent _healthComponent;
-        private WeaponComponent _weaponComponent;
-        private AggroDetectionComponent _aggroComponent;
-        private NavigationComponent _navigationComponent;
+        // Pure C# state machine - cannot be serialized in Unity
+        private StateMachineInGame stateMachineInGame;
+        
+        [ShowInInspector, ReadOnly]
+        [TitleGroup("State Machine Info")]
+        [LabelText("State Machine Status"), LabelWidth(150)]
+        public string StateMachineStatus => stateMachineInGame?.GetDebugInfo() ?? "Not Initialized";
+        
+        [ShowInInspector, ReadOnly]
+        [TitleGroup("State Machine Info")]
+        [LabelText("Current State Name"), LabelWidth(150)]
+        public string CurrentStateName => stateMachineInGame?.CurrentState?.GetType().Name ?? "None";
 
         #endregion
 
@@ -121,7 +230,8 @@ namespace VikingRaven.Units.Components
         {
             base.Initialize();
             
-            CacheComponentReferences();
+            ValidateComponentReferences();
+            InitializeFallbackMovementDetection();
             InitializeStateMachine();
             InitializeStatePriorities();
             SubscribeToComponentEvents();
@@ -133,11 +243,14 @@ namespace VikingRaven.Units.Components
         {
             if (!IsActive || stateMachineInGame == null) return;
             
+            UpdateFallbackMovementDetection();
+            UpdateMovementTracking();
             UpdateStateTracking();
             UpdateCombatConditions();
             ProcessIntelligentTransitions();
             ProcessPendingTransitions();
             
+            // Update the pure C# state machine
             stateMachineInGame.Update();
         }
 
@@ -146,30 +259,115 @@ namespace VikingRaven.Units.Components
         #region Initialization
 
         /// <summary>
-        /// Cache references to other components
+        /// Validate component references are assigned
         /// </summary>
-        private void CacheComponentReferences()
+        private void ValidateComponentReferences()
         {
-            _combatComponent = Entity.GetComponent<CombatComponent>();
-            _healthComponent = Entity.GetComponent<HealthComponent>();
-            _weaponComponent = Entity.GetComponent<WeaponComponent>();
-            _aggroComponent = Entity.GetComponent<AggroDetectionComponent>();
-            _navigationComponent = Entity.GetComponent<NavigationComponent>();
+            bool hasErrors = false;
+            
+            // Validate required components
+            if (_combatComponent == null)
+            {
+                Debug.LogError($"StateComponent: CombatComponent is REQUIRED for entity {Entity.Id}");
+                hasErrors = true;
+            }
+            
+            if (_healthComponent == null)
+            {
+                Debug.LogError($"StateComponent: HealthComponent is REQUIRED for entity {Entity.Id}");
+                hasErrors = true;
+            }
+            
+            if (_weaponComponent == null)
+            {
+                Debug.LogError($"StateComponent: WeaponComponent is REQUIRED for entity {Entity.Id}");
+                hasErrors = true;
+            }
+            
+            if (_aggroComponent == null)
+            {
+                Debug.LogError($"StateComponent: AggroDetectionComponent is REQUIRED for entity {Entity.Id}");
+                hasErrors = true;
+            }
+            
+            if (_navigationComponent == null)
+            {
+                Debug.LogError($"StateComponent: NavigationComponent is REQUIRED for entity {Entity.Id}");
+                hasErrors = true;
+            }
+            else
+            {
+                // Check if NavigationComponent has required properties
+                CheckNavigationComponentProperties();
+            }
+            
+            if (!hasErrors)
+            {
+                Debug.Log($"StateComponent: All required components validated for entity {Entity.Id}");
+            }
         }
 
         /// <summary>
-        /// Initialize state machine with enhanced combat states
+        /// Check if NavigationComponent has IsMoving and CurrentSpeed properties
+        /// </summary>
+        private void CheckNavigationComponentProperties()
+        {
+            var navType = _navigationComponent.GetType();
+            
+            var isMovingProperty = navType.GetProperty("IsMoving");
+            var currentSpeedProperty = navType.GetProperty("CurrentSpeed");
+            
+            if (isMovingProperty == null || currentSpeedProperty == null)
+            {
+                Debug.LogWarning($"StateComponent: NavigationComponent missing IsMoving or CurrentSpeed properties for entity {Entity.Id}. " +
+                               "Enable fallback movement detection to continue.");
+                _useFallbackMovementDetection = true;
+            }
+            else
+            {
+                Debug.Log($"StateComponent: NavigationComponent has required movement properties for entity {Entity.Id}");
+            }
+        }
+
+        /// <summary>
+        /// Initialize fallback movement detection
+        /// </summary>
+        private void InitializeFallbackMovementDetection()
+        {
+            _lastPosition = transform.position;
+            _lastPositionTime = Time.time;
+            _fallbackIsMoving = false;
+            _fallbackCurrentSpeed = 0f;
+            
+            // Auto-assign Rigidbody if not set and fallback is enabled
+            if (_useFallbackMovementDetection && _rigidbody == null)
+            {
+                _rigidbody = GetComponent<Rigidbody>();
+                if (_rigidbody != null)
+                {
+                    Debug.LogWarning($"StateComponent: Auto-assigned Rigidbody for fallback movement detection on entity {Entity.Id}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Initialize state machine as pure C# object
         /// </summary>
         private void InitializeStateMachine()
         {
             if (stateMachineInGame == null)
             {
-                GameObject machineObject = new GameObject($"EnhancedStateMachine_{Entity.Id}");
-                machineObject.transform.SetParent(transform);
+                // Create pure C# state machine instance
+                stateMachineInGame = new StateMachineInGame(Entity.Id);
                 
-                stateMachineInGame = machineObject.AddComponent<StateMachineInGame>();
+                // Subscribe to state machine events
+                stateMachineInGame.OnStateChanged += OnStateMachineStateChanged;
+                stateMachineInGame.OnStateEntered += OnStateMachineStateEntered;
+                stateMachineInGame.OnStateExited += OnStateMachineStateExited;
                 
                 RegisterEnhancedStates();
+                
+                Debug.Log($"StateComponent: Pure C# state machine created for entity {Entity.Id}");
             }
         }
 
@@ -204,7 +402,7 @@ namespace VikingRaven.Units.Components
             var patrollingState = new PatrollingState(Entity, stateMachineInGame);
             stateMachineInGame.RegisterState<PatrollingState>(patrollingState);
             
-            // Existing enhanced states
+            // Status effect states
             var knockbackState = new KnockbackState(Entity, stateMachineInGame);
             stateMachineInGame.RegisterState<KnockbackState>(knockbackState);
             
@@ -214,6 +412,8 @@ namespace VikingRaven.Units.Components
             // Set initial state
             stateMachineInGame.ChangeState(idleState);
             _currentCombatState = CombatStateType.Idle;
+            
+            Debug.Log($"StateComponent: Registered {stateMachineInGame.RegisteredStatesCount} states for entity {Entity.Id}");
         }
 
         /// <summary>
@@ -238,6 +438,7 @@ namespace VikingRaven.Units.Components
         /// </summary>
         private void SubscribeToComponentEvents()
         {
+            // Health component events
             if (_healthComponent != null)
             {
                 _healthComponent.OnDamageTaken += OnDamageTaken;
@@ -245,17 +446,215 @@ namespace VikingRaven.Units.Components
                 _healthComponent.OnStaminaChanged += OnStaminaChanged;
             }
             
+            // Combat component events
             if (_combatComponent != null)
             {
                 _combatComponent.OnCombatStateChanged += OnCombatStateChangedFunc;
                 _combatComponent.OnDamageReceived += OnDamageReceived;
             }
             
+            // Weapon component events
             if (_weaponComponent != null)
             {
                 _weaponComponent.OnWeaponBroken += OnWeaponBroken;
                 _weaponComponent.OnWeaponRepaired += OnWeaponRepaired;
             }
+        }
+
+        #endregion
+
+        #region Movement Detection - Smart Approach
+
+        /// <summary>
+        /// Get IsMoving from NavigationComponent or fallback detection
+        /// </summary>
+        private bool GetIsMoving()
+        {
+            if (!_useFallbackMovementDetection && _navigationComponent != null)
+            {
+                // Try to get IsMoving from NavigationComponent using reflection
+                var navType = _navigationComponent.GetType();
+                var isMovingProperty = navType.GetProperty("IsMoving");
+                
+                if (isMovingProperty != null)
+                {
+                    return (bool)isMovingProperty.GetValue(_navigationComponent);
+                }
+            }
+            
+            // Use fallback detection
+            return _fallbackIsMoving;
+        }
+
+        /// <summary>
+        /// Get CurrentSpeed from NavigationComponent or fallback detection
+        /// </summary>
+        private float GetCurrentSpeed()
+        {
+            if (!_useFallbackMovementDetection && _navigationComponent != null)
+            {
+                // Try to get CurrentSpeed from NavigationComponent using reflection
+                var navType = _navigationComponent.GetType();
+                var currentSpeedProperty = navType.GetProperty("CurrentSpeed");
+                
+                if (currentSpeedProperty != null)
+                {
+                    return (float)currentSpeedProperty.GetValue(_navigationComponent);
+                }
+            }
+            
+            // Use fallback detection
+            return _fallbackCurrentSpeed;
+        }
+
+        /// <summary>
+        /// Get movement source for debugging
+        /// </summary>
+        private string GetMovementSource()
+        {
+            if (!_useFallbackMovementDetection && _navigationComponent != null)
+            {
+                var navType = _navigationComponent.GetType();
+                var isMovingProperty = navType.GetProperty("IsMoving");
+                var currentSpeedProperty = navType.GetProperty("CurrentSpeed");
+                
+                if (isMovingProperty != null && currentSpeedProperty != null)
+                {
+                    return "NavigationComponent";
+                }
+            }
+            
+            return "Fallback Detection";
+        }
+
+        /// <summary>
+        /// Update fallback movement detection
+        /// </summary>
+        private void UpdateFallbackMovementDetection()
+        {
+            if (!_useFallbackMovementDetection) return;
+            
+            // Update every 0.1 seconds for better performance
+            if (Time.time - _lastPositionTime > 0.1f)
+            {
+                var currentPosition = transform.position;
+                var deltaTime = Time.time - _lastPositionTime;
+                var distance = Vector3.Distance(currentPosition, _lastPosition);
+                
+                _fallbackCurrentSpeed = distance / deltaTime;
+                _fallbackIsMoving = _fallbackCurrentSpeed > _movementThreshold;
+                
+                // Additional check with Rigidbody if available
+                if (_rigidbody != null)
+                {
+                    var rigidBodySpeed = _rigidbody.linearVelocity.magnitude;
+                    if (rigidBodySpeed > _movementThreshold)
+                    {
+                        _fallbackIsMoving = true;
+                        _fallbackCurrentSpeed = Mathf.Max(_fallbackCurrentSpeed, rigidBodySpeed);
+                    }
+                }
+                
+                _lastPosition = currentPosition;
+                _lastPositionTime = Time.time;
+            }
+        }
+
+        #endregion
+
+        #region Movement Tracking
+
+        /// <summary>
+        /// Update movement tracking and handle state transitions
+        /// </summary>
+        private void UpdateMovementTracking()
+        {
+            bool isCurrentlyMoving = IsMoving;
+            bool wasMoving = _wasMovingLastFrame;
+            
+            // Movement state changed
+            if (wasMoving != isCurrentlyMoving)
+            {
+                Debug.Log($"StateComponent: Entity {Entity.Id} movement changed - IsMoving: {isCurrentlyMoving} " +
+                         $"(Speed: {CurrentSpeed:F2}, Source: {MovementSource})");
+                
+                HandleMovementStateChange(wasMoving, isCurrentlyMoving);
+            }
+            
+            _wasMovingLastFrame = isCurrentlyMoving;
+        }
+
+        /// <summary>
+        /// Handle movement state changes with intelligent state transitions
+        /// </summary>
+        private void HandleMovementStateChange(bool wasMoving, bool isMoving)
+        {
+            if (!wasMoving && isMoving)
+            {
+                // Started moving
+                OnMovementStarted();
+            }
+            else if (wasMoving && !isMoving)
+            {
+                // Stopped moving
+                OnMovementStopped();
+            }
+        }
+
+        /// <summary>
+        /// Handle movement started event
+        /// </summary>
+        private void OnMovementStarted()
+        {
+            Debug.Log($"StateComponent: Entity {Entity.Id} started moving");
+            
+            // Transition to patrolling if conditions are right
+            if (!_hasEnemiesInRange && !IsInCombat && _currentCombatState == CombatStateType.Idle)
+            {
+                RequestStateTransition(CombatStateType.Patrolling, StateTransitionReason.MovementStarted);
+            }
+        }
+
+        /// <summary>
+        /// Handle movement stopped event
+        /// </summary>
+        private void OnMovementStopped()
+        {
+            Debug.Log($"StateComponent: Entity {Entity.Id} stopped moving");
+            
+            // Transition to idle if conditions are right
+            if (!_hasEnemiesInRange && !IsInCombat && _currentCombatState == CombatStateType.Patrolling)
+            {
+                RequestStateTransition(CombatStateType.Idle, StateTransitionReason.MovementStopped);
+            }
+        }
+
+        #endregion
+
+        #region State Machine Event Handlers
+
+        /// <summary>
+        /// Handle state machine state changes
+        /// </summary>
+        private void OnStateMachineStateChanged(IState previousState, IState newState)
+        {
+            Debug.Log($"StateComponent: State machine changed from {previousState?.GetType().Name ?? "null"} to {newState?.GetType().Name ?? "null"} for entity {Entity.Id}");
+        }
+
+        /// <summary>
+        /// Handle state entered events
+        /// </summary>
+        private void OnStateMachineStateEntered(IState state)
+        {
+            Debug.Log($"StateComponent: Entered state {state?.GetType().Name} for entity {Entity.Id}");
+        }
+
+        /// <summary>
+        /// Handle state exited events
+        /// </summary>
+        private void OnStateMachineStateExited(IState state)
+        {
+            Debug.Log($"StateComponent: Exited state {state?.GetType().Name} for entity {Entity.Id}");
         }
 
         #endregion
@@ -317,11 +716,11 @@ namespace VikingRaven.Units.Components
         }
 
         /// <summary>
-        /// Determine recommended state based on current conditions
+        /// Determine recommended state based on current conditions including movement
         /// </summary>
         private CombatStateType DetermineRecommendedState()
         {
-            // Priority-based state determination
+            // Priority-based state determination with movement consideration
             
             // Critical states (highest priority)
             if (_weaponBroken && _hasEnemiesInRange)
@@ -339,6 +738,10 @@ namespace VikingRaven.Units.Components
             
             if (_hasEnemiesInRange)
                 return CombatStateType.Aggro;
+            
+            // Movement-based states
+            if (IsMoving && !IsInCombat)
+                return CombatStateType.Patrolling;
             
             // Passive states
             if (_healthComponent != null && _healthComponent.CurrentInjuryState != InjuryState.Healthy)
@@ -459,6 +862,9 @@ namespace VikingRaven.Units.Components
                     
                 case CombatStateType.WeaponBroken:
                     return _weaponBroken;
+                    
+                case CombatStateType.Patrolling:
+                    return IsMoving && !IsInCombat;
             }
             
             return true; // Default to allowing transition
@@ -496,6 +902,8 @@ namespace VikingRaven.Units.Components
             {
                 OnCombatDisengaged?.Invoke();
             }
+            
+            Debug.Log($"StateComponent: Combat state changed from {oldState} to {newState} for entity {Entity.Id}");
         }
 
         /// <summary>
@@ -591,7 +999,6 @@ namespace VikingRaven.Units.Components
         /// </summary>
         private void OnDeath()
         {
-            // Death should be handled by a separate death state if needed
             Debug.Log($"StateComponent: Entity {Entity.Id} died in state {_currentCombatState}");
         }
 
@@ -614,7 +1021,14 @@ namespace VikingRaven.Units.Components
             if (!inCombat && IsInCombat)
             {
                 // Combat ended, return to appropriate state
-                RequestStateTransition(CombatStateType.Idle, StateTransitionReason.CombatEnded);
+                if (IsMoving)
+                {
+                    RequestStateTransition(CombatStateType.Patrolling, StateTransitionReason.CombatEnded);
+                }
+                else
+                {
+                    RequestStateTransition(CombatStateType.Idle, StateTransitionReason.CombatEnded);
+                }
             }
         }
 
@@ -649,7 +1063,14 @@ namespace VikingRaven.Units.Components
         {
             if (_currentCombatState == CombatStateType.WeaponBroken)
             {
-                RequestStateTransition(CombatStateType.Idle, StateTransitionReason.WeaponRepaired);
+                if (IsMoving)
+                {
+                    RequestStateTransition(CombatStateType.Patrolling, StateTransitionReason.WeaponRepaired);
+                }
+                else
+                {
+                    RequestStateTransition(CombatStateType.Idle, StateTransitionReason.WeaponRepaired);
+                }
             }
         }
 
@@ -672,7 +1093,8 @@ namespace VikingRaven.Units.Components
                 IsUnderAttack = _isUnderAttack,
                 IsLowHealth = _isLowHealth,
                 IsExhausted = _isExhausted,
-                WeaponBroken = _weaponBroken
+                WeaponBroken = _weaponBroken,
+                IsMoving = IsMoving
             };
         }
 
@@ -684,13 +1106,37 @@ namespace VikingRaven.Units.Components
             return RequestStateTransition(targetState, StateTransitionReason.Manual);
         }
 
+        /// <summary>
+        /// Get state machine debug information
+        /// </summary>
+        public string GetStateMachineDebugInfo()
+        {
+            return stateMachineInGame?.GetDebugInfo() ?? "StateMachine not initialized";
+        }
+
+        /// <summary>
+        /// Pause the state machine
+        /// </summary>
+        public void PauseStateMachine()
+        {
+            stateMachineInGame?.Pause();
+        }
+
+        /// <summary>
+        /// Resume the state machine
+        /// </summary>
+        public void ResumeStateMachine()
+        {
+            stateMachineInGame?.Resume();
+        }
+
         #endregion
 
         #region Cleanup
 
         public override void Cleanup()
         {
-            // Unsubscribe from events
+            // Unsubscribe from component events
             if (_healthComponent != null)
             {
                 _healthComponent.OnDamageTaken -= OnDamageTaken;
@@ -710,6 +1156,18 @@ namespace VikingRaven.Units.Components
                 _weaponComponent.OnWeaponRepaired -= OnWeaponRepaired;
             }
             
+            // Unsubscribe from state machine events
+            if (stateMachineInGame != null)
+            {
+                stateMachineInGame.OnStateChanged -= OnStateMachineStateChanged;
+                stateMachineInGame.OnStateEntered -= OnStateMachineStateEntered;
+                stateMachineInGame.OnStateExited -= OnStateMachineStateExited;
+                
+                // Clean up the state machine
+                stateMachineInGame.Cleanup();
+                stateMachineInGame = null;
+            }
+            
             _pendingTransitions.Clear();
             
             base.Cleanup();
@@ -719,21 +1177,47 @@ namespace VikingRaven.Units.Components
 
         #region Debug Methods
 
-        [Button("Show State Info"), FoldoutGroup("Debug Tools")]
+        [Button("Show Complete State Info"), FoldoutGroup("Debug Tools")]
+        [PropertySpace(SpaceBefore = 10)]
         private void ShowStateInfo()
         {
             var stateInfo = GetCurrentStateInfo();
-            Debug.Log($"=== State Information ===");
+            Debug.Log($"=== COMPLETE STATE INFORMATION ===");
             Debug.Log($"Current Combat State: {stateInfo.CombatState}");
+            Debug.Log($"Current State Machine State: {CurrentStateName}");
             Debug.Log($"Time in State: {stateInfo.TimeInState:F1}s");
             Debug.Log($"Is in Combat: {stateInfo.IsInCombat}");
             Debug.Log($"Can Transition: {stateInfo.CanTransition}");
+            Debug.Log($"=== MOVEMENT INFO ===");
+            Debug.Log($"Is Moving: {IsMoving}");
+            Debug.Log($"Current Speed: {CurrentSpeed:F2}");
+            Debug.Log($"Movement Source: {MovementSource}");
+            Debug.Log($"Use Fallback Detection: {_useFallbackMovementDetection}");
+            Debug.Log($"=== COMBAT CONDITIONS ===");
             Debug.Log($"Enemies in Range: {stateInfo.HasEnemiesInRange}");
             Debug.Log($"Under Attack: {stateInfo.IsUnderAttack}");
             Debug.Log($"Low Health: {stateInfo.IsLowHealth}");
             Debug.Log($"Exhausted: {stateInfo.IsExhausted}");
             Debug.Log($"Weapon Broken: {stateInfo.WeaponBroken}");
+            Debug.Log($"=== SYSTEM INFO ===");
             Debug.Log($"Pending Transitions: {_pendingTransitions.Count}");
+            Debug.Log($"StateMachine Info: {GetStateMachineDebugInfo()}");
+        }
+
+        [Button("Test Movement Detection"), FoldoutGroup("Debug Tools")]
+        private void TestMovementDetection()
+        {
+            Debug.Log($"=== MOVEMENT DETECTION TEST ===");
+            Debug.Log($"StateComponent.IsMoving: {IsMoving}");
+            Debug.Log($"StateComponent.CurrentSpeed: {CurrentSpeed:F2}");
+            Debug.Log($"Movement Source: {MovementSource}");
+            Debug.Log($"Use Fallback Detection: {_useFallbackMovementDetection}");
+            
+            if (_useFallbackMovementDetection)
+            {
+                Debug.Log($"Fallback IsMoving: {_fallbackIsMoving}");
+                Debug.Log($"Fallback CurrentSpeed: {_fallbackCurrentSpeed:F2}");
+            }
         }
 
         [Button("Force Combat State"), FoldoutGroup("Debug Tools")]
@@ -742,37 +1226,29 @@ namespace VikingRaven.Units.Components
             ForceStateTransition(CombatStateType.CombatEngaged);
         }
 
-        [Button("Force Retreat State"), FoldoutGroup("Debug Tools")]
-        private void ForceRetreatState()
+        [Button("Force Patrolling State"), FoldoutGroup("Debug Tools")]
+        private void ForcePatrollingState()
         {
-            ForceStateTransition(CombatStateType.Retreat);
+            ForceStateTransition(CombatStateType.Patrolling);
+        }
+
+        [Button("Toggle Fallback Detection"), FoldoutGroup("Debug Tools")]
+        private void ToggleFallbackDetection()
+        {
+            _useFallbackMovementDetection = !_useFallbackMovementDetection;
+            Debug.Log($"StateComponent: Fallback movement detection {(_useFallbackMovementDetection ? "enabled" : "disabled")}");
+        }
+
+        [Button("Show StateMachine Status"), FoldoutGroup("Debug Tools")]
+        private void ShowStateMachineStatus()
+        {
+            stateMachineInGame?.LogStatus();
         }
 
         #endregion
     }
-
-    #region Supporting Data Structures
-
-    /// <summary>
-    /// Enhanced combat state types
-    /// </summary>
-    public enum CombatStateType
-    {
-        Idle,
-        Patrolling,
-        Guarding,
-        Aggro,
-        CombatEngaged,
-        Retreat,
-        Exhausted,
-        WeaponBroken,
-        Knockback,
-        Stunned
-    }
-
-    /// <summary>
-    /// State transition reasons for debugging and analytics
-    /// </summary>
+    
+    // Supporting enums and structs
     public enum StateTransitionReason
     {
         Manual,
@@ -784,33 +1260,25 @@ namespace VikingRaven.Units.Components
         WeaponBroken,
         WeaponRepaired,
         CombatEnded,
-        EnemyDetected,
         HeavyDamage,
-        StatusEffect
+        MovementStarted,
+        MovementStopped
     }
-
-    /// <summary>
-    /// State transition information
-    /// </summary>
-    [Serializable]
+    
     public struct StateTransition
     {
         public CombatStateType TargetState;
         public StateTransitionReason Reason;
-        public float Timestamp;
+        public float RequestTime;
         
-        public StateTransition(CombatStateType targetState, StateTransitionReason reason, float timestamp)
+        public StateTransition(CombatStateType targetState, StateTransitionReason reason, float requestTime)
         {
             TargetState = targetState;
             Reason = reason;
-            Timestamp = timestamp;
+            RequestTime = requestTime;
         }
     }
-
-    /// <summary>
-    /// Current state information structure
-    /// </summary>
-    [Serializable]
+    
     public struct StateInfo
     {
         public CombatStateType CombatState;
@@ -822,7 +1290,6 @@ namespace VikingRaven.Units.Components
         public bool IsLowHealth;
         public bool IsExhausted;
         public bool WeaponBroken;
+        public bool IsMoving;
     }
-
-    #endregion
 }
