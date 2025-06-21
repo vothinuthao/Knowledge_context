@@ -249,8 +249,6 @@ namespace VikingRaven.Units.Components
             UpdateCombatConditions();
             ProcessIntelligentTransitions();
             ProcessPendingTransitions();
-            
-            // Update the pure C# state machine
             stateMachineInGame.Update();
         }
 
