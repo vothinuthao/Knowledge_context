@@ -382,23 +382,23 @@ namespace VikingRaven.Units.Components
             stateMachineInGame.RegisterState<EnhancedAggroState>(aggroState);
             
             // Enhanced combat states
-            var combatState = new CombatEngagedState(Entity, stateMachineInGame);
-            stateMachineInGame.RegisterState<CombatEngagedState>(combatState);
-            
-            var retreatState = new RetreatState(Entity, stateMachineInGame);
-            stateMachineInGame.RegisterState<RetreatState>(retreatState);
-            
-            var exhaustedState = new ExhaustedState(Entity, stateMachineInGame);
-            stateMachineInGame.RegisterState<ExhaustedState>(exhaustedState);
-            
-            var weaponBrokenState = new WeaponBrokenState(Entity, stateMachineInGame);
-            stateMachineInGame.RegisterState<WeaponBrokenState>(weaponBrokenState);
-            
-            var guardingState = new GuardingState(Entity, stateMachineInGame);
-            stateMachineInGame.RegisterState<GuardingState>(guardingState);
-            
-            var patrollingState = new PatrollingState(Entity, stateMachineInGame);
-            stateMachineInGame.RegisterState<PatrollingState>(patrollingState);
+            // var combatState = new CombatEngagedState(Entity, stateMachineInGame);
+            // stateMachineInGame.RegisterState<CombatEngagedState>(combatState);
+            //
+            // var retreatState = new RetreatState(Entity, stateMachineInGame);
+            // stateMachineInGame.RegisterState<RetreatState>(retreatState);
+            //
+            // var exhaustedState = new ExhaustedState(Entity, stateMachineInGame);
+            // stateMachineInGame.RegisterState<ExhaustedState>(exhaustedState);
+            //
+            // var weaponBrokenState = new WeaponBrokenState(Entity, stateMachineInGame);
+            // stateMachineInGame.RegisterState<WeaponBrokenState>(weaponBrokenState);
+            //
+            // var guardingState = new GuardingState(Entity, stateMachineInGame);
+            // stateMachineInGame.RegisterState<GuardingState>(guardingState);
+            //
+            // var patrollingState = new PatrollingState(Entity, stateMachineInGame);
+            // stateMachineInGame.RegisterState<PatrollingState>(patrollingState);
             
             // Status effect states
             var knockbackState = new KnockbackState(Entity, stateMachineInGame);
@@ -936,12 +936,12 @@ namespace VikingRaven.Units.Components
             {
                 CombatStateType.Idle => stateMachineInGame.GetState<EnhancedIdleState>(),
                 CombatStateType.Aggro => stateMachineInGame.GetState<EnhancedAggroState>(),
-                CombatStateType.CombatEngaged => stateMachineInGame.GetState<CombatEngagedState>(),
-                CombatStateType.Retreat => stateMachineInGame.GetState<RetreatState>(),
-                CombatStateType.Exhausted => stateMachineInGame.GetState<ExhaustedState>(),
-                CombatStateType.WeaponBroken => stateMachineInGame.GetState<WeaponBrokenState>(),
-                CombatStateType.Guarding => stateMachineInGame.GetState<GuardingState>(),
-                CombatStateType.Patrolling => stateMachineInGame.GetState<PatrollingState>(),
+                // CombatStateType.CombatEngaged => stateMachineInGame.GetState<CombatEngagedState>(),
+                // CombatStateType.Retreat => stateMachineInGame.GetState<RetreatState>(),
+                // CombatStateType.Exhausted => stateMachineInGame.GetState<ExhaustedState>(),
+                // CombatStateType.WeaponBroken => stateMachineInGame.GetState<WeaponBrokenState>(),
+                // CombatStateType.Guarding => stateMachineInGame.GetState<GuardingState>(),
+                // CombatStateType.Patrolling => stateMachineInGame.GetState<PatrollingState>(),
                 CombatStateType.Knockback => stateMachineInGame.GetState<KnockbackState>(),
                 CombatStateType.Stunned => stateMachineInGame.GetState<StunState>(),
                 _ => null

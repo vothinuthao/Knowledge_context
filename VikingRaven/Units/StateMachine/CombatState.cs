@@ -1,831 +1,448 @@
-﻿using UnityEngine;
+﻿// Enhanced State Machine Classes with Animation Integration
+
+using UnityEngine;
 using VikingRaven.Core.ECS;
 using VikingRaven.Core.StateMachine;
 using VikingRaven.Units.Components;
 
 namespace VikingRaven.Units.StateMachine
 {
-    #region Core States
-    public class EnhancedIdleState : IState
-    {
-        private readonly IEntity _entity;
-        private readonly IStateMachine _stateMachine;
-        private CombatComponent _combatComponent;
-        private HealthComponent _healthComponent;
-        private WeaponComponent _weaponComponent;
-        private AggroDetectionComponent _aggroComponent;
-        
-        private float _idleTime = 0f;
-        private float _lastHealthRegenTime = 0f;
-        private bool _isResting = false;
-
-        public EnhancedIdleState(IEntity entity, IStateMachine stateMachine)
-        {
-            _entity = entity;
-            _stateMachine = stateMachine;
-        }
-
-        public void Enter()
-        {
-            CacheComponents();
-            _idleTime = 0f;
-            _isResting = false;
-            
-            if (_healthComponent != null && _healthComponent.CurrentInjuryState != InjuryState.Healthy)
-            {
-                _isResting = true;
-            }
-        }
-
-        public void Execute()
-        {
-            _idleTime += Time.deltaTime;
-            
-            if (CheckForThreats())
-            {
-                return;
-            }
-            UpdatePassiveRecovery();
-            UpdateWeaponMaintenance();
-        }
-
-        public void Exit()
-        {
-            _isResting = false;
-        }
-
-        private void CacheComponents()
-        {
-            _combatComponent = _entity.GetComponent<CombatComponent>();
-            _healthComponent = _entity.GetComponent<HealthComponent>();
-            _weaponComponent = _entity.GetComponent<WeaponComponent>();
-            _aggroComponent = _entity.GetComponent<AggroDetectionComponent>();
-        }
-
-        private bool CheckForThreats()
-        {
-            if (_aggroComponent != null && _aggroComponent.HasEnemyInRange())
-            {
-                return true;
-            }
-            return false;
-        }
-
-        private void UpdatePassiveRecovery()
-        {
-            if (!_isResting || _healthComponent == null) return;
-            
-            if (Time.time - _lastHealthRegenTime > 2f)
-            {
-                // _healthComponent.RestoreStamina(5f);
-                _lastHealthRegenTime = Time.time;
-            }
-        }
-
-        private void UpdateWeaponMaintenance()
-        {
-            if (_weaponComponent == null) return;
-            
-            if (_idleTime > 10f && _weaponComponent.PrimaryWeaponCondition < 100f)
-            {
-                _weaponComponent.RepairWeapon(_weaponComponent.PrimaryWeapon, 1f * Time.deltaTime);
-            }
-        }
-    }
-
-    public class EnhancedAggroState : IState
-    {
-        private readonly IEntity _entity;
-        private readonly IStateMachine _stateMachine;
-        private CombatComponent _combatComponent;
-        private HealthComponent _healthComponent;
-        private WeaponComponent _weaponComponent;
-        private AggroDetectionComponent _aggroComponent;
-        private NavigationComponent _navigationComponent;
-        
-        private IEntity _currentTarget;
-        private float _aggroTime = 0f;
-        private float _lastThreatAssessment = 0f;
-
-        public EnhancedAggroState(IEntity entity, IStateMachine stateMachine)
-        {
-            _entity = entity;
-            _stateMachine = stateMachine;
-        }
-
-        public void Enter()
-        {
-            CacheComponents();
-            _aggroTime = 0f;
-            _currentTarget = null;
-            AssessThreats();
-            
-            Debug.Log($"EnhancedAggroState: Entity {_entity.Id} detected threats");
-        }
-
-        public void Execute()
-        {
-            _aggroTime += Time.deltaTime;
-            
-            // Regular threat reassessment
-            if (Time.time - _lastThreatAssessment > 1f)
-            {
-                AssessThreats();
-                _lastThreatAssessment = Time.time;
-            }
-            
-            // Handle positioning and preparation
-            UpdateCombatPositioning();
-            
-            // Check if we should engage
-            if (ShouldEngageCombat())
-            {
-                return; // StateComponent will handle transition to CombatEngaged
-            }
-            
-            // Check if threats are gone
-            if (!HasValidThreats())
-            {
-                return; // StateComponent will handle transition back to Idle
-            }
-        }
-
-        public void Exit()
-        {
-            Debug.Log($"EnhancedAggroState: Entity {_entity.Id} exited aggro state after {_aggroTime:F1}s");
-        }
-
-        private void CacheComponents()
-        {
-            _combatComponent = _entity.GetComponent<CombatComponent>();
-            _healthComponent = _entity.GetComponent<HealthComponent>();
-            _weaponComponent = _entity.GetComponent<WeaponComponent>();
-            _aggroComponent = _entity.GetComponent<AggroDetectionComponent>();
-            _navigationComponent = _entity.GetComponent<NavigationComponent>();
-        }
-
-        private void AssessThreats()
-        {
-            if (_aggroComponent == null) return;
-            
-            // Find highest priority target
-            var enemy = _aggroComponent.GetClosestEnemy();
-            if (enemy != null)
-            {
-                _currentTarget = enemy;
-            }
-        }
-
-        private void UpdateCombatPositioning()
-        {
-            if (_currentTarget == null || _navigationComponent == null) return;
-            
-            var targetTransform = _currentTarget.GetComponent<TransformComponent>();
-            var myTransform = _entity.GetComponent<TransformComponent>();
-            
-            if (targetTransform != null && myTransform != null)
-            {
-                // Calculate optimal positioning based on weapon type
-                Vector3 optimalPosition = CalculateOptimalPosition(targetTransform.Position, myTransform.Position);
-                
-                if (Vector3.Distance(myTransform.Position, optimalPosition) > 1f)
-                {
-                    _navigationComponent.SetDestination(optimalPosition);
-                }
-            }
-        }
-
-        private Vector3 CalculateOptimalPosition(Vector3 targetPos, Vector3 currentPos)
-        {
-            if (_weaponComponent == null) return currentPos;
-            
-            float optimalRange = _weaponComponent.EffectiveRange * 0.8f; // Stay within 80% of max range
-            
-            Vector3 direction = (currentPos - targetPos).normalized;
-            return targetPos + direction * optimalRange;
-        }
-
-        private bool ShouldEngageCombat()
-        {
-            if (_currentTarget == null || _combatComponent == null) return false;
-            
-            // Check if target is in attack range
-            return _combatComponent.IsInAttackRange(_currentTarget);
-        }
-
-        private bool HasValidThreats()
-        {
-            return _aggroComponent != null && _aggroComponent.HasEnemyInRange();
-        }
-    }
-
-    #endregion
-
-    #region New Combat States
-
     /// <summary>
-    /// Combat Engaged State - Active combat with intelligent tactics
-    /// Phase 1 Enhancement: Smart combat behavior with weapon-specific tactics
+    /// Enhanced Idle State with improved animation handling
     /// </summary>
-    public class CombatEngagedState : IState
+    public class EnhancedIdleState : BaseUnitState
     {
-        private readonly IEntity _entity;
-        private readonly IStateMachine _stateMachine;
-        private CombatComponent _combatComponent;
-        private HealthComponent _healthComponent;
-        private WeaponComponent _weaponComponent;
-        private AggroDetectionComponent _aggroComponent;
+        private AnimationComponent _animationComponent;
+        private AggroDetectionComponent _aggroDetectionComponent;
         
-        private IEntity _currentTarget;
-        private float _combatTime = 0f;
-        private float _lastAttackAttempt = 0f;
-        private int _consecutiveMisses = 0;
-
-        public CombatEngagedState(IEntity entity, IStateMachine stateMachine)
+        public EnhancedIdleState(IEntity entity, IStateMachine stateMachine) : base(entity, stateMachine)
         {
-            _entity = entity;
-            _stateMachine = stateMachine;
         }
 
-        public void Enter()
+        public override void Enter()
         {
-            CacheComponents();
-            _combatTime = 0f;
-            _consecutiveMisses = 0;
+            Debug.Log($"Entity {Entity.Id} entered Enhanced Idle state");
             
-            // Find initial target
-            if (_aggroComponent != null)
+            // Get animation component
+            _animationComponent = Entity.GetComponent<AnimationComponent>();
+            _aggroDetectionComponent = Entity.GetComponent<AggroDetectionComponent>();
+            
+            // Play idle animation with safety check
+            if (_animationComponent != null)
             {
-                _currentTarget = _aggroComponent.GetClosestEnemy();
-            }
-            
-            Debug.Log($"CombatEngagedState: Entity {_entity.Id} engaged in combat");
-        }
-
-        public void Execute()
-        {
-            _combatTime += Time.deltaTime;
-            
-            // Update target
-            UpdateTarget();
-            
-            // Check combat conditions
-            if (!CanContinueCombat())
-            {
-                return; // StateComponent will handle appropriate transition
-            }
-            
-            // Execute combat behavior
-            ExecuteCombatBehavior();
-            
-            // Handle weapon abilities
-            UpdateWeaponAbilities();
-        }
-
-        public void Exit()
-        {
-            Debug.Log($"CombatEngagedState: Entity {_entity.Id} disengaged from combat after {_combatTime:F1}s");
-        }
-
-        private void CacheComponents()
-        {
-            _combatComponent = _entity.GetComponent<CombatComponent>();
-            _healthComponent = _entity.GetComponent<HealthComponent>();
-            _weaponComponent = _entity.GetComponent<WeaponComponent>();
-            _aggroComponent = _entity.GetComponent<AggroDetectionComponent>();
-        }
-
-        private void UpdateTarget()
-        {
-            if (_aggroComponent != null)
-            {
-                var newTarget = _aggroComponent.GetClosestEnemy();
-                if (newTarget != null)
+                bool success = _animationComponent.PlayAnimation(AnimationComponent.AnimationState.Idle);
+                if (success)
                 {
-                    _currentTarget = newTarget;
-                }
-            }
-        }
-
-        private bool CanContinueCombat()
-        {
-            // Check health condition
-            if (_healthComponent != null && _healthComponent.HealthPercentage < 25f)
-            {
-                return false; // Should retreat
-            }
-            
-            // Check stamina
-            if (_healthComponent != null && _healthComponent.IsExhausted)
-            {
-                return false; // Too exhausted to continue
-            }
-            
-            // Check weapon condition
-            if (_weaponComponent != null && _weaponComponent.IsPrimaryWeaponBroken)
-            {
-                return false; // Weapon broken
-            }
-            
-            // Check if target still exists
-            if (_currentTarget == null)
-            {
-                return false; // No target
-            }
-            
-            return true;
-        }
-
-        private void ExecuteCombatBehavior()
-        {
-            if (_currentTarget == null || _combatComponent == null) return;
-            
-            if (_combatComponent.CanAttack() && _combatComponent.IsInAttackRange(_currentTarget))
-            {
-                if (_healthComponent)
-                {
-                    return; // Not enough stamina
-                }
-                
-                // Perform enhanced attack
-                bool hitSuccessful = _combatComponent.PerformEnhancedAttack(_currentTarget);
-                
-                if (hitSuccessful)
-                {
-                    _consecutiveMisses = 0;
-                    
-                    // Gain weapon experience
-                    if (_weaponComponent != null)
-                    {
-                        bool isCritical = Random.value < (_weaponComponent.CriticalChance / 100f);
-                        _weaponComponent.ProcessSuccessfulHit(_weaponComponent.PrimaryWeapon, _combatComponent.EffectiveAttackDamage, isCritical);
-                    }
+                    Debug.Log($"Successfully started Idle animation for entity {Entity.Id}");
                 }
                 else
                 {
-                    _consecutiveMisses++;
+                    Debug.LogWarning($"Failed to start Idle animation for entity {Entity.Id}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"No AnimationComponent found on entity {Entity.Id}");
+            }
+        }
+
+        public override void Execute()
+        {
+            // Check for enemies in range
+            if (_aggroDetectionComponent != null && _aggroDetectionComponent.HasEnemyInRange())
+            {
+                Debug.Log($"Entity {Entity.Id} detected enemy, transitioning to Aggro state");
+                StateMachine.ChangeState<EnhancedAggroState>();
+                return;
+            }
+            
+            // Check if we should transition to moving state (handled by AnimationSystem)
+            // The AnimationSystem will automatically handle Idle <-> Moving transitions
+        }
+
+        public override void Exit()
+        {
+            Debug.Log($"Entity {Entity.Id} exited Enhanced Idle state");
+        }
+    }
+
+    /// <summary>
+    /// Enhanced Aggro State with combat animation handling
+    /// </summary>
+    public class EnhancedAggroState : BaseUnitState
+    {
+        private AnimationComponent _animationComponent;
+        private AggroDetectionComponent _aggroDetectionComponent;
+        private CombatComponent _combatComponent;
+        private TransformComponent _transformComponent;
+        
+        private float _aggroAnimationDuration = 1f;
+        private float _aggroStartTime;
+        private bool _hasPlayedAggroAnimation = false;
+
+        public EnhancedAggroState(IEntity entity, IStateMachine stateMachine) : base(entity, stateMachine)
+        {
+        }
+
+        public override void Enter()
+        {
+            Debug.Log($"Entity {Entity.Id} entered Enhanced Aggro state");
+            
+            // Cache components
+            _animationComponent = Entity.GetComponent<AnimationComponent>();
+            _aggroDetectionComponent = Entity.GetComponent<AggroDetectionComponent>();
+            _combatComponent = Entity.GetComponent<CombatComponent>();
+            _transformComponent = Entity.GetComponent<TransformComponent>();
+            
+            _aggroStartTime = Time.time;
+            _hasPlayedAggroAnimation = false;
+            
+            // Play aggro animation
+            if (_animationComponent != null)
+            {
+                bool success = _animationComponent.PlayAnimation(AnimationComponent.AnimationState.Aggro, forcePlay: true);
+                if (success)
+                {
+                    _hasPlayedAggroAnimation = true;
+                    Debug.Log($"Successfully started Aggro animation for entity {Entity.Id}");
+                }
+            }
+        }
+
+        public override void Execute()
+        {
+            // Check if enemy is still in range
+            if (_aggroDetectionComponent != null && !_aggroDetectionComponent.HasEnemyInRange())
+            {
+                Debug.Log($"Entity {Entity.Id} lost enemy, returning to Idle state");
+                StateMachine.ChangeState<EnhancedIdleState>();
+                return;
+            }
+            
+            // Get target and face it
+            var targetEntity = _aggroDetectionComponent?.GetClosestEnemy();
+            if (targetEntity != null && _transformComponent != null)
+            {
+                var targetTransform = targetEntity.GetComponent<TransformComponent>();
+                if (targetTransform != null)
+                {
+                    _transformComponent.LookAt(targetTransform.Position);
                 }
                 
-                _lastAttackAttempt = Time.time;
-            }
-        }
-
-        private void UpdateWeaponAbilities()
-        {
-            if (_weaponComponent == null || _currentTarget == null) return;
-            
-            // Use weapon abilities based on situation
-            if (_consecutiveMisses >= 3) // Multiple misses, try special ability
-            {
-                TryUseWeaponAbility();
-            }
-            
-            // Use abilities based on health situation
-            if (_healthComponent != null && _healthComponent.HealthPercentage < 50f)
-            {
-                TryUseDefensiveAbility();
-            }
-        }
-
-        private void TryUseWeaponAbility()
-        {
-            if (_weaponComponent.UnlockedAbilities.Count == 0) return;
-            
-            // Try to use an offensive ability
-            foreach (var ability in _weaponComponent.UnlockedAbilities)
-            {
-                if (IsOffensiveAbility(ability.Type))
+                // Check if aggro animation has finished and we can transition to combat
+                if (_hasPlayedAggroAnimation && Time.time - _aggroStartTime >= _aggroAnimationDuration)
                 {
-                    if (_weaponComponent.UseWeaponAbility(ability.Type))
+                    // Check if in attack range
+                    if (_combatComponent != null && _combatComponent.IsInAttackRange(targetEntity))
                     {
-                        Debug.Log($"CombatEngagedState: Used weapon ability {ability.Type}");
-                        break;
+                        Debug.Log($"Entity {Entity.Id} in attack range, transitioning to Combat state");
+                        StateMachine.ChangeState<EnhancedCombatState>();
+                        return;
+                    }
+                    else
+                    {
+                        // Need to move closer - transition to moving/chasing state
+                        Debug.Log($"Entity {Entity.Id} needs to move closer to target");
+                        StateMachine.ChangeState<EnhancedMovingState>();
+                        return;
                     }
                 }
             }
         }
 
-        private void TryUseDefensiveAbility()
+        public override void Exit()
         {
-            // Try to use defensive abilities when health is low
-            foreach (var ability in _weaponComponent.UnlockedAbilities)
-            {
-                if (IsDefensiveAbility(ability.Type))
-                {
-                    if (_weaponComponent.UseWeaponAbility(ability.Type))
-                    {
-                        Debug.Log($"CombatEngagedState: Used defensive ability {ability.Type}");
-                        break;
-                    }
-                }
-            }
-        }
-
-        private bool IsOffensiveAbility(WeaponAbilityType abilityType)
-        {
-            return abilityType switch
-            {
-                WeaponAbilityType.PowerStrike or
-                WeaponAbilityType.FlurryAttack or
-                WeaponAbilityType.ThrustAttack or
-                WeaponAbilityType.ChargeAttack or
-                WeaponAbilityType.AimedShot or
-                WeaponAbilityType.MultiShot or
-                WeaponAbilityType.PiercingShot or
-                WeaponAbilityType.CrushingBlow => true,
-                _ => false
-            };
-        }
-
-        private bool IsDefensiveAbility(WeaponAbilityType abilityType)
-        {
-            return abilityType switch
-            {
-                WeaponAbilityType.Parry => true,
-                _ => false
-            };
+            Debug.Log($"Entity {Entity.Id} exited Enhanced Aggro state");
         }
     }
 
     /// <summary>
-    /// Retreat State - Tactical withdrawal with intelligent escape behavior
-    /// Phase 1 Enhancement: Smart retreat tactics based on situation
+    /// Enhanced Moving State with navigation and animation
     /// </summary>
-    public class RetreatState : IState
+    public class EnhancedMovingState : BaseUnitState
     {
-        private readonly IEntity _entity;
-        private readonly IStateMachine _stateMachine;
-        private CombatComponent _combatComponent;
-        private HealthComponent _healthComponent;
+        private AnimationComponent _animationComponent;
         private NavigationComponent _navigationComponent;
-        private AggroDetectionComponent _aggroComponent;
+        private AggroDetectionComponent _aggroDetectionComponent;
+        private CombatComponent _combatComponent;
         
-        private Vector3 _retreatTarget;
-        private float _retreatTime = 0f;
-        private bool _hasReachedSafety = false;
+        private IEntity _targetEntity;
 
-        public RetreatState(IEntity entity, IStateMachine stateMachine)
+        public EnhancedMovingState(IEntity entity, IStateMachine stateMachine) : base(entity, stateMachine)
         {
-            _entity = entity;
-            _stateMachine = stateMachine;
         }
 
-        public void Enter()
+        public override void Enter()
         {
-            CacheComponents();
-            _retreatTime = 0f;
-            _hasReachedSafety = false;
+            Debug.Log($"Entity {Entity.Id} entered Enhanced Moving state");
             
-            // Calculate retreat destination
-            CalculateRetreatDestination();
+            // Cache components
+            _animationComponent = Entity.GetComponent<AnimationComponent>();
+            _navigationComponent = Entity.GetComponent<NavigationComponent>();
+            _aggroDetectionComponent = Entity.GetComponent<AggroDetectionComponent>();
+            _combatComponent = Entity.GetComponent<CombatComponent>();
             
-            Debug.Log($"RetreatState: Entity {_entity.Id} retreating to safety");
-        }
-
-        public void Execute()
-        {
-            _retreatTime += Time.deltaTime;
+            // Get current target
+            _targetEntity = _aggroDetectionComponent?.GetClosestEnemy();
             
-            // Move to retreat destination
-            ExecuteRetreat();
-            
-            // Check if we've reached safety
-            CheckSafetyStatus();
-            
-            // Check if we can stop retreating
-            if (CanStopRetreating())
+            // Animation will be handled automatically by AnimationSystem
+            // But we can force it here for immediate response
+            if (_animationComponent != null)
             {
-                return; // StateComponent will handle transition
+                _animationComponent.PlayAnimation(AnimationComponent.AnimationState.Moving);
             }
         }
 
-        public void Exit()
+        public override void Execute()
         {
-            Debug.Log($"RetreatState: Entity {_entity.Id} finished retreating after {_retreatTime:F1}s");
-        }
-
-        private void CacheComponents()
-        {
-            _combatComponent = _entity.GetComponent<CombatComponent>();
-            _healthComponent = _entity.GetComponent<HealthComponent>();
-            _navigationComponent = _entity.GetComponent<NavigationComponent>();
-            _aggroComponent = _entity.GetComponent<AggroDetectionComponent>();
-        }
-
-        private void CalculateRetreatDestination()
-        {
-            var myTransform = _entity.GetComponent<TransformComponent>();
-            if (myTransform == null) return;
-            
-            Vector3 currentPos = myTransform.Position;
-            Vector3 retreatDirection = Vector3.back;
-            
-            if (_aggroComponent != null && _aggroComponent.HasEnemyInRange())
+            // Check if target is still valid
+            if (_aggroDetectionComponent != null && !_aggroDetectionComponent.HasEnemyInRange())
             {
-                var enemy = _aggroComponent.GetClosestEnemy();
-                if (enemy != null)
+                Debug.Log($"Entity {Entity.Id} lost target while moving, returning to Idle");
+                StateMachine.ChangeState<EnhancedIdleState>();
+                return;
+            }
+            
+            // Update target
+            _targetEntity = _aggroDetectionComponent?.GetClosestEnemy();
+            
+            if (_targetEntity != null)
+            {
+                // Move towards target
+                if (_navigationComponent != null)
                 {
-                    var enemyTransform = enemy.GetComponent<TransformComponent>();
-                    if (enemyTransform != null)
+                    var targetTransform = _targetEntity.GetComponent<TransformComponent>();
+                    if (targetTransform != null)
                     {
-                        retreatDirection = (currentPos - enemyTransform.Position).normalized;
+                        _navigationComponent.SetDestination(targetTransform.Position);
                     }
+                }
+                
+                // Check if in attack range
+                if (_combatComponent != null && _combatComponent.IsInAttackRange(_targetEntity))
+                {
+                    Debug.Log($"Entity {Entity.Id} reached attack range, transitioning to Combat state");
+                    StateMachine.ChangeState<EnhancedCombatState>();
+                    return;
                 }
             }
             
-            float retreatDistance = CalculateRetreatDistance();
-            _retreatTarget = currentPos + retreatDirection * retreatDistance;
-        }
-
-        private float CalculateRetreatDistance()
-        {
-            float baseDistance = 15f;
-            
-            if (_healthComponent != null)
+            // Check if reached destination and no target
+            if (_navigationComponent != null && _navigationComponent.HasReachedDestination && _targetEntity == null)
             {
-                float healthFactor = (100f - _healthComponent.HealthPercentage) / 100f;
-                baseDistance += healthFactor * 10f;
-            }
-            
-            return baseDistance;
-        }
-
-        private void ExecuteRetreat()
-        {
-            if (_navigationComponent == null) return;
-            
-            _navigationComponent.SetDestination(_retreatTarget);
-        }
-
-        private void CheckSafetyStatus()
-        {
-            var myTransform = _entity.GetComponent<TransformComponent>();
-            if (myTransform == null) return;
-            
-            // Check if we've reached the retreat destinatio
-            if (Vector3.Distance(myTransform.Position, _retreatTarget) < 2f)
-            {
-                _hasReachedSafety = true;
-            }
-            
-            // Check if enemies are still in range
-            if (_aggroComponent != null && !_aggroComponent.HasEnemyInRange())
-            {
-                _hasReachedSafety = true;
+                Debug.Log($"Entity {Entity.Id} reached destination with no target, returning to Idle");
+                StateMachine.ChangeState<EnhancedIdleState>();
+                return;
             }
         }
 
-        private bool CanStopRetreating()
+        public override void Exit()
         {
-            if (!_hasReachedSafety) return false;
-            if (_aggroComponent != null && _aggroComponent.HasEnemyInRange()) return false;
-            if (_healthComponent != null && _healthComponent.HealthPercentage > 50f)
+            Debug.Log($"Entity {Entity.Id} exited Enhanced Moving state");
+            
+            // Stop navigation
+            if (_navigationComponent != null)
             {
-                return true;
+                // _navigationComponent.Stop();
             }
-            return _retreatTime > 20f;
         }
     }
-    public class ExhaustedState : IState
+
+    public class EnhancedCombatState : BaseUnitState
     {
-        private readonly IEntity _entity;
-        private readonly IStateMachine _stateMachine;
-        private HealthComponent _healthComponent;
+        private AnimationComponent _animationComponent;
         private CombatComponent _combatComponent;
+        private AggroDetectionComponent _aggroDetectionComponent;
         
-        private float _restTime = 0f;
-        private bool _isRecovering = false;
+        private IEntity _targetEntity;
+        private bool _isAttacking = false;
+        private float _attackStartTime;
 
-        public ExhaustedState(IEntity entity, IStateMachine stateMachine)
+        public EnhancedCombatState(IEntity entity, IStateMachine stateMachine) : base(entity, stateMachine)
         {
-            _entity = entity;
-            _stateMachine = stateMachine;
         }
 
-        public void Enter()
+        public override void Enter()
         {
-            _healthComponent = _entity.GetComponent<HealthComponent>();
-            _combatComponent = _entity.GetComponent<CombatComponent>();
-            _restTime = 0f;
-            _isRecovering = true;
+            Debug.Log($"Entity {Entity.Id} entered Enhanced Combat state");
             
-            Debug.Log($"ExhaustedState: Entity {_entity.Id} is exhausted and resting");
-        }
-
-        public void Execute()
-        {
-            _restTime += Time.deltaTime;
+            // Cache components
+            _animationComponent = Entity.GetComponent<AnimationComponent>();
+            _combatComponent = Entity.GetComponent<CombatComponent>();
+            _aggroDetectionComponent = Entity.GetComponent<AggroDetectionComponent>();
             
-            // Enhanced stamina recovery
-            if (_healthComponent != null && _isRecovering)
+            // Subscribe to animation events
+            if (_animationComponent != null)
             {
-                float bonusRecovery = 10f * Time.deltaTime; // Bonus stamina recovery while resting
-                // _healthComponent.RestoreStamina(bonusRecovery);
+                _animationComponent.OnAttackAnimationEvent += OnAttackAnimationEvent;
+                _animationComponent.OnAnimationCompleted += OnAnimationCompleted;
+            }
+            
+            _targetEntity = _aggroDetectionComponent?.GetClosestEnemy();
+            _isAttacking = false;
+        }
+
+        public override void Execute()
+        {
+            // Check if target is still valid
+            if (_aggroDetectionComponent != null && !_aggroDetectionComponent.HasEnemyInRange())
+            {
+                Debug.Log($"Entity {Entity.Id} lost target in combat, returning to Idle");
+                StateMachine.ChangeState<EnhancedIdleState>();
+                return;
+            }
+            
+            _targetEntity = _aggroDetectionComponent?.GetClosestEnemy();
+            
+            if (_targetEntity != null && _combatComponent != null)
+            {
+                // Check if still in attack range
+                if (!_combatComponent.IsInAttackRange(_targetEntity))
+                {
+                    Debug.Log($"Entity {Entity.Id} target moved out of range, chasing");
+                    StateMachine.ChangeState<EnhancedMovingState>();
+                    return;
+                }
+                
+                // Attack if ready and not currently attacking
+                if (!_isAttacking && _combatComponent.CanAttack())
+                {
+                    StartAttack();
+                }
             }
         }
 
-        public void Exit()
+        private void StartAttack()
         {
-            _isRecovering = false;
-            Debug.Log($"ExhaustedState: Entity {_entity.Id} recovered after {_restTime:F1}s");
+            Debug.Log($"Entity {Entity.Id} starting attack animation");
+            
+            _isAttacking = true;
+            _attackStartTime = Time.time;
+            
+            // Play attack animation
+            if (_animationComponent != null)
+            {
+                _animationComponent.PlayAnimation(AnimationComponent.AnimationState.Attack, forcePlay: true);
+            }
         }
 
-        private bool HasRecovered()
+        private void OnAttackAnimationEvent()
         {
-            if (_healthComponent == null) return true;
+            Debug.Log($"Entity {Entity.Id} attack animation event triggered - dealing damage");
             
-            // Recovery threshold - 50% stamina
-            return _healthComponent.StaminaPercentage > 50f;
+            // This is called by Animation Event at the moment of impact
+            if (_targetEntity != null && _combatComponent != null)
+            {
+                // _combatComponent.Attack(_targetEntity);
+            }
+        }
+
+        private void OnAnimationCompleted(string animationName)
+        {
+            if (animationName.Contains("Attack"))
+            {
+                Debug.Log($"Entity {Entity.Id} attack animation completed");
+                _isAttacking = false;
+            }
+        }
+
+        public override void Exit()
+        {
+            Debug.Log($"Entity {Entity.Id} exited Enhanced Combat state");
+            
+            // Unsubscribe from animation events
+            if (_animationComponent != null)
+            {
+                _animationComponent.OnAttackAnimationEvent -= OnAttackAnimationEvent;
+                _animationComponent.OnAnimationCompleted -= OnAnimationCompleted;
+            }
+            
+            _isAttacking = false;
         }
     }
 
     /// <summary>
-    /// Weapon Broken State - Equipment failure behavior
-    /// Phase 1 Enhancement: Equipment management and emergency tactics
+    /// Death State with death animation handling
     /// </summary>
-    public class WeaponBrokenState : IState
+    public class EnhancedDeathState : BaseUnitState
     {
-        private readonly IEntity _entity;
-        private readonly IStateMachine _stateMachine;
-        private WeaponComponent _weaponComponent;
-        private CombatComponent _combatComponent;
-        
-        private float _brokenTime = 0f;
-        private bool _triedSecondaryWeapon = false;
+        private AnimationComponent _animationComponent;
+        private bool _deathAnimationCompleted = false;
 
-        public WeaponBrokenState(IEntity entity, IStateMachine stateMachine)
+        public EnhancedDeathState(IEntity entity, IStateMachine stateMachine) : base(entity, stateMachine)
         {
-            _entity = entity;
-            _stateMachine = stateMachine;
         }
 
-        public void Enter()
+        public override void Enter()
         {
-            _weaponComponent = _entity.GetComponent<WeaponComponent>();
-            _combatComponent = _entity.GetComponent<CombatComponent>();
-            _brokenTime = 0f;
-            _triedSecondaryWeapon = false;
+            Debug.Log($"Entity {Entity.Id} entered Death state");
             
-            // Try to switch to secondary weapon
-            TrySwitchToSecondaryWeapon();
+            _animationComponent = Entity.GetComponent<AnimationComponent>();
             
-            Debug.Log($"WeaponBrokenState: Entity {_entity.Id} has a broken weapon");
-        }
-
-        public void Execute()
-        {
-            _brokenTime += Time.deltaTime;
-            
-            // Try emergency repairs
-            if (_brokenTime > 5f && !_triedSecondaryWeapon)
+            // Subscribe to death animation completion
+            if (_animationComponent != null)
             {
-                TryEmergencyRepair();
+                _animationComponent.OnDeathAnimationComplete += OnDeathAnimationComplete;
+                _animationComponent.OnAnimationCompleted += OnAnimationCompleted;
+                
+                // Play death animation
+                bool success = _animationComponent.PlayAnimation(AnimationComponent.AnimationState.Death, forcePlay: true);
+                if (!success)
+                {
+                    Debug.LogWarning($"Failed to play death animation for entity {Entity.Id}");
+                    // If animation fails, proceed with death immediately
+                    OnDeathAnimationComplete();
+                }
             }
-            
-            // Check if weapon is repaired or we have alternative
-            if (HasWorkingWeapon())
+            else
             {
-                return; // StateComponent will handle transition
+                // No animation component, proceed with death
+                OnDeathAnimationComplete();
             }
         }
 
-        public void Exit()
+        public override void Execute()
         {
-            Debug.Log($"WeaponBrokenState: Entity {_entity.Id} resolved weapon issue after {_brokenTime:F1}s");
+            // Death state doesn't need to do anything during execution
+            // All logic is handled by animation events
         }
 
-        private void TrySwitchToSecondaryWeapon()
+        private void OnDeathAnimationComplete()
         {
-            if (_weaponComponent == null) return;
+            if (_deathAnimationCompleted)
+                return;
+                
+            _deathAnimationCompleted = true;
+            Debug.Log($"Entity {Entity.Id} death animation completed - destroying entity");
             
-            if (_weaponComponent.SecondaryWeapon != WeaponType.None && !_weaponComponent.IsSecondaryWeaponBroken)
+            // Handle entity destruction or deactivation
+            HandleEntityDeath();
+        }
+
+        private void OnAnimationCompleted(string animationName)
+        {
+            if (animationName.Contains("Death"))
             {
-                _weaponComponent.SwitchPrimaryWeapon(_weaponComponent.SecondaryWeapon);
-                _triedSecondaryWeapon = true;
-                Debug.Log($"WeaponBrokenState: Switched to secondary weapon");
+                OnDeathAnimationComplete();
             }
         }
 
-        private void TryEmergencyRepair()
+        private void HandleEntityDeath()
         {
-            if (_weaponComponent == null) return;
-            
-            // Emergency field repair (limited effectiveness)
-            _weaponComponent.RepairWeapon(_weaponComponent.PrimaryWeapon, 20f);
-            Debug.Log($"WeaponBrokenState: Attempted emergency repair");
+            // Disable entity or destroy it
+            // Entity.SetActive(false);
         }
 
-        private bool HasWorkingWeapon()
+        public override void Exit()
         {
-            if (_weaponComponent == null) return false;
+            Debug.Log($"Entity {Entity.Id} exited Death state");
             
-            return !_weaponComponent.IsPrimaryWeaponBroken;
+            // Unsubscribe from events
+            if (_animationComponent != null)
+            {
+                _animationComponent.OnDeathAnimationComplete -= OnDeathAnimationComplete;
+                _animationComponent.OnAnimationCompleted -= OnAnimationCompleted;
+            }
         }
     }
-
-    /// <summary>
-    /// Guarding State - Defensive position behavior
-    /// Phase 1 Enhancement: Intelligent defensive positioning
-    /// </summary>
-    public class GuardingState : IState
-    {
-        private readonly IEntity _entity;
-        private readonly IStateMachine _stateMachine;
-        private Vector3 _guardPosition;
-        private float _guardTime = 0f;
-
-        public GuardingState(IEntity entity, IStateMachine stateMachine)
-        {
-            _entity = entity;
-            _stateMachine = stateMachine;
-        }
-
-        public void Enter()
-        {
-            var transform = _entity.GetComponent<TransformComponent>();
-            if (transform != null)
-            {
-                _guardPosition = transform.Position;
-            }
-            
-            _guardTime = 0f;
-            Debug.Log($"GuardingState: Entity {_entity.Id} taking defensive position");
-        }
-
-        public void Execute()
-        {
-            _guardTime += Time.deltaTime;
-            
-            // Maintain position and watch for threats
-            var aggroComponent = _entity.GetComponent<AggroDetectionComponent>();
-            if (aggroComponent != null && aggroComponent.HasEnemyInRange())
-            {
-                return; // Threat detected, StateComponent will handle transition
-            }
-        }
-
-        public void Exit()
-        {
-            Debug.Log($"GuardingState: Entity {_entity.Id} stopped guarding after {_guardTime:F1}s");
-        }
-    }
-
-    /// <summary>
-    /// Patrolling State - Movement patrol behavior
-    /// Phase 1 Enhancement: Formation-aware patrol patterns
-    /// </summary>
-    public class PatrollingState : IState
-    {
-        private readonly IEntity _entity;
-        private readonly IStateMachine _stateMachine;
-        private float _patrolTime = 0f;
-
-        public PatrollingState(IEntity entity, IStateMachine stateMachine)
-        {
-            _entity = entity;
-            _stateMachine = stateMachine;
-        }
-
-        public void Enter()
-        {
-            _patrolTime = 0f;
-            Debug.Log($"PatrollingState: Entity {_entity.Id} started patrolling");
-        }
-
-        public void Execute()
-        {
-            _patrolTime += Time.deltaTime;
-            
-            // Basic patrol logic - could be enhanced with waypoint system
-            var aggroComponent = _entity.GetComponent<AggroDetectionComponent>();
-            if (aggroComponent && aggroComponent.HasEnemyInRange())
-            {
-                return; // Threat detected, StateComponent will handle transition
-            }
-        }
-
-        public void Exit()
-        {
-            Debug.Log($"PatrollingState: Entity {_entity.Id} stopped patrolling after {_patrolTime:F1}s");
-        }
-    }
-
-    #endregion
-
-    // #region Utility Extensions
-    //
-    // /// <summary>
-    // /// Extension methods for state machine to support enhanced states
-    // /// </summary>
-    // public static class StateMachineExtensions
-    // {
-    //     public static T GetState<T>(this IStateMachine stateMachine) where T : class, IState
-    //     {
-    //         // This would need to be implemented in the actual StateMachine class
-    //         // For now, returning null as placeholder
-    //         return null;
-    //     }
-    // }
-    //
-    // #endregion
 }
