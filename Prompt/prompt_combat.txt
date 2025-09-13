@@ -1,4 +1,0 @@
-- nguyên tắc: tách hệ thống combat riêng, Unit call API combatType bằng API(combatComponent, sẽ được lấy data từ CombatTypeDataSO ) 
-
-- tạm thời phát triển 3 
-cấu trúc: CombatTypeDataSO(chỉ chứa data), CombatComponent sẽ 
